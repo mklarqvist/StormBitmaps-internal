@@ -65,7 +65,59 @@ where the zone map cannot filter.
 
 ---
 
-## M4 — the cost model, and GATE 1 currently FAILS
+## GATE 1 — PASSES with M3 tile hoisting (iteration 4)
+
+`kernels/storm_allpairs.{h,cpp}` + `bench/bench_allpairs.cpp`. Deciding once per
+tile of 64×64 rows instead of once per pair, over density-sorted rows so a tile
+is homogeneous enough for one decision to stand in for all of them.
+
+512 rows, 130,816 pairs, clustered/1-over-i, d = 0.01. All checksums identical.
+
+| host | selection %, per-pair | selection %, **per-tile** | decisions |
+|---|---:|---:|---:|
+| apple-m4 | 34.86% FAIL | **0.19% PASS** | 130,816 → 36 |
+| neoverse-sve2 | 27.69% FAIL | **0.10% PASS** | 130,816 → 36 |
+| sapphire | 48.44% FAIL | **0.29% PASS** | 130,816 → 36 |
+
+**Claim P2 holds in its tile-hoisted form.** `RESEARCH_PLAN.md` §8 Phase 1
+allows for exactly this: ">2–10% → proceed, but M3 tile hoisting becomes
+mandatory rather than optional." At 0.1–0.3% it is comfortably inside the 2%
+budget, and hoisting is not a concession — it is the prescribed remedy working.
+
+**But the honest half.** Cheap decisions are also *coarser* decisions, and the
+end-to-end numbers show the trade rather than hiding it:
+
+| host / scale | per-pair | per-tile |
+|---|---:|---:|
+| apple-m4, 1 MB | 0.79× | **1.68×** |
+| sapphire, 1 MB | 0.30× | **1.32×** |
+| neoverse-sve2, 1 MB | 0.32× | **0.66×** |
+| apple-m4, **32 MB (DRAM)** | **1.67×** | 1.26× |
+
+(vs all-bitmap; >1 is a win.)
+
+Two things follow, and neither is what the plan expected:
+
+1. **On neoverse-sve2 the tile decision is actively bad** — 0.66×, worse than
+   just running B×B. The model's calibrated constants are host-local and the
+   tile aggregate (max cardinality, max run count) is deliberately conservative;
+   together they pick a worse cell than doing nothing. Tile hoisting fixed the
+   *cost* of selection and exposed a *quality* problem that per-pair selection
+   was masking with its own overhead.
+
+2. **The right granularity depends on how expensive the work being decided about
+   is.** At 32 MB, per-pair *wins* (1.67× vs per-tile's 1.26×) because each
+   kernel call is now expensive enough to pay for a better decision — the
+   selection overhead falls to 6.79% purely because the denominator grew. There
+   is no fixed answer; granularity is another thing the cost model should choose,
+   and currently does not.
+
+So Gate 1 is passed on the criterion P2 actually states (selection ≤2% of
+runtime), and the live problem has moved from *decision cost* to *decision
+quality* — which is the regret number, still 94.1% per-pair and unmeasured
+per-tile.
+
+## M4 — the cost model, and GATE 1 as originally measured
 
 Built at the user's direction after F10 showed hand-tuned thresholds losing
 systematically. `kernels/storm_cost.{h,cpp}`, validated by

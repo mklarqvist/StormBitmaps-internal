@@ -30,9 +30,10 @@ echo "== flags: $CXXFLAGS"
 
 KSRC="kernels/storm_repr.cpp kernels/storm_gen.cpp kernels/oracle.cpp \
       kernels/cell_bb.cpp kernels/cell_bs.cpp kernels/cell_br.cpp \
-      kernels/cell_sparse.cpp kernels/cell_wah.cpp kernels/storm_cost.cpp"
+      kernels/cell_sparse.cpp kernels/cell_wah.cpp kernels/storm_cost.cpp kernels/storm_allpairs.cpp"
 
 $CXX $CXXFLAGS $KSRC bench/bench_baseline.cpp "$OUT/roaring.o" -o "$OUT/bench_baseline"
 $CXX $CXXFLAGS $KSRC bench/bench_cells.cpp                     -o "$OUT/bench_cells"
+$CXX $CXXFLAGS $KSRC bench/bench_allpairs.cpp                  -o "$OUT/bench_allpairs"
 $CXX $CXXFLAGS $KSRC tests/test_cells.cpp                      -o "$OUT/test_cells"
 echo "built: $OUT/{bench_baseline,bench_cells,test_cells}"

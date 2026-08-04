@@ -147,7 +147,8 @@ set(STORM_KERNEL_SOURCES
 	kernels/cell_br.cpp
 	kernels/cell_sparse.cpp
 	kernels/cell_wah.cpp
-	kernels/storm_cost.cpp)
+	kernels/storm_cost.cpp
+	kernels/storm_allpairs.cpp)
 
 add_library(storm_kernels STATIC ${STORM_KERNEL_SOURCES})
 target_include_directories(storm_kernels PUBLIC "${PROJECT_SOURCE_DIR}")
