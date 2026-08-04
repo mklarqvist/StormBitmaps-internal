@@ -695,3 +695,35 @@ bytes of 8-byte alignment padding, so `len/2` over-counted array elements and
 read past the end. Fixed by storing exact lengths alongside the aligned starts.
 The broken version reported 3.87x; the correct one reports 4.77-5.67x -- the bug
 was *understating* the result, which is the direction that gets shipped.
+
+### Iterations 2-3 — locality, not element width
+
+**Iteration 2 (no improvement).** Probing straight from the packed `uint16`
+array should have halved list traffic; it measured **slower**, 3.35 vs 2.60 ns
+in the same run.
+
+**Iteration 3 (improvement).** The cause was not the element width but where the
+bytes sit. In the packed blob the sparse arrays are interleaved with 632-byte
+bitmap rows, so two consecutive rows' arrays are pages apart, while the widened
+`uint32` copies were freshly allocated and compact. Copying the `uint16`
+payloads into **one contiguous arena in row order** -- same data, same width --
+gives:
+
+| | ns/pair |
+|---|---:|
+| packed dispatch, widened u32 (iteration 1) | 2.10 |
+| u16 direct from the mmap'd blob | 2.10-3.35 |
+| **u16 from a contiguous arena** | **1.80-1.85** |
+
+The arena for a 4,000-row corpus is **25 kB — it fits in L1** and stays resident
+across the whole pair sweep. That is the actual mechanism: at 89% of pairs
+having \|S\| <= 4, the probe loop is short enough that *where the list lives*
+dominates *how wide its elements are*.
+
+**Consequence for the packed format:** rows should be written **segregated by
+representation** rather than in row order -- all arrays contiguous, all bitmaps
+contiguous -- so the sparse side of the corpus is one dense region. The current
+`tools/pack.cpp` writes row-major and the benchmark has to re-gather. That is a
+format change worth making, not a benchmark trick.
+
+**Running total: 5.49 -> 1.80 ns/pair, 3.0x.**
