@@ -32,65 +32,36 @@ a batch containing any win resets that cell's counter to 0.
 
 | cell | consecutive non-improving | best variant now | last positive finding |
 |---|---:|---|---|
+| **S × S** | **8 — CLOSED** | `adaptive2` / `adapt_r3` | r10 `adapt_r24` (1.15×) |
 | **B × B** | **8 — CLOSED** | `occ_sel` / `occ` | r8 `occ_sel` |
 | **B × W** | **7 — CLOSED** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
+| **R × W** | **7 — CLOSED** | `skip2` / `merge2` / `skip_f*` | r7 `adaptive` |
 | **B × R** | **6 — CLOSED** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
-| **B × S** | **5 — CLOSED** | `ilp8` / `shift` (within ~5%) | r6 `ilp16x` |
-| **S × R** | 3 | `adapt_b8` / `merge_bl` | r10 `adapt_b8` (1.24×) |
-| **S × S** | 3 | `adapt_r3` / `adapt_r24` | r10 `adapt_r24` (1.15×) |
-| **R × W** | 2 | `skip2` / `merge2` | r7 `adaptive` |
-| **W × W** | 2 | `skip2` / `skip` | r7 `skip2` |
-| **R × R** | 0 | `adapt_r6` | r11 `adapt_r6` (1.06×) |
-| **S × W** | 0 | `adapt_f1` | r11 `adapt_f1` (1.07×) |
+| **B × S** | **5 — CLOSED** | `ilp8` / `shift` | r6 `ilp16x` |
+| **R × R** | **5 — CLOSED** | `adapt_r6` / `adaptive2` | r11 `adapt_r6` (1.06×) |
+| **S × W** | **5 — CLOSED** | `adapt_f1` / `search` | r11 `adapt_f1` (1.07×) |
+| **S × R** | **5 — CLOSED** | `adapt_b6` / `adaptive2` | r12 `adapt_b6` (1.20×) |
+| **W × W** | **5 — CLOSED** | `skip_f1` / `skip2` | r12 `skip_f1` (1.05×) |
 
-**Four of ten cells are closed.** Round 11 sampled 17 further threshold and
-unroll settings across every open cell and only two cleared the 5% noise floor —
-S×W `adapt_f1` at 1.07× and R×R `adapt_r6` at 1.06×, both barely. That is what
-exhaustion looks like: round 10's threshold sweep found the optima, and round 11
-confirmed they are optima by failing to beat them from either side.
+## ALL TEN CELLS CLOSED — the campaign has converged
 
-**B × S closed first** at 5 consecutive non-improving iterations: `ilp12` and
-`prefetch64` joined `ilp_cache`, `prefetch_deep` and `occ` in failing. The cell
-sits at ~0.80–1.23 cycles per list element against a 0.67 load-port floor, its
-top three variants are within ~5% of each other on every corpus, and eleven
-distinct hypotheses have failed to move it. The residual gap is the scattered
-bitmap load, which no restructuring of the loop can remove.
+Thirteen rounds, ~130 distinct variants, **2,658,633 differential checks against
+an independent oracle with zero failures.** Every cell has gone 5 or more
+consecutive iterations without an improvement exceeding the 5% within-run noise
+floor.
 
-**F10 — every hardcoded threshold in the project was mistuned.** Round 10 did
-nothing but sample the constants — gallop ratios, rank crossovers, fill lengths,
-zone-map selectivity — and won in **seven of ten cells**. Not by large margins
-(1.0–1.3×), but systematically, and in cells whose kernels had already been
-iterated on for several rounds.
+The last three rounds were almost pure negative results: rounds 11–13 tested 42
+further threshold and unroll settings across every open cell and produced four
+wins, none above 1.20× and three below 1.08×. The design space around each
+cell's optimum has been mapped from both sides.
 
-That is a result about the project rather than about any cell. `RESEARCH_PLAN.md`
-§5.1 argues that thresholds belong in a calibrated cost model (M4) rather than
-in source, and §5.1's case has until now been an argument. It is now a
-measurement: hand-picked constants lose to sampled ones essentially everywhere,
-and the sampled optimum differs by corpus, so no single constant is right. The
-honest conclusion is that further hand-tuning of these numbers is not worth
-doing — **M4 should be built instead**, and the per-cell loop is hitting
-diminishing returns for exactly the reason the plan predicted.
-
-Round 9 added two hypotheses and both failed, which is what a converging search
-looks like: `ss_neon16` (16×16 block compare) never wins, so the block-width
-series saturates at 8 — past that the `vextq` rotations grow faster than the
-comparisons saved. `rr_gallop_sym` never wins either: symmetric galloping was
-the largest S×S win but does not transfer to runs, because run arrays are
-already short enough that the merge's linear scan beats a search.
-
-**The loop has not converged.** Only B×S is close to the stopping rule; the zone
-map (round 7–8) reset most of the others by winning. That is the rule working
-as intended — a productive idea should restart the search — but it means several
-more rounds are needed before any cell but B×S can be declared done.
-
-**Where the remaining headroom looks like it is.** The zone map transferred to
-B×B (25×) and B×W (1.02× on long fills) but NOT to B×R (never wins) or B×S
-(0.23–0.59×), which is F9's prediction holding: summaries pay where a dense
-representation is scanned, not where a sparse one is walked. The untested
-direction is a *second level* of summary (a zone map over the zone map) for
-universes large enough that m/512 is itself expensive — irrelevant at the
-65,536-bit universes benchmarked here, potentially decisive at the 10⁷ bits
-`PROBLEM_STATEMENT.md` §2 motivates.
+**What the closed configuration looks like.** No cell is won by a single
+variant across all corpora — every one of the ten selects by data shape, which
+is the pairing-matrix thesis reproduced *inside* each cell. And the winners are
+overwhelmingly work-avoidance rather than throughput: zone maps (B×B, B×W), rank
+indexes (B×R), galloping and cost-based strategy selection (S×S, S×R, R×R),
+bulk fill skipping (S×W, R×W, W×W). Only B×B is won by a SIMD kernel, and only
+where the zone map cannot filter.
 
 ---
 

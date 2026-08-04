@@ -690,6 +690,11 @@ const Variant<fn_sw> kSW[] = {
     {"skip",     sw_skip,     "a fill settles every list element inside it in one step"},
     {"search",   sw_search,   "gallop the list past a fill instead of walking it"},
     {"adaptive", sw_adaptive, "gallop past long fills, walk short ones"},
+    {"adapt_f4", sw_adaptive_t<4>,   "gallop past fills >= 4 words"},
+    {"adapt_f8", sw_adaptive_t<8>,   "gallop past fills >= 8 words"},
+    {"adapt_f32",sw_adaptive_t<32>,  "gallop past fills >= 32 words"},
+    {"adapt_f128",sw_adaptive_t<128>,"gallop past fills >= 128 words"},
+    {"adapt_f512",sw_adaptive_t<512>,"gallop past fills >= 512 words"},
     {"adapt_f1", sw_adaptive_t<1>,   "gallop past every fill"},
     {"adapt_f16",sw_adaptive_t<16>,  "gallop past fills of 16 words or more"},
     {"adapt_f256",sw_adaptive_t<256>,"gallop only past fills of 256 words or more"},
@@ -765,12 +770,46 @@ uint64_t rw_skip2(const RunView& r, const EwahView& w) {
     return c;
 }
 
+/* Bulk-skip only above a minimum fill length. Retiring runs wholesale inside a
+ * zero fill costs a loop that is pure overhead when the fill covers one or two
+ * words; MINFILL is where it starts paying. Same calibration question the other
+ * eight cells were asked. */
+template <uint32_t MINFILL>
+uint64_t rw_skip_t(const RunView& r, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < r.n && !cw.done()) {
+        const uint64_t slo = (uint64_t)pos * 64;
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if (r.end[i] <= slo) { ++i; continue; }
+        if (r.start[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+        if (cw.in_fill() && !cw.fill_val && cw.seg() >= MINFILL) {
+            while (i < r.n && (uint64_t)r.end[i] <= shi) ++i;
+            pos += cw.seg(); cw.consume(cw.seg());
+            continue;
+        }
+        const uint32_t a = (uint32_t)std::max<uint64_t>(r.start[i], slo);
+        const uint32_t b = (uint32_t)std::min<uint64_t>(r.end[i],   shi);
+        if (cw.in_fill()) { if (cw.fill_val) c += b - a; }
+        else              c += range_in_words(cw.lit(), pos, a, b);
+        if ((uint64_t)r.end[i] <= shi) ++i;
+        else { pos += cw.seg(); cw.consume(cw.seg()); }
+    }
+    return c;
+}
+
 const Variant<fn_rw> kRW[] = {
     {"merge",    rw_merge,    "reference: runs against the segment stream"},
     {"merge2",   rw_merge2,   "single-pass two-cursor merge, no segment re-walking"},
     {"skip",     rw_skip,     "a zero fill retires every run inside it in one step"},
     {"adaptive", rw_adaptive, "skip form, with an empty-run-array early out"},
     {"merge_bl", rw_merge_bl, "branchless advance in the two-cursor merge"},
+    {"skip_f1",  rw_skip_t<1>,   "bulk skip at any fill length"},
+    {"skip_f4",  rw_skip_t<4>,   "bulk skip above 4 words of fill"},
+    {"skip_f16", rw_skip_t<16>,  "bulk skip above 16 words"},
+    {"skip_f64", rw_skip_t<64>,  "bulk skip above 64 words"},
+    {"skip_f256",rw_skip_t<256>, "bulk skip above 256 words"},
     {"skip2",    rw_skip2,    "zero fills retire runs; one-fills absorb them by add"},
 };
 
@@ -834,12 +873,54 @@ uint64_t ww_bl(const EwahView& a, const EwahView& b) {
     return c;
 }
 
+// Same question for W x W: the bulk skip that lets a zero fill swallow the
+// other stream's segments is a loop, and MINFILL is where it beats stepping.
+template <uint32_t MINFILL>
+uint64_t ww_skip_t(const EwahView& a, const EwahView& b) {
+    uint64_t c = 0;
+    Cursor ca(a), cb(b);
+    while (!ca.done() && !cb.done()) {
+        if (ca.in_fill() && !ca.fill_val && ca.fill_left >= MINFILL) {
+            uint32_t k = ca.fill_left;
+            while (k && !cb.done()) { const uint32_t t = std::min(k, cb.seg()); cb.consume(t); k -= t; }
+            ca.consume(ca.fill_left - k);
+            continue;
+        }
+        if (cb.in_fill() && !cb.fill_val && cb.fill_left >= MINFILL) {
+            uint32_t k = cb.fill_left;
+            while (k && !ca.done()) { const uint32_t t = std::min(k, ca.seg()); ca.consume(t); k -= t; }
+            cb.consume(cb.fill_left - k);
+            continue;
+        }
+        const uint32_t k = std::min(ca.seg(), cb.seg());
+        const bool fa = ca.in_fill(), fb = cb.in_fill();
+        if (!(fa && !ca.fill_val) && !(fb && !cb.fill_val)) {
+            if (fa && fb)  c += uint64_t(k) * 64;
+            else if (fa)   c += popcnt_words(cb.lit(), k);
+            else if (fb)   c += popcnt_words(ca.lit(), k);
+            else           c += and_popcnt_words(ca.lit(), cb.lit(), k);
+        }
+        ca.consume(k); cb.consume(k);
+    }
+    return c;
+}
+
 const Variant<fn_ww> kWW[] = {
     {"scalar",   ww_scalar,   "reference: segment merge, word at a time"},
     {"neon",     ww_neon,     "NEON literal bodies"},
     {"skip",     ww_skip,     "a zero fill swallows the other side's segments whole"},
     {"skip2",    ww_skip2,    "bulk skip plus a literal-vs-literal fast path"},
     {"bl",       ww_bl,       "branchless segment classification, no bulk skip"},
+    {"skip_f2",  ww_skip_t<2>,   "bulk skip above 2 words of fill"},
+    {"skip_f8",  ww_skip_t<8>,   "bulk skip above 8 words"},
+    {"skip_f32", ww_skip_t<32>,  "bulk skip above 32 words"},
+    {"skip_f128",ww_skip_t<128>, "bulk skip above 128 words"},
+    {"skip_f512",ww_skip_t<512>, "bulk skip above 512 words"},
+    {"skip_f1",  ww_skip_t<1>,   "bulk skip at any fill length"},
+    {"skip_f4",  ww_skip_t<4>,   "bulk skip above 4 words of fill"},
+    {"skip_f16", ww_skip_t<16>,  "bulk skip above 16 words"},
+    {"skip_f64", ww_skip_t<64>,  "bulk skip above 64 words"},
+    {"skip_f256",ww_skip_t<256>, "bulk skip above 256 words"},
 };
 
 } // namespace

@@ -1,0 +1,285 @@
+
+==============================================================================
+  U1  uniform structure / uniform spectrum / d=0.01
+==============================================================================
+calibrating clock ... 2.557 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=uniform
+        cardinality mean=655.0 min=655 max=655   runs mean=648.7
+        footprint  B=1536 kB  S=491 kB  R=973 kB  W=1112 kB
+        indexes    rank=387 kB (25.2% of B)   zone map=3.0 kB (0.195% of B)
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  S x R   (work unit: elt+run, mean 1304.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                6004.98     1.00x      4.6047    11.774         reference: Theta(|S| + r) merge
+  merge_bl             4108.62     1.46x      3.1505     8.055         branchless merge
+  search               4881.65     1.23x      3.7433     9.571         gallop into the run array per list element
+  search_runs          7480.85     0.80x      5.7364    14.667         two galloping searches into the LIST per run
+  neon                 8867.20     0.68x      6.7994    17.385         4 list elements tested against a run per step
+  neon                 8676.93     0.69x      6.6535    17.012         4 list elements tested against a run per step
+  adaptive             6034.71     1.00x      4.6275    11.832         three-way cost comparison from the two sizes
+  adaptive2            6181.95     0.97x      4.7404    12.121         three-way cost comparison plus a disjoint-span early out
+  adapt_b5             6003.08     1.00x      4.6032    11.770         merge bias 5x
+  adapt_b7             6041.83     0.99x      4.6329    11.846         merge bias 7x
+  adapt_b10            6004.57     1.00x      4.6043    11.773         merge bias 10x
+  adapt_b24            6089.52     0.99x      4.6695    11.939         merge bias 24x
+  adapt_b48            5896.10     1.02x      4.5212    11.560         merge bias 48x
+  adapt_b3             5819.64     1.03x      4.4625    11.410         merge bias 3x
+  adapt_b6             6007.59     1.00x      4.6067    11.779         merge bias 6x
+  adapt_b12            6154.82     0.98x      4.7196    12.067         merge bias 12x
+  adapt_b32            6146.79     0.98x      4.7134    12.052         merge bias 32x
+  adapt_b1             6086.65     0.99x      4.6673    11.934         cost comparison unbiased
+  adapt_b4             6151.11     0.98x      4.7167    12.060         cost comparison biased 4x toward the merge
+  adapt_b16            5988.19     1.00x      4.5918    11.741         cost comparison biased 16x toward the merge
+  adapt_b2             6106.67     0.98x      4.6826    11.973         cost comparison biased 2x toward the merge
+  adapt_b8             6034.64     1.00x      4.6274    11.832         cost comparison biased 8x toward the merge
+
+  W x W   (work unit: ewah word, mean 1482.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               4928.91     1.00x      3.3251     8.502         reference: segment merge, word at a time
+  neon                 5234.74     0.94x      3.5315     9.030         NEON literal bodies
+  skip                 4997.73     0.99x      3.3716     8.621         a zero fill swallows the other side's segments whole
+  skip2                4925.57     1.00x      3.3229     8.496         bulk skip plus a literal-vs-literal fast path
+  bl                   5204.51     0.95x      3.5111     8.977         branchless segment classification, no bulk skip
+  skip_f2              5910.07     0.83x      3.9871    10.194         bulk skip above 2 words of fill
+  skip_f8              5570.15     0.88x      3.7577     9.608         bulk skip above 8 words
+  skip_f32             5431.58     0.91x      3.6643     9.369         bulk skip above 32 words
+  skip_f128            5900.34     0.84x      3.9805    10.178         bulk skip above 128 words
+  skip_f512            5400.93     0.91x      3.6436     9.316         bulk skip above 512 words
+  skip_f1              4929.05     1.00x      3.3252     8.502         bulk skip at any fill length
+  skip_f4              5263.54     0.94x      3.5509     9.079         bulk skip above 4 words of fill
+  skip_f16             6220.59     0.79x      4.1965    10.730         bulk skip above 16 words
+  skip_f64             5532.83     0.89x      3.7326     9.544         bulk skip above 64 words
+  skip_f256            5685.82     0.87x      3.8358     9.808         bulk skip above 256 words
+
+==============================================================================
+  S1  uniform structure / 1-over-i spectrum / d=0.01
+==============================================================================
+calibrating clock ... 2.696 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=inverse
+        cardinality mean=485.3 min=1 max=5166   runs mean=467.4
+        footprint  B=1536 kB  S=364 kB  R=701 kB  W=460 kB
+        indexes    rank=387 kB (25.2% of B)   zone map=3.0 kB (0.195% of B)
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  S x R   (work unit: elt+run, mean 946.4 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                2785.62     1.00x      2.9435     7.936         reference: Theta(|S| + r) merge
+  merge_bl             2407.16     1.16x      2.5436     6.858         branchless merge
+  search               1049.08     2.66x      1.1085     2.989         gallop into the run array per list element
+  search_runs          5347.55     0.52x      5.6506    15.235         two galloping searches into the LIST per run
+  neon                 3844.31     0.72x      4.0622    10.952         4 list elements tested against a run per step
+  neon                 4464.54     0.62x      4.7176    12.719         4 list elements tested against a run per step
+  adaptive             1453.60     1.92x      1.5360     4.141         three-way cost comparison from the two sizes
+  adaptive2            1535.29     1.81x      1.6223     4.374         three-way cost comparison plus a disjoint-span early out
+  adapt_b5             2016.17     1.38x      2.1304     5.744         merge bias 5x
+  adapt_b7             2072.49     1.34x      2.1900     5.904         merge bias 7x
+  adapt_b10            2256.75     1.23x      2.3847     6.429         merge bias 10x
+  adapt_b24            2391.63     1.16x      2.5272     6.814         merge bias 24x
+  adapt_b48            2491.08     1.12x      2.6323     7.097         merge bias 48x
+  adapt_b3             1889.35     1.47x      1.9964     5.383         merge bias 3x
+  adapt_b6             1891.27     1.47x      1.9985     5.388         merge bias 6x
+  adapt_b12            1986.73     1.40x      2.0993     5.660         merge bias 12x
+  adapt_b32            2292.61     1.22x      2.4225     6.532         merge bias 32x
+  adapt_b1             1425.68     1.95x      1.5065     4.062         cost comparison unbiased
+  adapt_b4             1766.79     1.58x      1.8669     5.033         cost comparison biased 4x toward the merge
+  adapt_b16            2107.08     1.32x      2.2265     6.003         cost comparison biased 16x toward the merge
+  adapt_b2             1651.36     1.69x      1.7450     4.705         cost comparison biased 2x toward the merge
+  adapt_b8             2027.84     1.37x      2.1428     5.777         cost comparison biased 8x toward the merge
+
+  W x W   (work unit: ewah word, mean 598.2 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               1079.07     1.00x      1.8040     4.864         reference: segment merge, word at a time
+  neon                 1197.39     0.90x      2.0018     5.397         NEON literal bodies
+  skip                 1070.85     1.01x      1.7903     4.827         a zero fill swallows the other side's segments whole
+  skip2                1073.12     1.01x      1.7941     4.837         bulk skip plus a literal-vs-literal fast path
+  bl                   1323.49     0.82x      2.2126     5.966         branchless segment classification, no bulk skip
+  skip_f2              1164.55     0.93x      1.9469     5.249         bulk skip above 2 words of fill
+  skip_f8              1290.09     0.84x      2.1568     5.815         bulk skip above 8 words
+  skip_f32             1205.77     0.89x      2.0158     5.435         bulk skip above 32 words
+  skip_f128            1301.41     0.83x      2.1757     5.866         bulk skip above 128 words
+  skip_f512            1378.35     0.78x      2.3043     6.213         bulk skip above 512 words
+  skip_f1              1031.85     1.05x      1.7251     4.651         bulk skip at any fill length
+  skip_f4              1170.86     0.92x      1.9575     5.278         bulk skip above 4 words of fill
+  skip_f16             1283.10     0.84x      2.1451     5.783         bulk skip above 16 words
+  skip_f64             1268.12     0.85x      2.1201     5.716         bulk skip above 64 words
+  skip_f256            1189.78     0.91x      1.9891     5.363         bulk skip above 256 words
+
+==============================================================================
+  C1  clustered(0.9) / 1-over-i spectrum / d=0.01
+==============================================================================
+calibrating clock ... 2.997 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=clustered spectrum=inverse
+        cardinality mean=666.0 min=1 max=5474   runs mean=64.4
+        footprint  B=1536 kB  S=500 kB  R=97 kB  W=164 kB
+        indexes    rank=387 kB (25.2% of B)   zone map=3.0 kB (0.195% of B)
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  S x R   (work unit: elt+run, mean 267.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 498.74     1.00x      1.8657     5.592         reference: Theta(|S| + r) merge
+  merge_bl              621.12     0.80x      2.3236     6.964         branchless merge
+  search                674.06     0.74x      2.5216     7.558         gallop into the run array per list element
+  search_runs           752.15     0.66x      2.8137     8.433         two galloping searches into the LIST per run
+  neon                  625.26     0.80x      2.3391     7.011         4 list elements tested against a run per step
+  neon                  611.89     0.82x      2.2890     6.861         4 list elements tested against a run per step
+  adaptive              397.69     1.25x      1.4877     4.459         three-way cost comparison from the two sizes
+  adaptive2             403.94     1.23x      1.5111     4.529         three-way cost comparison plus a disjoint-span early out
+  adapt_b5              432.53     1.15x      1.6181     4.850         merge bias 5x
+  adapt_b7              434.83     1.15x      1.6267     4.875         merge bias 7x
+  adapt_b10             427.05     1.17x      1.5976     4.788         merge bias 10x
+  adapt_b24             487.31     1.02x      1.8230     5.464         merge bias 24x
+  adapt_b48             433.18     1.15x      1.6205     4.857         merge bias 48x
+  adapt_b3              411.01     1.21x      1.5376     4.608         merge bias 3x
+  adapt_b6              426.91     1.17x      1.5970     4.787         merge bias 6x
+  adapt_b12             444.64     1.12x      1.6634     4.985         merge bias 12x
+  adapt_b32             486.65     1.02x      1.8205     5.456         merge bias 32x
+  adapt_b1              411.74     1.21x      1.5403     4.617         cost comparison unbiased
+  adapt_b4              434.51     1.15x      1.6255     4.872         cost comparison biased 4x toward the merge
+  adapt_b16             451.43     1.10x      1.6888     5.062         cost comparison biased 16x toward the merge
+  adapt_b2              460.06     1.08x      1.7210     5.158         cost comparison biased 2x toward the merge
+  adapt_b8              465.77     1.07x      1.7424     5.222         cost comparison biased 8x toward the merge
+
+  W x W   (work unit: ewah word, mean 216.5 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                639.87     1.00x      2.9555     8.858         reference: segment merge, word at a time
+  neon                  600.05     1.07x      2.7716     8.307         NEON literal bodies
+  skip                  495.41     1.29x      2.2883     6.859         a zero fill swallows the other side's segments whole
+  skip2                 468.28     1.37x      2.1630     6.483         bulk skip plus a literal-vs-literal fast path
+  bl                    546.97     1.17x      2.5264     7.572         branchless segment classification, no bulk skip
+  skip_f2               489.61     1.31x      2.2615     6.778         bulk skip above 2 words of fill
+  skip_f8               509.29     1.26x      2.3524     7.051         bulk skip above 8 words
+  skip_f32              523.60     1.22x      2.4185     7.249         bulk skip above 32 words
+  skip_f128             548.62     1.17x      2.5341     7.595         bulk skip above 128 words
+  skip_f512             565.49     1.13x      2.6120     7.829         bulk skip above 512 words
+  skip_f1               511.61     1.25x      2.3631     7.083         bulk skip at any fill length
+  skip_f4               529.92     1.21x      2.4477     7.336         bulk skip above 4 words of fill
+  skip_f16              522.93     1.22x      2.4154     7.239         bulk skip above 16 words
+  skip_f64              593.33     1.08x      2.7406     8.214         bulk skip above 64 words
+  skip_f256             552.48     1.16x      2.5519     7.649         bulk skip above 256 words
+
+==============================================================================
+  L1  runs(mean=4096) / uniform spectrum / d=0.05
+==============================================================================
+calibrating clock ... 2.904 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=262144 structure=runs spectrum=uniform
+        cardinality mean=13107.0 min=13107 max=13107   runs mean=3.3
+        footprint  B=6144 kB  S=9830 kB  R=5 kB  W=19 kB
+        indexes    rank=1539 kB (25.0% of B)   zone map=12.0 kB (0.195% of B)
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  S x R   (work unit: elt+run, mean 13110.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge               10259.21     1.00x      0.7825     2.272         reference: Theta(|S| + r) merge
+  merge_bl            18671.78     0.55x      1.4242     4.136         branchless merge
+  search              23002.72     0.45x      1.7546     5.095         gallop into the run array per list element
+  search_runs           343.62    29.86x      0.0262     0.076         two galloping searches into the LIST per run
+  neon                 4964.86     2.07x      0.3787     1.100         4 list elements tested against a run per step
+  neon                 4518.28     2.27x      0.3446     1.001         4 list elements tested against a run per step
+  adaptive              325.30    31.54x      0.0248     0.072         three-way cost comparison from the two sizes
+  adaptive2             193.98    52.89x      0.0148     0.043         three-way cost comparison plus a disjoint-span early out
+  adapt_b5              179.30    57.22x      0.0137     0.040         merge bias 5x
+  adapt_b7              165.52    61.98x      0.0126     0.037         merge bias 7x
+  adapt_b10             162.15    63.27x      0.0124     0.036         merge bias 10x
+  adapt_b24             167.27    61.33x      0.0128     0.037         merge bias 24x
+  adapt_b48             163.30    62.83x      0.0125     0.036         merge bias 48x
+  adapt_b3              166.15    61.75x      0.0127     0.037         merge bias 3x
+  adapt_b6              163.03    62.93x      0.0124     0.036         merge bias 6x
+  adapt_b12             168.59    60.85x      0.0129     0.037         merge bias 12x
+  adapt_b32             162.60    63.09x      0.0124     0.036         merge bias 32x
+  adapt_b1              157.62    65.09x      0.0120     0.035         cost comparison unbiased
+  adapt_b4              161.86    63.38x      0.0123     0.036         cost comparison biased 4x toward the merge
+  adapt_b16             171.29    59.89x      0.0131     0.038         cost comparison biased 16x toward the merge
+  adapt_b2              158.34    64.79x      0.0121     0.035         cost comparison biased 2x toward the merge
+  adapt_b8              155.66    65.91x      0.0119     0.034         cost comparison biased 8x toward the merge
+
+  W x W   (work unit: ewah word, mean 25.7 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 88.99     1.00x      3.4656    10.064         reference: segment merge, word at a time
+  neon                   80.44     1.11x      3.1325     9.097         NEON literal bodies
+  skip                   65.53     1.36x      2.5520     7.411         a zero fill swallows the other side's segments whole
+  skip2                  68.64     1.30x      2.6731     7.763         bulk skip plus a literal-vs-literal fast path
+  bl                     82.17     1.08x      3.2000     9.293         branchless segment classification, no bulk skip
+  skip_f2                70.60     1.26x      2.7493     7.984         bulk skip above 2 words of fill
+  skip_f8                69.93     1.27x      2.7231     7.908         bulk skip above 8 words
+  skip_f32               71.12     1.25x      2.7696     8.043         bulk skip above 32 words
+  skip_f128              68.42     1.30x      2.6643     7.737         bulk skip above 128 words
+  skip_f512              71.85     1.24x      2.7980     8.125         bulk skip above 512 words
+  skip_f1                66.01     1.35x      2.5705     7.465         bulk skip at any fill length
+  skip_f4                68.74     1.29x      2.6768     7.773         bulk skip above 4 words of fill
+  skip_f16               67.97     1.31x      2.6470     7.687         bulk skip above 16 words
+  skip_f64               69.90     1.27x      2.7222     7.905         bulk skip above 64 words
+  skip_f256              73.35     1.21x      2.8563     8.295         bulk skip above 256 words
+
+==============================================================================
+  D1  uniform structure / uniform spectrum / d=0.35
+==============================================================================
+calibrating clock ... 2.532 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=uniform
+        cardinality mean=22938.0 min=22938 max=22938   runs mean=14909.8
+        footprint  B=1536 kB  S=17204 kB  R=22365 kB  W=1538 kB
+        indexes    rank=387 kB (25.2% of B)   zone map=3.0 kB (0.195% of B)
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  S x R   (work unit: elt+run, mean 37840.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge              157579.83     1.00x      4.1644    10.543         reference: Theta(|S| + r) merge
+  merge_bl           114285.55     1.38x      3.0202     7.646         branchless merge
+  search             107647.46     1.46x      2.8448     7.202         gallop into the run array per list element
+  search_runs        139419.49     1.13x      3.6844     9.328         two galloping searches into the LIST per run
+  neon               148288.91     1.06x      3.9188     9.921         4 list elements tested against a run per step
+  neon               156917.56     1.00x      4.1469    10.498         4 list elements tested against a run per step
+  adaptive           165983.44     0.95x      4.3864    11.105         three-way cost comparison from the two sizes
+  adaptive2          165974.04     0.95x      4.3862    11.104         three-way cost comparison plus a disjoint-span early out
+  adapt_b5           159239.50     0.99x      4.2082    10.654         merge bias 5x
+  adapt_b7           159011.72     0.99x      4.2022    10.638         merge bias 7x
+  adapt_b10          160044.42     0.98x      4.2295    10.707         merge bias 10x
+  adapt_b24          155945.49     1.01x      4.1212    10.433         merge bias 24x
+  adapt_b48          160092.60     0.98x      4.2308    10.711         merge bias 48x
+  adapt_b3           162000.31     0.97x      4.2812    10.838         merge bias 3x
+  adapt_b6           166083.84     0.95x      4.3891    11.112         merge bias 6x
+  adapt_b12          161322.13     0.98x      4.2633    10.793         merge bias 12x
+  adapt_b32          162509.92     0.97x      4.2946    10.872         merge bias 32x
+  adapt_b1           160967.33     0.98x      4.2539    10.769         cost comparison unbiased
+  adapt_b4           156108.20     1.01x      4.1255    10.444         cost comparison biased 4x toward the merge
+  adapt_b16          150903.84     1.04x      3.9879    10.096         cost comparison biased 16x toward the merge
+  adapt_b2           160813.35     0.98x      4.2498    10.759         cost comparison biased 2x toward the merge
+  adapt_b8           156083.43     1.01x      4.1248    10.442         cost comparison biased 8x toward the merge
+
+  W x W   (work unit: ewah word, mean 2050.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                204.11     1.00x      0.0996     0.252         reference: segment merge, word at a time
+  neon                  185.39     1.10x      0.0904     0.229         NEON literal bodies
+  skip                  179.19     1.14x      0.0874     0.221         a zero fill swallows the other side's segments whole
+  skip2                 200.07     1.02x      0.0976     0.247         bulk skip plus a literal-vs-literal fast path
+  bl                    155.06     1.32x      0.0756     0.191         branchless segment classification, no bulk skip
+  skip_f2               170.45     1.20x      0.0831     0.210         bulk skip above 2 words of fill
+  skip_f8               158.90     1.28x      0.0775     0.196         bulk skip above 8 words
+  skip_f32              194.03     1.05x      0.0946     0.240         bulk skip above 32 words
+  skip_f128             174.01     1.17x      0.0849     0.215         bulk skip above 128 words
+  skip_f512             177.72     1.15x      0.0867     0.219         bulk skip above 512 words
+  skip_f1               180.83     1.13x      0.0882     0.223         bulk skip at any fill length
+  skip_f4               186.24     1.10x      0.0908     0.230         bulk skip above 4 words of fill
+  skip_f16              182.74     1.12x      0.0891     0.226         bulk skip above 16 words
+  skip_f64              167.38     1.22x      0.0816     0.207         bulk skip above 64 words
+  skip_f256             179.71     1.14x      0.0877     0.222         bulk skip above 256 words
