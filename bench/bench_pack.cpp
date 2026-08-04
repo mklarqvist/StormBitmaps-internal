@@ -314,6 +314,51 @@ int main(int argc,char**argv){
         for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
     for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
     return c; };
+  /* Iteration 11: split singleton and multi pairs into separate loops.
+   *
+   * 42% of rows are singletons, so the `p != 0xFFFF` test inside the pair loop
+   * is taken about 42% of the time -- close to maximally unpredictable, and at
+   * 1.15 ns/pair one mispredict is a large fraction of the budget. The split is
+   * a property of the ROW, so it can be decided once at setup: partition the
+   * pair list into a singleton stream and a multi stream, then run two
+   * branch-free loops. */
+  std::vector<std::pair<uint32_t,uint32_t>> p_one,p_many;
+  for(auto&q:g_arr) (sg_pos[q.second]!=0xFFFF ? p_one : p_many).push_back(q);
+  printf("   pair split: singleton %zu (%.1f%%)  multi %zu\n",
+         p_one.size(),100.0*p_one.size()/g_arr.size(),p_many.size());
+
+  auto tmplSplit=[&](auto WT)->uint64_t{
+    constexpr int W=decltype(WT)::value;
+    uint64_t acc[W]={}; size_t k=0;
+    for(;k+W<=p_one.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u){ const uint32_t d=p_one[k+u].first; const uint16_t p=sg_pos[p_one[k+u].second];
+        acc[u]+=(BV[d].w[p>>6]>>(p&63))&1u; } }
+    uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+    for(;k<p_one.size();++k){ const uint32_t d=p_one[k].first; const uint16_t p=sg_pos[p_one[k].second];
+      c+=(BV[d].w[p>>6]>>(p&63))&1u; }
+    uint64_t m[W]={}; k=0;
+    for(;k+W<=p_many.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u){ const uint32_t d=p_many[k+u].first,s=p_many[k+u].second;
+        m[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+    for(int u=0;u<W;++u) c+=m[u];
+    for(;k<p_many.size();++k){ const uint32_t d=p_many[k].first,s=p_many[k].second;
+      c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  printf("   + split singleton/multi pair streams:\n");
+  auto runSp=[&](auto WT){ constexpr int W=decltype(WT)::value;
+    uint64_t gg=tmplSplit(WT); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=tmplSplit(WT); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("     W=%-2d %7.3f ns/pair%s\n",W,(double)b/pr.size(),ok); };
+  runSp(std::integral_constant<int,4>{}); runSp(std::integral_constant<int,6>{});
+  runSp(std::integral_constant<int,8>{});
+
   printf("   + singleton as packed u16 position (2 B/row):\n");
   auto runP=[&](auto WT){ constexpr int W=decltype(WT)::value;
     uint64_t gg=tmplP(WT); const char* ok=(gg==w)?"":"  WRONG";

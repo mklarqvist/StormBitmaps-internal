@@ -804,3 +804,28 @@ times, so its *size* is on the critical path in a way the original computation
 was not.
 
 **Running total: 5.49 -> 1.15 ns/pair, 4.8x.**
+
+### Iteration 11 — split the pair streams (biggest single win)
+
+**1.15 -> 0.80 ns/pair**, identical across three runs.
+
+42% of *rows* are singletons but **65.3% of pairs** have a singleton sparse side
+-- singleton rows are the smaller side of nearly every pair they join, so they
+are over-represented among pairs relative to rows. A 65/35 test inside the pair
+loop is close to maximally unpredictable, and at ~1.15 ns/pair a single
+mispredict is a large fraction of the budget.
+
+Whether a row is a singleton is a property of the ROW, so it can be decided once
+at setup. Partitioning the pair list into a singleton stream and a multi stream
+gives two branch-free loops:
+
+| W | 4 | 6 | 8 |
+|---|---:|---:|---:|
+| in-loop test | 1.10 | 1.10-1.15 | 1.20 |
+| **split streams** | 0.85 | **0.80** | **0.80** |
+
+Same principle as iterations 8 and 10 and the third instance of it:
+**decide per row, never per pair.** At N^2 pairs a per-pair decision is made N
+times more often than the data that determines it changes.
+
+**Running total: 5.49 -> 0.80 ns/pair, 6.9x.**
