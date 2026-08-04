@@ -1086,7 +1086,7 @@ as Roaring (SPE) and the popcount papers.
 | **C4** | Computing on the **complement** above density ½ is a systematic strategy for intersection cardinality, and is unclaimed in the literature | **MEASURED** (F13) | Cell built (`cell_comp.cpp`), oracle-tested, crossover measured at complement density ~0.1–1%, mirroring the sparse side's ~0.4%. **Win over the accidental R×R is only ~20%** — the contribution is that the strategy is now selectable and statable, not that it is much faster. State it that way |
 | **C5** | A rank index makes B×R cost Θ(runs), independent of run length | **MEASURED** | 1 host; crossover ~256 bits |
 | **C6** | Adaptive pairing beats a `run_optimize`-tuned CRoaring by 1.7–19.1× | **MEASURED**, 4 ISAs | — |
-| **C7** | Per-pair selection costs 28–48% of runtime; tile hoisting brings it to 0.10–0.29% | **MEASURED**, 3 hosts | Add Neoverse V1; **no regret number for the passing policy** |
+| **C7** | Per-pair selection costs 28–48% of runtime; tile hoisting brings it to 0.10–0.29%, and probe-and-commit has **59.0% regret** against a bucket oracle vs all-bitmap's 118.0% | **MEASURED** (F15) | Regret is a *lower bound* (bucket oracle, not per-pair — the latter is below clock granularity). Neoverse V1 still absent from the Gate-1 table |
 | **C8** | The asymptotic win requires a large universe **and** sparsity **simultaneously**, and no public dataset we can reach has both | **MEASURED, both orientations** (F14) | Variant-major: 1/i spectrum, 5,008-bit universe → **2.15×**. Haplotype-major: 1,048,576-bit universe, ~uniform 3.14% density → **0.93×, nothing beats all-bitmap**. The 10²–10⁵× regime is **synthetic-only** and must be labelled as such |
 | **C9** | Negative results: Harley-Seal (0.38–0.72×), D2 run-collapsing (0.25–0.51×), register blocking (refuted at L2 *and* DRAM), prefetch, NEON index arithmetic | **MEASURED** | — |
 | **C10** | At small universes the binding constraint is per-pair overhead, not kernel work; moving decisions per-pair→per-row gives 2.9× | **MEASURED** | Port-pressure trace would make the "port-bound" explanation tier-3 rather than inferred |
@@ -1117,9 +1117,10 @@ as Roaring (SPE) and the popcount papers.
    and a reviewer running chr20 gets 2.15×.
 3. ~~**F4, F5, F6 — plot data that already exists.**~~ **DONE** —
    `bench/plot_paper.py` → `results/paper_figures.{png,svg}`.
-4. **C7 — regret for the probe-and-commit policy**, the metric §5.1 itself calls
-   "the one that makes this a contribution", currently unmeasured for the only
-   policy that passes Gate 1.
+4. ~~**C7 — regret for the probe-and-commit policy.**~~ **DONE** (F15).
+   Probe-and-commit 59.0%, per-tile 106.7%, all-bitmap 118.0%, per-pair model
+   **403.7%** — the model alone is worse than no selection. Nothing is within
+   1.5× of the oracle, so selection is not solved, only no longer harmful.
 5. **C10 — port-pressure trace** on the small-universe kernel, to make the
    port-bound explanation measured rather than inferred.
 6. **C2 — repeat the residency sweep on Neoverse and Sapphire**, so the

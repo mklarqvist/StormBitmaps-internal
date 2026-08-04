@@ -1150,3 +1150,48 @@ the 1/i spectrum is real and measured, and the synthetic sweep shows the win is
 real at densities below 0.4%. What is unproven is that a *real* corpus exists,
 reachable by us, that sits there at scale. That gap should be stated, not
 papered over.
+
+
+---
+
+## F15 — Oracle regret, measured at last for the policies that pass Gate 1
+
+Claim C7. `bench/bench_regret.cpp`. `RESEARCH_PLAN.md` §5.1 calls regret "the
+metric that makes this a contribution", and it had only ever been measured for
+the per-pair model — the policy that *fails* Gate 1.
+
+Clustered / 1-over-i, d = 0.01, 192 rows, 18,336 pairs, Apple M4:
+
+| policy | ns/pair | **regret** | selection % |
+|---|---:|---:|---:|
+| bucket oracle | 15.18 | — | — |
+| all-bitmap | 33.09 | 118.0% | 0% |
+| per-pair model | 76.45 | **403.7%** | 22.9% |
+| per-tile | 31.38 | 106.7% | 0.14% |
+| **probe-and-commit** | **24.13** | **59.0%** | 0.41% |
+
+Three things this settles:
+
+1. **Probe-and-commit is the only policy that beats doing nothing.** 59.0%
+   regret against all-bitmap's 118.0%; per-tile at 106.7% is barely better than
+   no selection at all.
+2. **The per-pair cost model is worse than useless here** — 403.7%, i.e. slower
+   than all-bitmap. Its error and its overhead compound. That is the strongest
+   argument yet for measuring the decision (probe) rather than predicting it.
+3. **Nothing is close to the oracle.** Even the best policy is 1.59× off. The
+   selection problem is not solved; it is merely no longer harmful.
+
+**Methodology, stated because the first attempt was wrong.** A *per-pair* oracle
+is not measurable at this scale: one pair costs a few ns against a ~41 ns clock
+granularity, so per-pair timings floor at zero. The first version of this
+program reported an oracle of **0.10 ns/pair** — faster than a single L1 load —
+and regrets in the tens of thousands of percent. That is what timer-granularity
+failure looks like when it is not checked.
+
+The number above is a **bucket oracle**: pairs are bucketed by
+(log₂ sparse cardinality, log₂ sparse run count) — the shape the selector itself
+keys on — and each of the 27 non-empty buckets is timed under all eight cells in
+bulk, taking the per-bucket minimum. This oracle is strictly *weaker* than a
+per-pair one, since it cannot exploit variation within a bucket. **The regrets
+reported are therefore lower bounds on true regret**, and are labelled as such
+rather than quoting the friendlier interpretation.
