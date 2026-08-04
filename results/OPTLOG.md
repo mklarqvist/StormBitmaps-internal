@@ -1251,3 +1251,44 @@ because the `awk` symbol pattern assumed ELF-style `<_probe6>:` and the Mach-O
 object labels the block `<ltmp0>`. It printed a tidy, entirely theoretical
 analysis with no disassembly behind it. Caught only by noticing the instruction
 count was 0.
+
+
+---
+
+## F17 — C2 replicated on three ISAs; half of it is universal, half is not
+
+Claim C2 was measured on one host. Repeated on Neoverse SVE2 and Sapphire
+Rapids, B x B, clustered/1-over-i, 96 rows, cycles/word.
+
+**Speedup over scalar, from a 1 MB (L2) to a 48 MB (DRAM) corpus:**
+
+| host | SIMD | zone map |
+|---|---|---|
+| Apple M4 | 1.52× → **1.17×** | 8.8× → **20.5×** |
+| Neoverse SVE2 | 1.56× → **1.03×** | 12.4× → **22.8×** |
+| Sapphire Rapids | 5.38× → **1.55×** | 15.3× → **14.8×** |
+
+**The SIMD decay is universal and is the stronger half of the claim.** All three
+hosts lose most of their vectorization advantage as the working set grows, and
+Sapphire loses the most in absolute terms: AVX-512 is worth 5.38× at L2 and
+1.55× at DRAM. The wider the vector unit, the more there is to lose when memory
+becomes the constraint — which sharpens the claim rather than weakening it.
+
+**The zone-map growth is NOT universal.** It grows on both ARM hosts
+(8.8→20.5×, 12.4→22.8×) and is essentially **flat on Sapphire** (15.3→14.8×).
+C2 as originally worded — "the two strategies scale in opposite directions" — is
+therefore only half-supported: the decay half holds everywhere, the growth half
+holds on ARM.
+
+The honest restatement for the paper:
+
+> As the working set grows from cache-resident to DRAM-resident, vectorization's
+> advantage decays on every microarchitecture measured (1.52→1.17, 1.56→1.03,
+> 5.38→1.55), while work avoidance's advantage is maintained or grows
+> (8.8→20.5, 12.4→22.8, 15.3→14.8). The gap between the two strategies widens
+> in every case; whether the avoidance side grows in absolute terms is
+> microarchitecture-dependent.
+
+That is weaker than "opposite directions" and it is what the data supports. The
+*relative* claim — the gap widens everywhere — survives on all three hosts and
+is the one to make.

@@ -1089,7 +1089,7 @@ as Roaring (SPE) and the popcount papers.
 | # | Claim | Status | Gap |
 |---|---|---|---|
 | **C1** | Across ten representation pairings and five corpus shapes, a SIMD-throughput kernel wins **0 of 25** asymmetric measurement points | **MEASURED** | — |
-| **C2** | Work avoidance and work acceleration scale in **opposite directions** with the memory hierarchy: 8.8→20.5× vs 1.52→1.17× from L2 to DRAM | **MEASURED** (1 host) | Repeat on ≥1 more ISA |
+| **C2** | As the working set grows L2→DRAM, **vectorization's advantage decays on every microarchitecture** (1.52→1.17 M4, 1.56→1.03 SVE2, 5.38→1.55 SPR) while work avoidance is maintained or grows (8.8→20.5, 12.4→22.8, 15.3→14.8). **The gap widens everywhere** | **MEASURED, 3 ISAs** (F17) | Original "opposite directions" wording is only half-supported — the growth half is ARM-only, flat on Sapphire. Reworded to the relative claim, which holds on all three |
 | **C3** | The cost curve is **U-shaped in density**; the operative variable is distance from ½, not sparsity | **MEASURED** | Dense tail measured only via R×R incidentally — see C4 |
 | **C4** | Computing on the **complement** above density ½ is a systematic strategy for intersection cardinality, and is unclaimed in the literature | **MEASURED** (F13) | Cell built (`cell_comp.cpp`), oracle-tested, crossover measured at complement density ~0.1–1%, mirroring the sparse side's ~0.4%. **Win over the accidental R×R is only ~20%** — the contribution is that the strategy is now selectable and statable, not that it is much faster. State it that way |
 | **C5** | A rank index makes B×R cost Θ(runs), independent of run length | **MEASURED** | 1 host; crossover ~256 bits |
@@ -1132,8 +1132,26 @@ as Roaring (SPE) and the popcount papers.
 5. ~~**C10 — port-pressure trace.**~~ **DONE** (F16), and it **refuted** the
    port-bound hypothesis: 7.7× of unused issue headroom, so the residual is
    scattered L2 latency and the lever is corpus blocking, not kernel width.
-6. **C2 — repeat the residency sweep on Neoverse and Sapphire**, so the
-   opposite-scaling finding is not single-host.
+6. ~~**C2 — repeat the residency sweep on Neoverse and Sapphire.**~~ **DONE**
+   (F17). The SIMD decay replicates on all three and is sharpest on Sapphire
+   (5.38→1.55×); the zone-map *growth* is ARM-only and flat on x86, so the claim
+   was reworded from "opposite directions" to "the gap widens everywhere".
 
 Items 1 and 2 are what change the paper's standing. Items 3–6 are what stop a
 reviewer from rejecting it on rigor.
+
+### 14.5 Status, 2026-08-05 — all six closed
+
+| # | gap | outcome |
+|---|---|---|
+| 1 | C4 complement cell | **Closed.** Built and oracle-tested; win over the accidental R×R is ~20%, so the contribution is that the strategy is *selectable and statable*, not that it is fast |
+| 2 | C8 large universe on real data | **Closed, and it cost the headline.** Haplotype-major chr20 is 1 Mbit/row at 3.14% density — **nothing beats all-bitmap (0.93×)**. Real data gives a large universe *or* sparsity, never both. The 10²–10⁵× regime is synthetic-only |
+| 3 | F4/F5/F6 figures | **Closed.** `results/paper_figures.png` |
+| 4 | C7 regret | **Closed.** Probe-and-commit 59.0% vs all-bitmap 118.0%; the per-pair model is 403.7%, worse than no selection |
+| 5 | C10 port trace | **Closed, and it refuted the hypothesis.** 7.7× of unused issue headroom — not port-bound; the residual is scattered L2 latency |
+| 6 | C2 off-host | **Closed, and it weakened the claim.** SIMD decay universal; zone-map growth ARM-only |
+
+**Three of six closures made the paper weaker rather than stronger** (2, 5, 6),
+and one (1) delivered far less than hoped. That is the point of running them.
+The claims that survive are the ones worth publishing, and they are now stated
+at the strength the evidence actually supports.
