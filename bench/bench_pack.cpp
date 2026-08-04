@@ -68,9 +68,30 @@ int main(int argc,char**argv){
     SV[i]=ListView{rows[i].v.data(),(uint32_t)rows[i].v.size()};
     RV[i]=RunView{rows[i].rs.data(),rows[i].re.data(),(uint32_t)rows[i].rs.size()}; }
 
+  /* Pair sampling must SPAN the corpus.
+   *
+   * The obvious nested loop capped at 20,000 pairs never gets past row ~200, so
+   * every measurement lands on one narrow window of one chromosome. That was not
+   * a hypothetical: it made the entire multi-position stream |S| = 2 exactly,
+   * with no length variation at all, which silently invalidated a length-sorting
+   * experiment and -- more importantly -- means the whole campaign was tuned on
+   * an unrepresentative slice. Stride the second index so the sample covers the
+   * full row range at the same pair count. */
   std::vector<std::pair<uint32_t,uint32_t>> pr;
-  for(size_t i=0;i<rows.size()&&pr.size()<20000;++i)for(size_t j=i+1;j<rows.size()&&pr.size()<20000;++j){
-    bool id=rows[i].card>=rows[j].card; pr.push_back({(uint32_t)(id?i:j),(uint32_t)(id?j:i)});}
+  {
+    const size_t n=rows.size(), target=20000;
+    const size_t jstep=std::max<size_t>(1,(n*n/2)/std::max<size_t>(1,target*4));
+    for(size_t i=0;i<n&&pr.size()<target;++i)
+      for(size_t j=i+1;j<n&&pr.size()<target;j+=jstep){
+        bool id=rows[i].card>=rows[j].card; pr.push_back({(uint32_t)(id?i:j),(uint32_t)(id?j:i)});}
+    // top up from the far end if the stride overshot
+    for(size_t i=n;i-->0&&pr.size()<target;)
+      for(size_t j=i+1;j<n&&pr.size()<target;j+=7){
+        bool id=rows[i].card>=rows[j].card; pr.push_back({(uint32_t)(id?i:j),(uint32_t)(id?j:i)});}
+  }
+  { uint32_t mn=~0u,mx=0; double av=0;
+    for(auto&q:pr){ const uint32_t c=rows[q.second].card; mn=std::min(mn,c);mx=std::max(mx,c);av+=c; }
+    printf("   sparse-side |S| over sampled pairs: min %u max %u mean %.2f\n",mn,mx,av/pr.size()); }
 
   auto L=cell_bs(); auto get=[&](const char*n){auto r=L.v[0].fn;for(size_t k=0;k<L.n;++k)if(std::string(L.v[k].name)==n)r=L.v[k].fn;return r;};
   auto bs_small=get("small"); auto bs_ilp8=get("ilp8");
@@ -350,6 +371,102 @@ int main(int argc,char**argv){
         for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
     for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
     return c; };
+  /* Iteration 12: order the singleton stream for locality.
+   *
+   * The singleton loop's only memory access is BV[d].w[p>>6] -- one scattered
+   * load into a 632-byte bitmap picked by d. Sorting the stream by d makes the
+   * dense row constant across long runs, so its bitmap stays in L1 and the load
+   * becomes effectively sequential in the position table instead of random in
+   * both. Sorting by (d, p) additionally orders the WORD touched within each
+   * dense row. Cost is one sort at setup, amortized over all N^2 pairs. */
+  std::vector<std::pair<uint32_t,uint32_t>> p_one_d=p_one, p_one_dp=p_one;
+  std::stable_sort(p_one_d.begin(),p_one_d.end(),
+    [](const std::pair<uint32_t,uint32_t>&a,const std::pair<uint32_t,uint32_t>&b){return a.first<b.first;});
+  std::stable_sort(p_one_dp.begin(),p_one_dp.end(),
+    [&](const std::pair<uint32_t,uint32_t>&a,const std::pair<uint32_t,uint32_t>&b){
+      if(a.first!=b.first) return a.first<b.first;
+      return sg_pos[a.second]<sg_pos[b.second]; });
+
+  auto splitOrd=[&](auto WT,const std::vector<std::pair<uint32_t,uint32_t>>& one)->uint64_t{
+    constexpr int W=decltype(WT)::value;
+    uint64_t acc[W]={}; size_t k=0;
+    for(;k+W<=one.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u){ const uint32_t d=one[k+u].first; const uint16_t p=sg_pos[one[k+u].second];
+        acc[u]+=(BV[d].w[p>>6]>>(p&63))&1u; } }
+    uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+    for(;k<one.size();++k){ const uint32_t d=one[k].first; const uint16_t p=sg_pos[one[k].second];
+      c+=(BV[d].w[p>>6]>>(p&63))&1u; }
+    uint64_t m[W]={}; k=0;
+    for(;k+W<=p_many.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u){ const uint32_t d=p_many[k+u].first,s=p_many[k+u].second;
+        m[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+    for(int u=0;u<W;++u) c+=m[u];
+    for(;k<p_many.size();++k){ const uint32_t d=p_many[k].first,s=p_many[k].second;
+      c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  /* Iteration 13: attack the multi stream.
+   *
+   * After the split, singletons are 65% of pairs but a branch-free 3-instruction
+   * probe; the remaining 35% run bs_u16, whose `switch(n)` and 4-way tail loop
+   * are re-decided per pair on a length that varies 2..41. Sorting the multi
+   * stream by |S| makes n near-constant over long runs, so the switch predicts
+   * and the trip count stops changing. Length is a row property -- decided once,
+   * as in iterations 8/10/11. */
+  {
+    std::vector<std::pair<uint32_t,uint32_t>> many_sorted=p_many;
+    std::stable_sort(many_sorted.begin(),many_sorted.end(),
+      [&](const std::pair<uint32_t,uint32_t>&a,const std::pair<uint32_t,uint32_t>&b){
+        return rows[a.second].n16<rows[b.second].n16; });
+    uint32_t mn=~0u,mx=0; double avg=0;
+    for(auto&q:p_many){ const uint32_t n=rows[q.second].n16; mn=std::min(mn,n);mx=std::max(mx,n);avg+=n; }
+    printf("   multi stream: %zu pairs, |S| in [%u,%u] mean %.1f\n",
+           p_many.size(),mn,mx,avg/std::max<size_t>(1,p_many.size()));
+    auto run=[&](const char* lbl,const std::vector<std::pair<uint32_t,uint32_t>>& mv){
+      constexpr int W=6;
+      auto body=[&]()->uint64_t{
+        uint64_t acc[W]={}; size_t k=0;
+        for(;k+W<=p_one.size();k+=W){
+#pragma unroll
+          for(int u=0;u<W;++u){ const uint32_t d=p_one[k+u].first; const uint16_t p=sg_pos[p_one[k+u].second];
+            acc[u]+=(BV[d].w[p>>6]>>(p&63))&1u; } }
+        uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+        for(;k<p_one.size();++k){ const uint32_t d=p_one[k].first; const uint16_t p=sg_pos[p_one[k].second];
+          c+=(BV[d].w[p>>6]>>(p&63))&1u; }
+        uint64_t m[W]={}; k=0;
+        for(;k+W<=mv.size();k+=W){
+#pragma unroll
+          for(int u=0;u<W;++u){ const uint32_t d=mv[k+u].first,s=mv[k+u].second;
+            m[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+        for(int u=0;u<W;++u) c+=m[u];
+        for(;k<mv.size();++k){ const uint32_t d=mv[k].first,s=mv[k].second;
+          c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+        for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+          for(uint32_t kk=0;kk<RV[s].n;++kk)
+            for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+        for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+        return c; };
+      uint64_t gg=body(); const char* ok=(gg==w)?"":"  WRONG";
+      uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+        sv+=body(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+      printf("     multi %-14s %7.3f ns/pair%s\n",lbl,(double)b/pr.size(),ok); };
+    run("unsorted",p_many); run("sorted by |S|",many_sorted);
+  }
+
+  printf("   + singleton stream ordered:\n");
+  auto runO=[&](const char* lbl,const std::vector<std::pair<uint32_t,uint32_t>>& one){
+    auto WT=std::integral_constant<int,6>{};
+    uint64_t gg=splitOrd(WT,one); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=splitOrd(WT,one); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("     %-14s W=6 %7.3f ns/pair%s\n",lbl,(double)b/pr.size(),ok); };
+  runO("unsorted",p_one); runO("by dense row",p_one_d); runO("by (dense,pos)",p_one_dp);
+
   printf("   + split singleton/multi pair streams:\n");
   auto runSp=[&](auto WT){ constexpr int W=decltype(WT)::value;
     uint64_t gg=tmplSplit(WT); const char* ok=(gg==w)?"":"  WRONG";

@@ -829,3 +829,48 @@ Same principle as iterations 8 and 10 and the third instance of it:
 times more often than the data that determines it changes.
 
 **Running total: 5.49 -> 0.80 ns/pair, 6.9x.**
+
+### Iterations 12-14 — and a measurement-validity correction
+
+**Iteration 12 (no improvement).** Ordering the singleton stream by dense row,
+or by (dense row, position), measures 0.80 either way. The pair list is already
+generated in i-major order so it is largely sorted by dense row already, and the
+whole dense corpus is ~2.5 MB -- the scattered loads never leave L2, so there is
+no locality left to recover.
+
+**Iteration 13 (no improvement) -- and its diagnostic invalidated the campaign's
+absolute numbers.** Sorting the multi stream by \|S\| did nothing, because the
+printout showed **\|S\| in [2,2], mean 2.0**: every multi pair had exactly two
+elements. That is not a property of chr20. It is a property of the pair
+sampler -- the nested loop capped at 20,000 pairs never got past row ~200, so
+every measurement in iterations 1-13 was taken on one narrow window of one
+chromosome.
+
+**Iteration 14 -- fix the sampler, re-baseline honestly.** Striding the second
+index so the sample spans the full row range:
+
+| | narrow slice (iters 1-13) | **spanning sample** |
+|---|---:|---:|
+| sparse-side \|S\|, mean | 3.0 | **16.23** |
+| \|S\| range | 1-41 | **1-4017** |
+| multi-stream \|S\| | [2,2] | **[2,32] mean 6.0** |
+| singleton share of pairs | 65.3% | 69.4% |
+| **best kernel** | **0.80 ns/pair** | **~1.95 ns/pair** |
+| all-bitmap | ~11 ns/pair | ~13.1 ns/pair |
+| **speedup** | ~13x | **~6.7x** |
+
+**Every absolute number in iterations 1-13 was measured on an unrepresentative
+slice and is roughly 2.4x too optimistic.** The optimizations themselves are
+unaffected -- same code, same relative ordering, and each improvement was
+verified within-run -- but the headline figure is **~1.95 ns/pair and ~6.7x over
+all-bitmap**, not 0.80 and 13x.
+
+The failure mode is worth naming because it is generic and it survived thirteen
+iterations: a pair sampler that caps on *count* rather than striding on *index*
+silently restricts the sample to the corpus's first rows. Nothing about the
+output looks wrong; the corpus statistics printed at load time were correct, and
+only a per-stream length histogram exposed it.
+
+**Corrected running total: 5.49 -> ~1.95 ns/pair on a representative sample.**
+(The 5.49 baseline came from `bench_real`, which samples with stride 400 across
+the whole file and is therefore comparable.)
