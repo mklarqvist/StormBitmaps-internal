@@ -727,3 +727,44 @@ contiguous -- so the sparse side of the corpus is one dense region. The current
 format change worth making, not a benchmark trick.
 
 **Running total: 5.49 -> 1.80 ns/pair, 3.0x.**
+
+### Iterations 4-7 — cross-PAIR ILP is the lever at this scale
+
+**Iteration 4 (no improvement).** Grouping pairs by the sparse side's stored tag
+to remove the dispatch branch, and holding the dense row fixed across its
+partners, measured 1.95-2.00 against the ungrouped 1.95 -- a tie. The diagnostic
+says why: **all 20,000 pairs land in the array group**, none in rle or bitmap.
+There was no representation interleaving, so no unpredictable branch to remove,
+and at 632 B/row the dense row never left L1 to begin with. Both optimizations
+were solving problems this corpus does not have.
+
+**Iteration 5 (improvement).** Interleaving *two pairs* -- not two probes --
+gives 1.65-1.70. Each probe is a dependent chain (position -> bitmap word ->
+shift -> mask -> add) and at \|S\| <= 4 there is no ILP to find inside a pair:
+the chain is three long and the pair ends. Consecutive pairs are wholly
+independent, so two are always in flight.
+
+**Iteration 6 (no improvement, and the measurement was wrong).** A width sweep
+with `W` as a *runtime* parameter reported W=2 at 2.00 while the hand-written
+2-way form measured 1.65 for identical work. The runtime W prevents unrolling and
+`acc[]` never reaches registers. **This is exactly the array-vs-named-accumulator
+mistake F3 documents for B x B, repeated one level up** -- the sweep was
+measuring loop overhead, not ILP.
+
+**Iteration 7 (improvement).** Compile-time width, and the sweep becomes
+meaningful:
+
+| W | ns/pair |
+|---:|---:|
+| 2 | 1.70 |
+| 3 | 1.65 |
+| **4** | **1.55** |
+| **6** | **1.55** |
+| 8 | 1.55-1.60 |
+
+Four to six independent pairs saturate the scattered-load pipeline; past that,
+nothing. **The unit that needs unrolling is the PAIR, not the probe** -- which is
+only true because 89% of pairs are too short to unroll internally, a property of
+the 1/i spectrum rather than of the kernel.
+
+**Running total: 5.49 -> 1.55 ns/pair, 3.5x.**

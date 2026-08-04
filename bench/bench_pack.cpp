@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <type_traits>
 #include <time.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -132,6 +133,120 @@ int main(int argc,char**argv){
      path,rows.size(),pr.size(),(double)bytes_used/rows.size(),w==g?"yes":"NO");
   uint64_t g16=0; for(auto&q:pr) g16+=dispatch16(q);
   if(g16!=w) printf("   !! u16 dispatch WRONG\n");
+  /* Iteration 4: group pairs by the SPARSE side's stored tag, then run each
+   * group in one branch-free loop, and within the array group hold the dense
+   * row fixed across all its partners.
+   *
+   * Two costs disappear together. The per-pair `switch (tag)` is an
+   * unpredictable branch when representations interleave -- and at 1.8 ns/pair a
+   * single mispredict is a third of the budget. And at 632 B/row the dense row
+   * stays in L1 across an entire group, so it is loaded once per group rather
+   * than once per pair (the cross-pair reuse F11 identified, which is trivial
+   * here precisely because the universe is small). */
+  std::vector<std::pair<uint32_t,uint32_t>> g_arr,g_rle,g_bm;
+  for(auto&q:pr){ const uint8_t t=rows[q.second].t;
+    (t==T_ARRAY16?g_arr:t==T_RLE16?g_rle:g_bm).push_back(q); }
+  std::stable_sort(g_arr.begin(),g_arr.end(),
+    [](const std::pair<uint32_t,uint32_t>&a,const std::pair<uint32_t,uint32_t>&b){return a.first<b.first;});
+  printf("   groups: array %zu  rle %zu  bitmap %zu\n",g_arr.size(),g_rle.size(),g_bm.size());
+
+  auto grouped=[&]()->uint64_t{
+    uint64_t c=0;
+    for(size_t k=0;k<g_arr.size();){                 // dense row held across its run
+      const uint32_t d=g_arr[k].first; const BitmapView bv=BV[d];
+      size_t e=k; while(e<g_arr.size()&&g_arr[e].first==d) ++e;
+      for(size_t x=k;x<e;++x){ const uint32_t s=g_arr[x].second;
+        c+=bs_u16(bv,arena.data()+aoff[s],rows[s].n16); }
+      k=e;
+    }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+
+  /* Iteration 5: cross-PAIR ILP.
+   *
+   * Each probe is a dependent chain: load position -> load bitmap word -> shift
+   * -> mask -> add. At |S| <= 4 (89% of pairs) there is no instruction-level
+   * parallelism to find *within* a pair -- the chain is 3 long and then the pair
+   * ends. But consecutive pairs are entirely independent, so interleaving two
+   * pairs keeps two scattered bitmap loads in flight instead of one. This is the
+   * same lesson as the B x B accumulator count (OPTLOG F3), applied one level up:
+   * the unit that needs unrolling is the PAIR, not the probe. */
+  auto groupedN=[&](int W)->uint64_t{
+    uint64_t acc[8]={0,0,0,0,0,0,0,0};
+    size_t k=0;
+    for(;(int)(k+W)<=(int)g_arr.size();k+=W)
+      for(int u=0;u<W;++u){ const uint32_t d=g_arr[k+u].first,s=g_arr[k+u].second;
+        acc[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    uint64_t c=0; for(int u=0;u<8;++u) c+=acc[u];
+    for(;k<g_arr.size();++k){ const uint32_t d=g_arr[k].first,s=g_arr[k].second;
+      c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  /* Compile-time width. The runtime-W version above measures the wrong thing:
+   * with W a parameter the inner loop cannot unroll and acc[] never reaches
+   * registers, so groupedN(2) reads 2.00 while the hand-written 2-way form
+   * reads 1.65 for identical work. That is exactly the array-vs-named-
+   * accumulator mistake OPTLOG F3 documents for B x B, repeated one level up.
+   * Templating W restores the unroll and makes the sweep mean something. */
+  auto tmplW=[&](auto WT)->uint64_t{
+    constexpr int W=decltype(WT)::value;
+    uint64_t acc[W]={}; size_t k=0;
+    for(;k+W<=g_arr.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u){ const uint32_t d=g_arr[k+u].first,s=g_arr[k+u].second;
+        acc[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+    uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+    for(;k<g_arr.size();++k){ const uint32_t d=g_arr[k].first,s=g_arr[k].second;
+      c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  printf("   cross-pair ILP, compile-time width:\n");
+  auto runW=[&](auto WT){ constexpr int W=decltype(WT)::value;
+    uint64_t gg=tmplW(WT); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=tmplW(WT); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("     W=%-2d %7.3f ns/pair%s\n",W,(double)b/pr.size(),ok); };
+  runW(std::integral_constant<int,2>{}); runW(std::integral_constant<int,3>{});
+  runW(std::integral_constant<int,4>{}); runW(std::integral_constant<int,6>{});
+  runW(std::integral_constant<int,8>{});
+
+  auto grouped2=[&]()->uint64_t{
+    uint64_t c0=0,c1=0;
+    size_t k=0;
+    for(;k+1<g_arr.size();k+=2){
+      const uint32_t d0=g_arr[k].first,  s0=g_arr[k].second;
+      const uint32_t d1=g_arr[k+1].first,s1=g_arr[k+1].second;
+      c0+=bs_u16(BV[d0],arena.data()+aoff[s0],rows[s0].n16);
+      c1+=bs_u16(BV[d1],arena.data()+aoff[s1],rows[s1].n16);
+    }
+    uint64_t c=c0+c1;
+    for(;k<g_arr.size();++k){ const uint32_t d=g_arr[k].first,s=g_arr[k].second;
+      c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  { uint64_t gg=grouped2(); if(gg!=w) printf("   !! grouped2 WRONG\n");
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=grouped2(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("   grouped x2-ILP  %7.3f ns/pair\n",(double)b/pr.size()); }
+
+  { uint64_t gg=grouped(); if(gg!=w) printf("   !! grouped WRONG %llu vs %llu\n",
+      (unsigned long long)gg,(unsigned long long)w); }
+  { uint64_t b=~0ull; for(int r=0;r<7;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=grouped(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("   grouped+batched %7.3f ns/pair\n",(double)b/pr.size()); }
+
   uint64_t ga=0; for(auto&q:pr) ga+=dispatch_arena(q);
   if(ga!=w) printf("   !! arena dispatch WRONG\n");
   printf("   u16-dispatch    %7.3f   u16-arena %7.3f   (arena %.1f kB)\n",
