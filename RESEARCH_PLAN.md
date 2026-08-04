@@ -1098,9 +1098,9 @@ as Roaring (SPE) and the popcount papers.
 | **F1** | Density sweep, all ten cells, log-log, with the fixed-cost B×B line | **EXISTS** — `results/density.png` |
 | **F2** | Speedup vs density, showing both tails and the mid-band where B×B wins | **EXISTS** — same figure, panel 2 |
 | **F3** | Winning variant per cell per density (the selection map M2 must reproduce) | **EXISTS** — same figure, panel 3 |
-| **F4** | **C2**: SIMD vs work-avoidance advantage as a function of working-set size | **MISSING** — data exists in OPTLOG F11, no plot |
-| **F5** | **C6**: Storm vs CRoaring across density, one line per microarchitecture | **MISSING** — data exists in `results/hosts/`, no plot |
-| **F6** | **C5**: B×R cost vs run *length* at fixed run *count* | **MISSING** — data exists from `p4_runlength.sh`, no plot |
+| **F4** | **C2**: SIMD vs work-avoidance advantage vs working-set size | **EXISTS** — `results/paper_figures.png` panel 1 |
+| **F5** | **C6**: Storm vs CRoaring across density, one line per microarchitecture | **EXISTS** — panel 2. Peaks 6.5× / 6.7× / 13.8× / **19.1×** |
+| **F6** | **C5**: B×R cost vs run *length* at fixed run *count* | **EXISTS** — panel 3. No-index grows 18.5×, indexed flat |
 | **F7** | **C8**: speedup vs universe size, real data at both orientations plus the synthetic sweep | **DATA EXISTS** (F14) — plot pending. Must show the two real points (2.15× at 5 kbit sparse, 0.93× at 1 Mbit mid-band) against the synthetic curve |
 | **F8** | Real-data anchor: 1000 Genomes allele-frequency spectrum vs the generator's | **PARTIAL** — spectrum measured, not plotted, generator not overlaid |
 
@@ -1115,8 +1115,8 @@ as Roaring (SPE) and the popcount papers.
    several 1000 Genomes chromosomes to reach 10⁶–10⁷ bit universes, or use the
    variant axis as the universe. Without this the headline claim is extrapolated
    and a reviewer running chr20 gets 2.15×.
-3. **F4, F5, F6 — plot data that already exists.** Cheap; three figures from
-   `results/` with no new measurement.
+3. ~~**F4, F5, F6 — plot data that already exists.**~~ **DONE** —
+   `bench/plot_paper.py` → `results/paper_figures.{png,svg}`.
 4. **C7 — regret for the probe-and-commit policy**, the metric §5.1 itself calls
    "the one that makes this a contribution", currently unmeasured for the only
    policy that passes Gate 1.
