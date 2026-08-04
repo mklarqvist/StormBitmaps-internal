@@ -1081,3 +1081,72 @@ flat middle is real from both directions.
 **Build cost, stated plainly:** the complement is materialized only when
 `2|A| > U`, one comparison on data already computed, and it is dead weight below
 half density where it is simply not built.
+
+
+---
+
+## F14 — The large-universe measurement on real data, and what it costs the thesis
+
+Claim C8. `tools/transpose.cpp` turns the same chr20 file into its
+haplotype-major orientation, which supplies the large-universe regime from real
+data with no extrapolation:
+
+| orientation | rows | universe | bytes/row | density | spectrum |
+|---|---:|---:|---:|---:|---|
+| variant-major | 1,739,315 | 5,008 | 632 B | 3.15% mean | **1/i, 44.6% singletons** |
+| **haplotype-major** | 5,008 | 1,048,576 | **128 kB** | **3.14%** | **~uniform** |
+
+Measured, 400 rows, 20,000 pairs, Apple M4:
+
+| cell | ns/pair | vs all-bitmap |
+|---|---:|---:|
+| **B x B all-bitmap** | **2717.9** | **1.00x** |
+| B x B zone-mapped | 2929.1 | 0.93x |
+| B x S | 7136.6 | 0.38x |
+| B x R | 23815.7 | 0.11x |
+| S x S | 30134.0 | 0.09x |
+| R x R | 83384.9 | 0.03x |
+
+**Nothing beats all-bitmap. The best alternative is 0.93x.**
+
+### Why, and why it matters
+
+The density is **3.14%** — squarely inside the mid-band the density sweep
+already identified (0.4% to 99.6%) as the region where bitmap x bitmap is
+correctly the winner. The measurement is not a failure of the kernels; it is the
+kernels' own selection rule being right.
+
+But it exposes something the project had not confronted:
+
+> **In this dataset, a large universe and extreme sparsity do not co-occur.**
+> The variant-major orientation has the 1/i spectrum that motivates the whole
+> project (44.6% singletons) but a 5,008-bit universe — far too small for the
+> asymptotics. The haplotype-major orientation has a 1,048,576-bit universe but
+> roughly uniform 3% density, because every individual carries about the same
+> number of variants. That is a property of individuals, not of sites.
+
+`PROBLEM_STATEMENT.md` §2's motivating case — 10^7 haplotypes with singleton
+variants — is the **variant-major orientation at 10^7 bits**, and reaching it
+needs a cohort ~2,000x larger than 1000 Genomes. UK Biobank and gnomAD are that
+size; neither publishes per-individual phased genotypes openly.
+
+### Consequence for the paper
+
+**C8 is measured, and the answer is uncomfortable.** The asymptotic win requires
+a large universe *and* sparsity simultaneously, and no public dataset this
+project can reach supplies both. Two honest options:
+
+1. **State the requirement explicitly** and show the synthetic sweep as the
+   evidence for the asymptotic regime, with both real orientations as the
+   boundary conditions — one too small, one too dense. This is defensible and it
+   is what the data supports.
+2. **Do not claim 10^2-10^5x for real data.** The measured real-data numbers are
+   **2.15x** (variant-major, sparse but tiny) and **0.93x** (haplotype-major,
+   large but mid-band). Any larger figure in the paper must be labelled
+   synthetic.
+
+The alternative reading — that the project's premise is wrong — is not supported:
+the 1/i spectrum is real and measured, and the synthetic sweep shows the win is
+real at densities below 0.4%. What is unproven is that a *real* corpus exists,
+reachable by us, that sits there at scale. That gap should be stated, not
+papered over.

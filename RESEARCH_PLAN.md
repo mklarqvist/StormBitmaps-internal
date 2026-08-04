@@ -1087,7 +1087,7 @@ as Roaring (SPE) and the popcount papers.
 | **C5** | A rank index makes B×R cost Θ(runs), independent of run length | **MEASURED** | 1 host; crossover ~256 bits |
 | **C6** | Adaptive pairing beats a `run_optimize`-tuned CRoaring by 1.7–19.1× | **MEASURED**, 4 ISAs | — |
 | **C7** | Per-pair selection costs 28–48% of runtime; tile hoisting brings it to 0.10–0.29% | **MEASURED**, 3 hosts | Add Neoverse V1; **no regret number for the passing policy** |
-| **C8** | The asymptotic win requires large universes; at 1000 Genomes scale (5,008 haplotypes) it is only 2.15× | **MEASURED** | **The 10⁷-bit claim is extrapolated, never measured.** Second-highest gap |
+| **C8** | The asymptotic win requires a large universe **and** sparsity **simultaneously**, and no public dataset we can reach has both | **MEASURED, both orientations** (F14) | Variant-major: 1/i spectrum, 5,008-bit universe → **2.15×**. Haplotype-major: 1,048,576-bit universe, ~uniform 3.14% density → **0.93×, nothing beats all-bitmap**. The 10²–10⁵× regime is **synthetic-only** and must be labelled as such |
 | **C9** | Negative results: Harley-Seal (0.38–0.72×), D2 run-collapsing (0.25–0.51×), register blocking (refuted at L2 *and* DRAM), prefetch, NEON index arithmetic | **MEASURED** | — |
 | **C10** | At small universes the binding constraint is per-pair overhead, not kernel work; moving decisions per-pair→per-row gives 2.9× | **MEASURED** | Port-pressure trace would make the "port-bound" explanation tier-3 rather than inferred |
 
@@ -1101,7 +1101,7 @@ as Roaring (SPE) and the popcount papers.
 | **F4** | **C2**: SIMD vs work-avoidance advantage as a function of working-set size | **MISSING** — data exists in OPTLOG F11, no plot |
 | **F5** | **C6**: Storm vs CRoaring across density, one line per microarchitecture | **MISSING** — data exists in `results/hosts/`, no plot |
 | **F6** | **C5**: B×R cost vs run *length* at fixed run *count* | **MISSING** — data exists from `p4_runlength.sh`, no plot |
-| **F7** | **C8**: speedup vs universe size, from 5 kbit (real) to 10⁷ (target) | **MISSING** — and the data does not exist either |
+| **F7** | **C8**: speedup vs universe size, real data at both orientations plus the synthetic sweep | **DATA EXISTS** (F14) — plot pending. Must show the two real points (2.15× at 5 kbit sparse, 0.93× at 1 Mbit mid-band) against the synthetic curve |
 | **F8** | Real-data anchor: 1000 Genomes allele-frequency spectrum vs the generator's | **PARTIAL** — spectrum measured, not plotted, generator not overlaid |
 
 ### 14.4 Ordered plan to close the gaps
