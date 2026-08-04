@@ -1,0 +1,99 @@
+# host=fpga-neo1 corpus=uniform/uniform d=0.01 rows=128 universe=65536 pairs=5000 card_mean=655.0 runs_mean=648.9
+# footprint storm_B=1024kB roaring=166kB roaring_ro=166kB zonemap=2.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                    4833.12        1.00x
+CRoaring run_optimize       4835.38        1.00x
+storm B x B dense            363.20       13.31x
+storm B x B zonemap          373.91       12.93x
+storm B x S                  380.68       12.70x
+storm B x R                 1589.22        3.04x
+storm B x W                 3404.62        1.42x
+storm S x S                 1235.24        3.91x
+storm S x R                 4757.75        1.02x
+storm R x R                 4950.35        0.98x
+storm W x W                 6292.63        0.77x
+
+BEST storm cell: B x B at 373.91 ns/pair
+  vs CRoaring(run_optimize):    12.93x
+  vs CRoaring(default):         12.93x
+  vs storm all-bitmap:           0.97x   [claim P1]
+
+# host=fpga-neo1 corpus=uniform/inverse d=0.01 rows=128 universe=65536 pairs=5000 card_mean=468.7 runs_mean=452.2
+# footprint storm_B=1024kB roaring=115kB roaring_ro=115kB zonemap=2.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                     905.66        1.00x
+CRoaring run_optimize        906.97        1.00x
+storm B x B dense            361.33        2.51x
+storm B x B zonemap          127.15        7.13x
+storm B x S                   77.00       11.78x
+storm B x R                  248.85        3.64x
+storm B x W                  443.84        2.04x
+storm S x S                  684.32        1.33x
+storm S x R                 1137.84        0.80x
+storm R x R                 1378.76        0.66x
+storm W x W                 1388.53        0.65x
+
+BEST storm cell: B x S at 77.00 ns/pair
+  vs CRoaring(run_optimize):    11.78x
+  vs CRoaring(default):         11.76x
+  vs storm all-bitmap:           4.69x   [claim P1]
+
+# host=fpga-neo1 corpus=clustered/inverse d=0.01 rows=128 universe=65536 pairs=5000 card_mean=684.4 runs_mean=66.6
+# footprint storm_B=1024kB roaring=165kB roaring_ro=35kB zonemap=2.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                     475.20        0.53x
+CRoaring run_optimize        251.68        1.00x
+storm B x B dense            357.39        0.70x
+storm B x B zonemap           60.45        4.16x
+storm B x S                  111.52        2.26x
+storm B x R                   58.21        4.32x
+storm B x W                  151.45        1.66x
+storm S x S                  575.12        0.44x
+storm S x R                  347.62        0.72x
+storm R x R                  234.05        1.08x
+storm W x W                  662.93        0.38x
+
+BEST storm cell: B x R at 58.21 ns/pair
+  vs CRoaring(run_optimize):     4.32x
+  vs CRoaring(default):          8.16x
+  vs storm all-bitmap:           6.14x   [claim P1]
+
+# host=fpga-neo1 corpus=runs/uniform d=0.05 rows=128 universe=262144 pairs=5000 card_mean=13107.0 runs_mean=399.3
+# footprint storm_B=4096kB roaring=3263kB roaring_ro=205kB zonemap=8.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                   17233.11        0.22x
+CRoaring run_optimize       3817.36        1.00x
+storm B x B dense           1565.29        2.44x
+storm B x B zonemap         1439.29        2.65x
+storm B x S                 7615.31        0.50x
+storm B x R                 2342.44        1.63x
+storm B x W                 4408.01        0.87x
+storm S x S                22442.67        0.17x
+storm S x R                 9992.95        0.38x
+storm R x R                 2710.24        1.41x
+storm W x W                 6919.34        0.55x
+
+BEST storm cell: B x B at 1439.29 ns/pair
+  vs CRoaring(run_optimize):     2.65x
+  vs CRoaring(default):         11.97x
+  vs storm all-bitmap:           1.09x   [claim P1]
+
+# host=fpga-neo1 corpus=uniform/uniform d=0.35 rows=128 universe=65536 pairs=5000 card_mean=22938.0 runs_mean=14906.0
+# footprint storm_B=1024kB roaring=1026kB roaring_ro=1026kB zonemap=2.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                     407.22        1.01x
+CRoaring run_optimize        410.99        1.00x
+storm B x B dense            354.03        1.16x
+storm B x B zonemap          362.87        1.13x
+storm B x S                12658.61        0.03x
+storm B x R                36215.53        0.01x
+storm B x W                  382.67        1.07x
+storm S x S                39461.19        0.01x
+storm S x R               156378.88        0.00x
+storm R x R                93571.36        0.00x
+storm W x W                  386.16        1.06x
+
+BEST storm cell: B x B at 362.87 ns/pair
+  vs CRoaring(run_optimize):     1.13x
+  vs CRoaring(default):          1.12x
+  vs storm all-bitmap:           0.98x   [claim P1]
