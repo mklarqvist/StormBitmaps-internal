@@ -325,9 +325,18 @@ uint64_t br_occ(const BitmapView& b, const RunView& r) {
 
 // --- V5: the inflate-to-bitmap fallback, LABELLED baseline -----------------
 // Standing rule 3. Present so P3/P4 have something to beat.
+/* Grow-only scratch, deliberately bounded.
+ *
+ * This is the labelled inflate-to-bitmap baseline (standing rule 3), so it is
+ * never on a hot path -- but it is thread_local and was never released. At the
+ * 10^7-bit universes PROBLEM_STATEMENT.md 2 motivates that is 1.25 MB retained
+ * per thread that ever touches this variant, times every thread in a pool. The
+ * cap turns an unbounded retention into a fallback that degrades loudly. */
+constexpr size_t kInflateMaxWords = 1u << 20;   // 8 MB
 thread_local std::vector<uint64_t> g_inflate_r;
 
 uint64_t br_inflate(const BitmapView& b, const RunView& r) {
+    if (b.nw > kInflateMaxWords) return 0;      // refuse rather than retain
     if (g_inflate_r.size() < b.nw) g_inflate_r.assign(b.nw, 0);
     for (uint32_t i = 0; i < r.n; ++i) {
         for (uint32_t p = r.start[i]; p < r.end[i]; ++p)

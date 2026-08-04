@@ -162,7 +162,7 @@ uint64_t STORM_wrapper_diag(const uint32_t n_vectors,
     uint32_t inner_offset = 0;
     uint64_t total = 0;
     
-    for (int i = 0; i < n_vectors; ++i) {
+    for (uint32_t i = 0; i < n_vectors; ++i) {
         inner_offset = offset + n_ints;
         for (int j = i + 1; j < n_vectors; ++j, inner_offset += n_ints) {
             total += (*f)(&vals[offset], &vals[inner_offset], n_ints);

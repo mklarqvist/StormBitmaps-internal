@@ -493,9 +493,18 @@ uint64_t bs_occ(const BitmapView& b, const ListView& s) {
 // the B x B kernel -- it recovers zero of the available saving. It appears here
 // for one reason only: beating it is claim P3, and a claim needs the thing it
 // beats to be present and measured, not asserted.
+/* Grow-only scratch, deliberately bounded.
+ *
+ * This is the labelled inflate-to-bitmap baseline (standing rule 3), so it is
+ * never on a hot path -- but it is thread_local and was never released. At the
+ * 10^7-bit universes PROBLEM_STATEMENT.md 2 motivates that is 1.25 MB retained
+ * per thread that ever touches this variant, times every thread in a pool. The
+ * cap turns an unbounded retention into a fallback that degrades loudly. */
+constexpr size_t kInflateMaxWords = 1u << 20;   // 8 MB
 thread_local std::vector<uint64_t> g_inflate;
 
 uint64_t bs_inflate(const BitmapView& b, const ListView& s) {
+    if (b.nw > kInflateMaxWords) return 0;      // refuse rather than retain
     if (g_inflate.size() < b.nw) g_inflate.assign(b.nw, 0);
     for (uint32_t i = 0; i < s.n; ++i)
         g_inflate[s.v[i] >> 6] |= uint64_t(1) << (s.v[i] & 63);

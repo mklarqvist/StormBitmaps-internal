@@ -21,6 +21,7 @@
 #include "kernels/storm_simd.h"
 
 #include <algorithm>
+#include <cassert>
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #  include <arm_neon.h>
@@ -79,6 +80,11 @@ struct Cursor {
     const uint64_t* lit() const { return buf + i; }
 
     void consume(uint32_t k) {
+        // k must not exceed the current segment. Unchecked, `fill_left -= k`
+        // wraps uint32_t to ~4e9 and the merge loop runs away silently instead
+        // of failing; with ten cells sharing this cursor that is the highest-
+        // leverage place in the file for a latent bug to hide.
+        assert(k <= (fill_left ? fill_left : lit_left));
         if (fill_left) {
             fill_left -= k;
             if (!fill_left && !lit_left) load();
