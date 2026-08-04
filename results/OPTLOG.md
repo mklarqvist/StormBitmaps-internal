@@ -1195,3 +1195,59 @@ bulk, taking the per-bucket minimum. This oracle is strictly *weaker* than a
 per-pair one, since it cannot exploit variation within a bucket. **The regrets
 reported are therefore lower bounds on true regret**, and are labelled as such
 rather than quoting the friendlier interpretation.
+
+
+---
+
+## F16 — The small-universe plateau is NOT port-bound. Correcting an inferred claim.
+
+Claim C10. `tools/port_probe.cpp` isolates the converged 1KGP3 singleton kernel
+(W = 6 pairs in flight) so its steady-state loop can be disassembled and counted
+rather than reasoned about.
+
+Actual disassembly, Apple clang 21, `-O3 -march=native`, arm64:
+
+```
+steady-state loop: 45 instructions per 6 pairs
+  loads 15   alu 28   branch 1   other 1
+  lsr:12  add:10  ldr:6  and:6  ldurh:3  ldrh:3  ldp:3  cmp:1  b.ls:1
+```
+
+Static issue floors against the measured cost:
+
+| bound | cycles/pair |
+|---|---:|
+| load issue (15 loads / 3 load units) | 0.833 |
+| ALU issue (28 / 6-wide) | 0.778 |
+| decode (45 instructions / 8-wide) | 0.938 |
+| **measured** | **7.2** |
+
+**The kernel runs at 7.7× its decode floor and 8.6× its load-issue floor. It is
+not port-bound.**
+
+This corrects a claim I had adopted and repeated. The practitioner survey
+(RESEARCH_PLAN.md §13.1) *inferred* a port ceiling from the fact that 20
+consecutive optimization attempts failed, and I wrote that into the plan as the
+explanation. The disassembly says otherwise: there is 7× of issue headroom that
+the kernel is not using.
+
+Nor is it memory-*parallelism* bound in the simple sense — iteration 25 widened
+to W = 12 pairs in flight and measured 2.00 ns against W = 6's 1.95.
+
+What remains, and what the plan should say instead: the cost is **scattered L2
+access latency over a 2.5 MB dense corpus** that does not fit the 128 kB L1. Six
+concurrent misses at L2 latency, plus the 35% of pairs on the multi-position
+path, account for the gap in a way that issue width and ILP do not. The
+actionable consequence is different too — if the binding resource is L2 latency
+on a working set 20× larger than L1, the lever is **shrinking or partitioning the
+dense corpus** (blocking rows so a working subset stays L1-resident), not
+widening the kernel further.
+
+That is the bit-transpose / row-blocking direction §13.1 identified, and this
+measurement is the reason to prefer it over more kernel tuning.
+
+**Method note:** the first attempt at this measurement parsed zero instructions,
+because the `awk` symbol pattern assumed ELF-style `<_probe6>:` and the Mach-O
+object labels the block `<ltmp0>`. It printed a tidy, entirely theoretical
+analysis with no disassembly behind it. Caught only by noticing the instruction
+count was 0.

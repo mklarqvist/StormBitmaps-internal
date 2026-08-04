@@ -944,8 +944,16 @@ recorded for that project and explicitly excluded here.
 The 1KGP3 campaign closed at ~1.9 ns/pair after 20 consecutive failed attempts.
 The survey explains why, and it changes what to try next.
 
-**The 6-pairs-in-flight kernel is almost certainly load-port bound, not
-memory-parallelism bound.** Travis Downs' work on load-buffer occupancy, ROB
+**CORRECTED 2026-08-05 by measurement (OPTLOG F16): the kernel is NOT port
+bound.** Disassembly gives 45 instructions per 6 pairs and static floors of
+0.78–0.94 cycles/pair against 7.2 measured — 7.7× of unused issue headroom. The
+binding resource is scattered **L2 latency** over a 2.5 MB dense corpus, so the
+lever is blocking the corpus to keep a working subset L1-resident, not widening
+the kernel. The inference below was wrong and is kept only to mark the
+correction.
+
+~~The 6-pairs-in-flight kernel is almost certainly load-port bound, not
+memory-parallelism bound.~~ Travis Downs' work on load-buffer occupancy, ROB
 size and load-port throughput makes the distinction: MLP ceilings gate
 outstanding *misses*, and at 632 B/row every probe is an L1/L2 **hit**. Twenty
 failed attempts to widen ILP, prefetch, reorder or reshape is exactly what a
@@ -1089,7 +1097,7 @@ as Roaring (SPE) and the popcount papers.
 | **C7** | Per-pair selection costs 28–48% of runtime; tile hoisting brings it to 0.10–0.29%, and probe-and-commit has **59.0% regret** against a bucket oracle vs all-bitmap's 118.0% | **MEASURED** (F15) | Regret is a *lower bound* (bucket oracle, not per-pair — the latter is below clock granularity). Neoverse V1 still absent from the Gate-1 table |
 | **C8** | The asymptotic win requires a large universe **and** sparsity **simultaneously**, and no public dataset we can reach has both | **MEASURED, both orientations** (F14) | Variant-major: 1/i spectrum, 5,008-bit universe → **2.15×**. Haplotype-major: 1,048,576-bit universe, ~uniform 3.14% density → **0.93×, nothing beats all-bitmap**. The 10²–10⁵× regime is **synthetic-only** and must be labelled as such |
 | **C9** | Negative results: Harley-Seal (0.38–0.72×), D2 run-collapsing (0.25–0.51×), register blocking (refuted at L2 *and* DRAM), prefetch, NEON index arithmetic | **MEASURED** | — |
-| **C10** | At small universes the binding constraint is per-pair overhead, not kernel work; moving decisions per-pair→per-row gives 2.9× | **MEASURED** | Port-pressure trace would make the "port-bound" explanation tier-3 rather than inferred |
+| **C10** | At small universes the binding constraint is per-pair overhead, not kernel work; moving decisions per-pair→per-row gives 2.9×. The residual is **scattered L2 latency, not issue width** | **MEASURED** (F16) | Disassembly: 45 instructions / 6 pairs, floors of 0.78–0.94 cyc/pair against 7.2 measured. The "port-bound" reading in §13.1 was **inferred and is wrong** |
 
 ### 14.3 Figures, and whether they exist
 
@@ -1121,8 +1129,9 @@ as Roaring (SPE) and the popcount papers.
    Probe-and-commit 59.0%, per-tile 106.7%, all-bitmap 118.0%, per-pair model
    **403.7%** — the model alone is worse than no selection. Nothing is within
    1.5× of the oracle, so selection is not solved, only no longer harmful.
-5. **C10 — port-pressure trace** on the small-universe kernel, to make the
-   port-bound explanation measured rather than inferred.
+5. ~~**C10 — port-pressure trace.**~~ **DONE** (F16), and it **refuted** the
+   port-bound hypothesis: 7.7× of unused issue headroom, so the residual is
+   scattered L2 latency and the lever is corpus blocking, not kernel width.
 6. **C2 — repeat the residency sweep on Neoverse and Sapphire**, so the
    opposite-scaling finding is not single-host.
 
