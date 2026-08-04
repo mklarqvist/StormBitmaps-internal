@@ -40,6 +40,8 @@
  */
 #include "kernels/storm_cells.h"
 
+#include <algorithm>
+
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #  include <arm_neon.h>
 #  define STORM_CELL_NEON 1
@@ -383,6 +385,162 @@ uint64_t bb_neon_rankskip(const BitmapView& a, const BitmapView& b) {
 
 #endif // STORM_CELL_NEON
 
+// --- V9: rank-skip driven by the SPARSER side only --------------------------
+// bb_neon_rankskip tests both sides' rank blocks. That is two loads per block to
+// avoid four AND+CNT+UADALP triples -- worth it when a block is empty, pure
+// overhead when it is not, which is why it measures 0.40x on dense data.
+//
+// Under a skewed spectrum one side is usually far sparser than the other, so
+// testing only THAT side captures nearly all the skippable blocks for half the
+// index traffic. Which side is sparser is O(1) from the rank totals.
+uint64_t bb_neon_rankskip1(const BitmapView& a, const BitmapView& b) {
+    if (a.rank == nullptr || b.rank == nullptr) return bb_neon_unroll<8>(a, b);
+    const uint32_t S = BitmapView::RANK_STRIDE;
+    const uint32_t nblk = a.nw / S;
+    // Total set bits are the sentinel entries; pick the sparser side to gate on.
+    const uint64_t ta = a.rank[2 * ((a.nw + 7) / 8)];
+    const uint64_t tb = b.rank[2 * ((b.nw + 7) / 8)];
+    const BitmapView& g = (ta <= tb) ? a : b;
+
+    uint16x8_t acc = vdupq_n_u16(0);
+    uint64_t   c   = 0;
+    for (uint32_t blk = 0; blk < nblk; ++blk) {
+        if (rank_block_empty(g, blk)) continue;
+        const uint8_t* pa = (const uint8_t*)(a.w + blk * S);
+        const uint8_t* pb = (const uint8_t*)(b.w + blk * S);
+        for (int q = 0; q < 4; ++q)
+            acc = vpadalq_u8(acc, vcntq_u8(vandq_u8(vld1q_u8(pa + 16 * q),
+                                                    vld1q_u8(pb + 16 * q))));
+        if ((blk & 1023) == 1023) {
+            c += vaddvq_u64(vpadalq_u32(vdupq_n_u64(0), vpadalq_u16(vdupq_n_u32(0), acc)));
+            acc = vdupq_n_u16(0);
+        }
+    }
+    c += vaddvq_u64(vpadalq_u32(vdupq_n_u64(0), vpadalq_u16(vdupq_n_u32(0), acc)));
+    for (uint32_t k = nblk * S; k < a.nw; ++k) c += STORM_POPCOUNT(a.w[k] & b.w[k]);
+    return c;
+}
+
+/* --- V10: zone-map planning ------------------------------------------------
+ *
+ * The Parquet/ORC idea applied to pairing. `occ` is one bit per 512-bit bin,
+ * set when that bin holds anything (storm_repr.h). Then:
+ *
+ *     occ_A & occ_B   -> the bins where BOTH sides have content
+ *     popcount(that)  -> how many bins need visiting; zero means disjoint rows
+ *
+ * The AND runs over m/512 bits, so deciding what work to do costs 1/512 of
+ * doing it. Every bin not in the intersection is skipped entirely -- not
+ * processed faster, not processed at all.
+ *
+ * Two things distinguish this from neon_rankskip, which also skips empty
+ * regions:
+ *
+ *  1. It gates on BOTH sides at once, from one AND, rather than testing each
+ *     side's index separately. A bin survives only if both rows occupy it,
+ *     which is a strictly stronger filter than either test alone.
+ *  2. The summary is 0.195% overhead against rank9's 25%, and 512x smaller than
+ *     the data, so the whole zone map of a row stays in L1 while its bitmap
+ *     does not. The scan that decides the work is cache-resident even when the
+ *     work itself is not.
+ *
+ * Build cost is one forward pass over the row, O(m), paid once and amortized
+ * over every pairing that row participates in -- N-1 of them in an all-pairs
+ * problem. At N = 10^5 that is a 10^-5 amortized surcharge. In a real system it
+ * would not be paid at query time at all: it is exactly the kind of summary a
+ * columnar format stores with the data.
+ *
+ * This is the mechanism that makes work REDUCIBLE, which finding F5 says is the
+ * only thing that has ever won outside the dense cell. It belongs in the
+ * selection layer (M2) rather than in a kernel; it lives here so its value can
+ * be measured before that layer exists.
+ */
+uint64_t bb_occ(const BitmapView& a, const BitmapView& b) {
+    if (a.occ == nullptr || b.occ == nullptr) return bb_neon_unroll<8>(a, b);
+    const uint32_t BW = BitmapView::OCC_BIN_WORDS;
+    const uint32_t full_bins = a.nw / BW;              // bins backed by whole words
+    const uint32_t n_occ = std::min(a.n_occ, b.n_occ);
+
+    uint16x8_t acc = vdupq_n_u16(0);
+    uint64_t   c   = 0;
+    uint32_t   since_flush = 0;
+
+    for (uint32_t ow = 0; ow < n_occ; ++ow) {
+        uint64_t m = a.occ[ow] & b.occ[ow];            // bins live on BOTH sides
+        while (m) {
+            const uint32_t bin = ow * 64 + (uint32_t)__builtin_ctzll(m);
+            m &= m - 1;
+            if (bin >= full_bins) continue;            // partial tail bin: below
+            const uint8_t* pa = (const uint8_t*)(a.w + (size_t)bin * BW);
+            const uint8_t* pb = (const uint8_t*)(b.w + (size_t)bin * BW);
+            for (int q = 0; q < 4; ++q)
+                acc = vpadalq_u8(acc, vcntq_u8(vandq_u8(vld1q_u8(pa + 16 * q),
+                                                        vld1q_u8(pb + 16 * q))));
+            // 4 UADALP of at most 8 per lane = 32 per bin; u16 saturates at 2047.
+            if (++since_flush == 1024) {
+                c += vaddvq_u64(vpadalq_u32(vdupq_n_u64(0), vpadalq_u16(vdupq_n_u32(0), acc)));
+                acc = vdupq_n_u16(0);
+                since_flush = 0;
+            }
+        }
+    }
+    c += vaddvq_u64(vpadalq_u32(vdupq_n_u64(0), vpadalq_u16(vdupq_n_u32(0), acc)));
+    for (uint32_t k = full_bins * BW; k < a.nw; ++k) c += STORM_POPCOUNT(a.w[k] & b.w[k]);
+    return c;
+}
+
+/* The planning step on its own, with the pair-level early out made explicit.
+ * If the zone maps do not intersect the rows cannot, and the pair is settled in
+ * m/512 bits of work with the bitmaps never touched. Separated from bb_occ so
+ * the early out's contribution is visible rather than folded into the scan. */
+uint64_t bb_occ_plan(const BitmapView& a, const BitmapView& b) {
+    if (a.occ == nullptr || b.occ == nullptr) return bb_neon_unroll<8>(a, b);
+    if (occ_overlap(a, b) == 0) return 0;
+    return bb_occ(a, b);
+}
+
+/* --- V11: plan from the zone map, then execute -----------------------------
+ *
+ * bb_occ wins 1.7x to 47x on skewed, clustered and run-structured data and
+ * LOSES ~3x on uniform-density data. That is not a defect, it is what a filter
+ * does: when every bin is occupied the summary filters nothing and the
+ * bit-scan is pure overhead on top of the same work.
+ *
+ * So the zone map should not be consulted as a kernel. It should be consulted
+ * as a PLAN. `popcount(occ_A & occ_B)` is one pass over m/512 bits and yields
+ * the exact number of bins that need visiting -- not an estimate. Comparing it
+ * to the bin count gives the selectivity, and the choice follows:
+ *
+ *     selectivity == 0            -> the rows are disjoint; return 0
+ *     selectivity <  threshold    -> visit only the live bins
+ *     otherwise                   -> straight-line SIMD over everything
+ *
+ * The threshold is where per-bin dispatch overhead equals the work it avoids.
+ * Measured: bb_occ costs ~0.079 cyc/word when it skips almost everything and
+ * ~1.29 when it skips nothing, against ~0.42 for the straight-line kernel, so
+ * the crossover sits near a third of bins live. Named and calibrated in one
+ * place; it belongs in the cost model (M4) like every other threshold here.
+ *
+ * This is the "move up towards planning rather than work" step in miniature:
+ * the decision costs 0.2% of the execution it is deciding about, and it is
+ * exact rather than heuristic.
+ */
+constexpr double kOccPlanSelectivity = 0.33;
+
+uint64_t bb_occ_sel(const BitmapView& a, const BitmapView& b) {
+    if (a.occ == nullptr || b.occ == nullptr) return bb_neon_unroll<8>(a, b);
+
+    const uint32_t n_occ = std::min(a.n_occ, b.n_occ);
+    const uint32_t bins  = (a.nw + BitmapView::OCC_BIN_WORDS - 1) / BitmapView::OCC_BIN_WORDS;
+    uint64_t live = 0;
+    for (uint32_t i = 0; i < n_occ; ++i) live += STORM_POPCOUNT(a.occ[i] & b.occ[i]);
+
+    if (live == 0) return 0;                                   // provably disjoint
+    if (bins && (double)live < kOccPlanSelectivity * (double)bins)
+        return bb_occ(a, b);                                   // sparse overlap
+    return bb_neon_unroll<8>(a, b);                            // dense overlap
+}
+
 const Variant<fn_bb> kBB[] = {
     {"scalar",       bb_scalar,     "reference: 1 word at a time"},
     {"scalar_u4",    bb_scalar_u4,  "libalgebra unrolled -- what the repo shipped on arm64"},
@@ -391,12 +549,17 @@ const Variant<fn_bb> kBB[] = {
     {"neon_u2",      bb_neon_unroll<2>,     "2 accumulators"},
     {"neon_u4",      bb_neon_unroll<4>,     "4 accumulators -- predicted first to cover UADALP lat 3"},
     {"neon_u8",      bb_neon_unroll<8>,     "8 accumulators"},
+    {"neon_u16",     bb_neon_unroll<16>,    "16 accumulators -- has the series saturated?"},
     {"neon_u8acc4",  bb_neon_u8acc<4>,      "u8 accumulate, widen every 31 -- shorter recurrence"},
     {"neon_u8acc8",  bb_neon_u8acc<8>,      "u8 accumulate, 8 accumulators"},
     {"neon_ld2",     bb_neon_ld2,           "vld1q_u8_x2 paired loads -- issue-bound probe"},
     {"neon_pf",      bb_neon_pf,            "4 accumulators + prefetch, for the DRAM-resident regime"},
     {"neon_hs",      bb_neon_harley_seal,   "Harley-Seal CSA -- labelled negative control"},
     {"neon_rankskip",bb_neon_rankskip,      "skip all-zero 512b blocks via rank index", true},
+    {"occ",          bb_occ,                "zone map: visit only bins live on BOTH sides", true},
+    {"occ_sel",      bb_occ_sel,            "PLAN from the zone map, then pick the kernel", true},
+    {"occ_plan",     bb_occ_plan,           "zone map + explicit disjoint-pair early out", true},
+    {"neon_rskip1",  bb_neon_rankskip1,     "gate on the sparser side only -- half the index traffic", true},
 #endif
 };
 

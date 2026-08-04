@@ -91,12 +91,33 @@ template <typename T> using avec = std::vector<T, aligned_allocator<T>>;
  * Space is 16 bytes per 64 bytes of bitmap = 25% overhead, the standard
  * constant-time-rank price. `build_rank` is separate from `build_row` so this
  * cost can be measured on its own. */
+/* `occ` is a Parquet/ORC-style ZONE MAP over the bitmap: one bit per bin of
+ * OCC_BIN_WORDS words, set when that bin holds any set bit at all.
+ *
+ * It is a different trade from `rank` and the two are complements, not rivals:
+ *
+ *              overhead     answers
+ *   rank9      25%          "how many bits are set below position x" -- exact
+ *   occ        0.195%       "is this 512-bit bin empty" -- one bit
+ *
+ * The zone map is 512x smaller than the data it summarizes, which is the whole
+ * point: `occ_A & occ_B` is a bitmap intersection over m/512 bits, so the
+ * question "can these two rows overlap anywhere?" costs 1/512 of the pairing it
+ * would replace, and a popcount of that AND says how many bins even need
+ * visiting. Rows that cannot overlap are settled without touching the data at
+ * all, and rows that can are visited only where both sides have content.
+ *
+ * OCC_BIN_WORDS is set to RANK_STRIDE so a zone-map bit and a rank block cover
+ * the same region and a kernel can use either without a second index geometry. */
 struct BitmapView {
-    const uint64_t* w    = nullptr;
-    uint32_t        nw   = 0;         // words
-    const uint64_t* rank = nullptr;   // may be null
+    const uint64_t* w     = nullptr;
+    uint32_t        nw    = 0;         // words
+    const uint64_t* rank  = nullptr;   // may be null
+    const uint64_t* occ   = nullptr;   // may be null
+    uint32_t        n_occ = 0;         // words in occ
 
-    static constexpr uint32_t RANK_STRIDE = 8;   // words per rank block (512 bits)
+    static constexpr uint32_t RANK_STRIDE   = 8;   // words per rank block (512 bits)
+    static constexpr uint32_t OCC_BIN_WORDS = 8;   // words per zone-map bin
 };
 
 // Number of set bits strictly below bit position x. Requires b.rank != null.
@@ -166,6 +187,7 @@ struct RowMeta {
 struct Row {
     avec<uint64_t> bitmap;
     avec<uint64_t> rank;      // prefix popcount, stride BitmapView::RANK_STRIDE
+    avec<uint64_t> occ;       // zone map, 1 bit per OCC_BIN_WORDS words
     avec<uint32_t> list;
     avec<uint32_t> run_start;
     avec<uint32_t> run_end;
@@ -173,9 +195,17 @@ struct Row {
     uint32_t       ewah_nw = 0;
     RowMeta        meta;
 
-    BitmapView B() const { return BitmapView{bitmap.data(), meta.n_words,
-                                             rank.empty() ? nullptr : rank.data()}; }
-    BitmapView B_norank() const { return BitmapView{bitmap.data(), meta.n_words, nullptr}; }
+    BitmapView B() const {
+        return BitmapView{bitmap.data(), meta.n_words,
+                          rank.empty() ? nullptr : rank.data(),
+                          occ.empty()  ? nullptr : occ.data(),
+                          (uint32_t)occ.size()};
+    }
+    // No auxiliary indexes at all: the fallback path every index-consuming
+    // kernel must still be correct on.
+    BitmapView B_norank() const {
+        return BitmapView{bitmap.data(), meta.n_words, nullptr, nullptr, 0};
+    }
     ListView   S() const { return ListView{list.data(), (uint32_t)list.size()}; }
     RunView    R() const { return RunView{run_start.data(), run_end.data(),
                                           (uint32_t)run_start.size()}; }
@@ -193,6 +223,19 @@ void ewah_decode(const EwahView& w, uint64_t* out_words);
 // construction cost can be measured on its own (RESEARCH_PLAN.md 4.5:
 // "when is building the index worth it?").
 void build_rank(const uint64_t* words, uint32_t nw, avec<uint64_t>& out);
+
+// Build the zone map. Separate from build_row for the same reason as
+// build_rank: its construction cost is a reportable quantity.
+void build_occ(const uint64_t* words, uint32_t nw, avec<uint64_t>& out);
+
+// Number of 512-bit bins in which BOTH rows have content. Zero proves the rows
+// are disjoint. Costs one pass over m/512 bits.
+inline uint64_t occ_overlap(const BitmapView& a, const BitmapView& b) {
+    const uint32_t n = a.n_occ < b.n_occ ? a.n_occ : b.n_occ;
+    uint64_t c = 0;
+    for (uint32_t i = 0; i < n; ++i) c += STORM_POPCOUNT(a.occ[i] & b.occ[i]);
+    return c;
+}
 
 } // namespace storm
 

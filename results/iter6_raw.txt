@@ -1,0 +1,665 @@
+
+==============================================================================
+  U1  uniform structure / uniform spectrum / d=0.01
+==============================================================================
+calibrating clock ... 3.109 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=uniform
+        cardinality mean=655.0 min=655 max=655   runs mean=648.7
+        footprint  B=1536 kB  S=491 kB  R=973 kB  W=1112 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 655.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                161.40     1.00x      0.2464     0.766         reference: STORM_bitmap_x_list, one test per element
+  shift                 156.96     1.03x      0.2396     0.745         branchless (w >> bit) & 1
+  ilp2                  214.82     0.75x      0.3280     1.020         2 independent accumulator chains
+  ilp4                  172.29     0.94x      0.2630     0.818         4 chains
+  ilp8                  160.26     1.01x      0.2447     0.761         8 chains
+  ilp4x                 200.94     0.80x      0.3068     0.954         4 chains, named accumulators (no array)
+  ilp8x                 178.56     0.90x      0.2726     0.847         8 chains, named accumulators
+  pack2                 173.85     0.93x      0.2654     0.825         two positions per 64-bit list load, 4 chains
+  split2                185.28     0.87x      0.2829     0.879         two independent cursors over halves of the list
+  adaptive              156.92     1.03x      0.2396     0.745         shift when the bitmap is L1-resident, ilp8x when not
+  ilp16x                152.36     1.06x      0.2326     0.723         16 chains -- has the ILP series saturated?
+  cacheword             356.21     0.45x      0.5438     1.691         reuse the last loaded word across same-word probes
+  rankskip              834.33     0.19x      1.2738     3.960     K   skip list groups whose dense-side rank block is empty
+  collapse              731.10     0.22x      1.1162     3.470         D2: fold same-word groups into one mask
+  collapse_peel         634.69     0.25x      0.9690     3.012         D2 with the group-of-one case peeled out
+  prefetch16            324.73     0.50x      0.4958     1.541         D4: software pipelined, prefetch distance 16
+  prefetch32            323.50     0.50x      0.4939     1.535         D4: prefetch distance 32
+  neon_idx              370.57     0.44x      0.5657     1.759         NEON index arithmetic + quad-local collapse
+  inflate               603.21     0.27x      0.9209     2.863      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x R   (work unit: run, mean 648.7 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                534.60     1.00x      0.8241     2.562         reference: masked head/tail + word loop per run
+  neon                  578.41     0.92x      0.8916     2.772         NEON run interiors -- the real no-index baseline
+  rank                 1094.28     0.49x      1.6869     5.244     K   M5: rank(end) - rank(start), Theta(runs)
+  rank_ilp             1221.81     0.44x      1.8835     5.855     K   M5, two runs per iteration
+  rank_blk              972.53     0.55x      1.4992     4.661     K   M5, one block lookup when a run stays in one block
+  hybrid12              588.52     0.91x      0.9072     2.820     K   rank above 12 words of run, direct below
+  hybrid4               571.99     0.93x      0.8818     2.741     K   crossover probe: rank above 4 words
+  hybrid32              570.42     0.94x      0.8793     2.734     K   crossover probe: rank above 32 words
+  skip                  808.50     0.66x      1.2463     3.875     K   skip runs inside an all-zero rank block
+  rank_pf              1295.03     0.41x      1.9964     6.206     K   M5 with rank/bitmap prefetch two runs ahead
+  inflate              1592.09     0.34x      2.4543     7.630      I  BASELINE ONLY: materialize R as a bitmap, run B x B
+
+  S x R   (work unit: elt+run, mean 1304.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                4960.83     1.00x      3.8040    11.826         reference: Theta(|S| + r) merge
+  merge_bl             3092.62     1.60x      2.3714     7.372         branchless merge
+  search               3965.55     1.25x      3.0408     9.453         gallop into the run array per list element
+  search_runs          6018.76     0.82x      4.6152    14.348         two galloping searches into the LIST per run
+  neon                 6938.18     0.72x      5.3202    16.539         4 list elements tested against a run per step
+  neon                 7238.57     0.69x      5.5506    17.255         4 list elements tested against a run per step
+  adaptive             5067.90     0.98x      3.8861    12.081         three-way cost comparison from the two sizes
+
+  B x W   (work unit: ewah word, mean 741.9 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               2078.54     1.00x      2.8017     8.710         reference: segment walk, word at a time
+  neon                 1918.28     1.08x      2.5857     8.038         NEON literal and fill bodies
+  rank                 1888.23     1.10x      2.5452     7.912     K   one-fills collapse to a rank difference
+  hybrid               1851.47     1.12x      2.4956     7.758     K   rank for fills >= 4 words, direct below
+
+  S x W   (work unit: elt+word, mean 1395.4 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                3738.94     1.00x      2.6794     8.330         reference: list against the segment stream
+  collapse             3988.53     0.94x      2.8583     8.886         same-word list elements folded into one mask
+  skip                 3630.29     1.03x      2.6016     8.088         a fill settles every list element inside it in one step
+  search               3865.73     0.97x      2.7703     8.612         gallop the list past a fill instead of walking it
+
+  S x S   (work unit: elt, mean 1310.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                3049.68     1.00x      2.3280     7.237         reference: branchy sorted merge
+  merge_bl             2502.70     1.22x      1.9105     5.939         branchless merge
+  gallop               4818.49     0.63x      3.6782    11.435         exponential + binary search from the shorter side
+  gallop_sym           5136.45     0.59x      3.9210    12.189         gallop whichever side is behind, both directions
+  neon8                 761.99     4.00x      0.5817     1.808         8x8 block compare -- 64 candidate pairs per step
+  clip                 1395.48     2.19x      1.0653     3.312         clip both lists to their overlapping span first
+  adaptive             1351.31     2.26x      1.0315     3.207         merge or gallop on the length ratio
+  neon                 1364.30     2.24x      1.0415     3.238         4x4 block compare via vextq rotation
+
+  R x R   (work unit: run, mean 1297.8 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                3514.32     1.00x      2.7079     8.418         reference: overlap merge
+  merge_bl             2655.25     1.32x      2.0460     6.360         branchless merge
+  gallop               3803.52     0.92x      2.9307     9.111         gallop from the shorter run array
+  adaptive             2614.10     1.34x      2.0142     6.262         merge or gallop on the run-count ratio
+  clip                 2699.77     1.30x      2.0803     6.467         disjoint-span early out, then clip both sides
+
+  R x W   (work unit: run+word, mean 1389.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                5176.84     1.00x      3.7267    11.585         reference: runs against the segment stream
+  merge2               4036.06     1.28x      2.9055     9.032         single-pass two-cursor merge, no segment re-walking
+  skip                 4017.19     1.29x      2.8919     8.990         a zero fill retires every run inside it in one step
+
+  W x W   (work unit: ewah word, mean 1482.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               4161.02     1.00x      2.8071     8.727         reference: segment merge, word at a time
+  neon                 4120.53     1.01x      2.7798     8.642         NEON literal bodies
+  skip                 4058.22     1.03x      2.7378     8.511         a zero fill swallows the other side's segments whole
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                146.63     1.00x      0.1432     0.445         reference: 1 word at a time
+  scalar_u4             200.18     0.73x      0.1955     0.608         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  340.11     0.43x      0.3321     1.033         AND+CNT+UADALP, 1 accumulator
+  neon_u2               183.70     0.80x      0.1794     0.558         2 accumulators
+  neon_u4               124.08     1.18x      0.1212     0.377         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               120.18     1.22x      0.1174     0.365         8 accumulators
+  neon_u16              120.90     1.21x      0.1181     0.367         16 accumulators -- has the series saturated?
+  neon_u8acc4           130.53     1.12x      0.1275     0.396         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           123.75     1.18x      0.1208     0.376         u8 accumulate, 8 accumulators
+  neon_ld2              126.44     1.16x      0.1235     0.384         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               132.18     1.11x      0.1291     0.401         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               204.42     0.72x      0.1996     0.621         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         335.92     0.44x      0.3280     1.020     K   skip all-zero 512b blocks via rank index
+  neon_rskip1           336.52     0.44x      0.3286     1.022     K   gate on the sparser side only -- half the index traffic
+
+  best non-B x B cell: B x S/ilp16x at 152.36 ns/pair
+  B x B floor:         120.18 ns/pair
+  speedup over fixed-cost dense pairing: 0.8x
+
+==============================================================================
+  S1  uniform structure / 1-over-i spectrum / d=0.01
+==============================================================================
+calibrating clock ... 3.737 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=inverse
+        cardinality mean=485.3 min=1 max=5166   runs mean=467.4
+        footprint  B=1536 kB  S=364 kB  R=701 kB  W=460 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 99.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 31.89     1.00x      0.3212     1.200         reference: STORM_bitmap_x_list, one test per element
+  shift                  32.34     0.99x      0.3257     1.217         branchless (w >> bit) & 1
+  ilp2                   40.02     0.80x      0.4030     1.506         2 independent accumulator chains
+  ilp4                   33.36     0.96x      0.3360     1.255         4 chains
+  ilp8                   31.27     1.02x      0.3149     1.177         8 chains
+  ilp4x                  36.54     0.87x      0.3680     1.375         4 chains, named accumulators (no array)
+  ilp8x                  31.46     1.01x      0.3168     1.184         8 chains, named accumulators
+  pack2                  36.19     0.88x      0.3644     1.362         two positions per 64-bit list load, 4 chains
+  split2                 35.73     0.89x      0.3598     1.345         two independent cursors over halves of the list
+  adaptive               31.17     1.02x      0.3139     1.173         shift when the bitmap is L1-resident, ilp8x when not
+  ilp16x                 31.22     1.02x      0.3144     1.175         16 chains -- has the ILP series saturated?
+  cacheword              55.75     0.57x      0.5615     2.098         reuse the last loaded word across same-word probes
+  rankskip              118.32     0.27x      1.1915     4.453     K   skip list groups whose dense-side rank block is empty
+  collapse               89.57     0.36x      0.9020     3.371         D2: fold same-word groups into one mask
+  collapse_peel          78.99     0.40x      0.7955     2.973         D2 with the group-of-one case peeled out
+  prefetch16             53.62     0.59x      0.5400     2.018         D4: software pipelined, prefetch distance 16
+  prefetch32             51.97     0.61x      0.5234     1.956         D4: prefetch distance 32
+  neon_idx               60.02     0.53x      0.6045     2.259         NEON index arithmetic + quad-local collapse
+  inflate               227.36     0.14x      2.2896     8.556      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x R   (work unit: run, mean 97.7 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 93.77     1.00x      0.9595     3.585         reference: masked head/tail + word loop per run
+  neon                   95.33     0.98x      0.9755     3.645         NEON run interiors -- the real no-index baseline
+  rank                  173.43     0.54x      1.7746     6.632     K   M5: rank(end) - rank(start), Theta(runs)
+  rank_ilp              192.10     0.49x      1.9657     7.345     K   M5, two runs per iteration
+  rank_blk              170.86     0.55x      1.7483     6.533     K   M5, one block lookup when a run stays in one block
+  hybrid12               95.26     0.98x      0.9748     3.643     K   rank above 12 words of run, direct below
+  hybrid4               104.33     0.90x      1.0676     3.989     K   crossover probe: rank above 4 words
+  hybrid32              100.44     0.93x      1.0278     3.841     K   crossover probe: rank above 32 words
+  skip                  133.39     0.70x      1.3650     5.101     K   skip runs inside an all-zero rank block
+  rank_pf               206.45     0.45x      2.1126     7.894     K   M5 with rank/bitmap prefetch two runs ahead
+  inflate               391.59     0.24x      4.0070    14.973      I  BASELINE ONLY: materialize R as a bitmap, run B x B
+
+  S x R   (work unit: elt+run, mean 946.4 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                2860.42     1.00x      3.0225    11.295         reference: Theta(|S| + r) merge
+  merge_bl             2336.20     1.22x      2.4686     9.225         branchless merge
+  search               1069.75     2.67x      1.1304     4.224         gallop into the run array per list element
+  search_runs          5208.34     0.55x      5.5035    20.566         two galloping searches into the LIST per run
+  neon                 3891.47     0.74x      4.1120    15.366         4 list elements tested against a run per step
+  neon                 3754.92     0.76x      3.9677    14.827         4 list elements tested against a run per step
+  adaptive             1350.73     2.12x      1.4273     5.334         three-way cost comparison from the two sizes
+
+  B x W   (work unit: ewah word, mean 108.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                230.35     1.00x      2.1278     7.951         reference: segment walk, word at a time
+  neon                  236.36     0.97x      2.1833     8.159         NEON literal and fill bodies
+  rank                  242.04     0.95x      2.2357     8.355     K   one-fills collapse to a rank difference
+  hybrid                238.62     0.97x      2.2041     8.236     K   rank for fills >= 4 words, direct below
+
+  S x W   (work unit: elt+word, mean 589.2 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 567.62     1.00x      0.9634     3.600         reference: list against the segment stream
+  collapse              701.09     0.81x      1.1899     4.447         same-word list elements folded into one mask
+  skip                  575.62     0.99x      0.9770     3.651         a fill settles every list element inside it in one step
+  search                599.76     0.95x      1.0179     3.804         gallop the list past a fill instead of walking it
+
+  S x S   (work unit: elt, mean 982.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                1965.23     1.00x      2.0011     7.478         reference: branchy sorted merge
+  merge_bl             1663.97     1.18x      1.6943     6.331         branchless merge
+  gallop               1153.56     1.70x      1.1746     4.389         exponential + binary search from the shorter side
+  gallop_sym           1129.99     1.74x      1.1506     4.300         gallop whichever side is behind, both directions
+  neon8                 803.47     2.45x      0.8181     3.057         8x8 block compare -- 64 candidate pairs per step
+  clip                  912.21     2.15x      0.9288     3.471         clip both lists to their overlapping span first
+  adaptive              574.92     3.42x      0.5854     2.188         merge or gallop on the length ratio
+  neon                 1017.65     1.93x      1.0362     3.872         4x4 block compare via vextq rotation
+
+  R x R   (work unit: run, mean 944.8 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                2722.61     1.00x      2.8817    10.769         reference: overlap merge
+  merge_bl             1833.00     1.49x      1.9401     7.250         branchless merge
+  gallop               1131.07     2.41x      1.1972     4.474         gallop from the shorter run array
+  adaptive              835.75     3.26x      0.8846     3.306         merge or gallop on the run-count ratio
+  clip                 1757.41     1.55x      1.8601     6.951         disjoint-span early out, then clip both sides
+
+  R x W   (work unit: run+word, mean 587.6 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 860.58     1.00x      1.4645     5.473         reference: runs against the segment stream
+  merge2                605.40     1.42x      1.0303     3.850         single-pass two-cursor merge, no segment re-walking
+  skip                  663.28     1.30x      1.1287     4.218         a zero fill retires every run inside it in one step
+
+  W x W   (work unit: ewah word, mean 598.2 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               1051.98     1.00x      1.7587     6.572         reference: segment merge, word at a time
+  neon                 1096.89     0.96x      1.8338     6.853         NEON literal bodies
+  skip                  997.72     1.05x      1.6680     6.233         a zero fill swallows the other side's segments whole
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                146.13     1.00x      0.1427     0.533         reference: 1 word at a time
+  scalar_u4             208.84     0.70x      0.2039     0.762         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  350.54     0.42x      0.3423     1.279         AND+CNT+UADALP, 1 accumulator
+  neon_u2               190.59     0.77x      0.1861     0.696         2 accumulators
+  neon_u4               124.09     1.18x      0.1212     0.453         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               116.79     1.25x      0.1141     0.426         8 accumulators
+  neon_u16              127.30     1.15x      0.1243     0.465         16 accumulators -- has the series saturated?
+  neon_u8acc4           132.89     1.10x      0.1298     0.485         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           134.19     1.09x      0.1310     0.490         u8 accumulate, 8 accumulators
+  neon_ld2              140.97     1.04x      0.1377     0.514         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               152.32     0.96x      0.1488     0.556         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               209.29     0.70x      0.2044     0.764         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         200.30     0.73x      0.1956     0.731     K   skip all-zero 512b blocks via rank index
+  neon_rskip1           111.33     1.31x      0.1087     0.406     K   gate on the sparser side only -- half the index traffic
+
+  best non-B x B cell: B x S/adaptive at 31.17 ns/pair
+  B x B floor:         111.33 ns/pair
+  speedup over fixed-cost dense pairing: 3.6x
+
+==============================================================================
+  C1  clustered(0.9) / 1-over-i spectrum / d=0.01
+==============================================================================
+calibrating clock ... 2.151 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=clustered spectrum=inverse
+        cardinality mean=666.0 min=1 max=5474   runs mean=64.4
+        footprint  B=1536 kB  S=500 kB  R=97 kB  W=164 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 155.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 46.71     1.00x      0.3013     0.648         reference: STORM_bitmap_x_list, one test per element
+  shift                  44.72     1.04x      0.2884     0.620         branchless (w >> bit) & 1
+  ilp2                   60.94     0.77x      0.3930     0.846         2 independent accumulator chains
+  ilp4                   49.02     0.95x      0.3162     0.680         4 chains
+  ilp8                   43.03     1.09x      0.2775     0.597         8 chains
+  ilp4x                  49.91     0.94x      0.3219     0.693         4 chains, named accumulators (no array)
+  ilp8x                  42.11     1.11x      0.2716     0.584         8 chains, named accumulators
+  pack2                  54.81     0.85x      0.3535     0.761         two positions per 64-bit list load, 4 chains
+  split2                 55.73     0.84x      0.3595     0.773         two independent cursors over halves of the list
+  adaptive               45.65     1.02x      0.2944     0.633         shift when the bitmap is L1-resident, ilp8x when not
+  ilp16x                 45.43     1.03x      0.2930     0.630         16 chains -- has the ILP series saturated?
+  cacheword              53.46     0.87x      0.3448     0.742         reuse the last loaded word across same-word probes
+  rankskip              135.81     0.34x      0.8760     1.885     K   skip list groups whose dense-side rank block is empty
+  collapse               79.52     0.59x      0.5129     1.103         D2: fold same-word groups into one mask
+  collapse_peel          69.46     0.67x      0.4480     0.964         D2 with the group-of-one case peeled out
+  prefetch16             78.68     0.59x      0.5075     1.092         D4: software pipelined, prefetch distance 16
+  prefetch32             75.80     0.62x      0.4889     1.052         D4: prefetch distance 32
+  neon_idx               62.83     0.74x      0.4052     0.872         NEON index arithmetic + quad-local collapse
+  inflate               417.66     0.11x      2.6938     5.795      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x R   (work unit: run, mean 15.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 17.80     1.00x      1.1640     2.504         reference: masked head/tail + word loop per run
+  neon                   19.43     0.92x      1.2704     2.733         NEON run interiors -- the real no-index baseline
+  rank                   31.46     0.57x      2.0573     4.426     K   M5: rank(end) - rank(start), Theta(runs)
+  rank_ilp               32.29     0.55x      2.1117     4.543     K   M5, two runs per iteration
+  rank_blk               29.67     0.60x      1.9405     4.175     K   M5, one block lookup when a run stays in one block
+  hybrid12               20.12     0.88x      1.3160     2.831     K   rank above 12 words of run, direct below
+  hybrid4                20.22     0.88x      1.3220     2.844     K   crossover probe: rank above 4 words
+  hybrid32               19.82     0.90x      1.2961     2.788     K   crossover probe: rank above 32 words
+  skip                   29.95     0.59x      1.9584     4.213     K   skip runs inside an all-zero rank block
+  rank_pf                34.06     0.52x      2.2274     4.792     K   M5 with rank/bitmap prefetch two runs ahead
+  inflate               364.73     0.05x     23.8503    51.311      I  BASELINE ONLY: materialize R as a bitmap, run B x B
+
+  S x R   (work unit: elt+run, mean 267.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 386.03     1.00x      1.4441     3.107         reference: Theta(|S| + r) merge
+  merge_bl              531.35     0.73x      1.9878     4.276         branchless merge
+  search                610.01     0.63x      2.2820     4.909         gallop into the run array per list element
+  search_runs           640.54     0.60x      2.3962     5.155         two galloping searches into the LIST per run
+  neon                  514.56     0.75x      1.9249     4.141         4 list elements tested against a run per step
+  neon                  515.49     0.75x      1.9284     4.149         4 list elements tested against a run per step
+  adaptive              324.66     1.19x      1.2145     2.613         three-way cost comparison from the two sizes
+
+  B x W   (work unit: ewah word, mean 30.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 76.14     1.00x      2.5131     5.407         reference: segment walk, word at a time
+  neon                   79.48     0.96x      2.6233     5.644         NEON literal and fill bodies
+  rank                   80.31     0.95x      2.6507     5.703     K   one-fills collapse to a rank difference
+  hybrid                 80.50     0.95x      2.6568     5.716     K   rank for fills >= 4 words, direct below
+
+  S x W   (work unit: elt+word, mean 341.2 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 373.95     1.00x      1.0958     2.358         reference: list against the segment stream
+  collapse              352.09     1.06x      1.0318     2.220         same-word list elements folded into one mask
+  skip                  302.66     1.24x      0.8869     1.908         a fill settles every list element inside it in one step
+  search                312.36     1.20x      0.9154     1.969         gallop the list past a fill instead of walking it
+
+  S x S   (work unit: elt, mean 1310.8 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                2065.17     1.00x      1.5755     3.390         reference: branchy sorted merge
+  merge_bl             1770.04     1.17x      1.3504     2.905         branchless merge
+  gallop                915.09     2.26x      0.6981     1.502         exponential + binary search from the shorter side
+  gallop_sym            346.84     5.95x      0.2646     0.569         gallop whichever side is behind, both directions
+  neon8                 661.44     3.12x      0.5046     1.086         8x8 block compare -- 64 candidate pairs per step
+  clip                  858.71     2.40x      0.6551     1.409         clip both lists to their overlapping span first
+  adaptive              598.28     3.45x      0.4564     0.982         merge or gallop on the length ratio
+  neon                 1032.03     2.00x      0.7873     1.694         4x4 block compare via vextq rotation
+
+  R x R   (work unit: run, mean 127.6 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 245.75     1.00x      1.9265     4.145         reference: overlap merge
+  merge_bl              189.35     1.30x      1.4844     3.194         branchless merge
+  gallop                148.92     1.65x      1.1674     2.512         gallop from the shorter run array
+  adaptive              108.75     2.26x      0.8525     1.834         merge or gallop on the run-count ratio
+  clip                  166.86     1.47x      1.3080     2.814         disjoint-span early out, then clip both sides
+
+  R x W   (work unit: run+word, mean 201.5 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                 246.84     1.00x      1.2250     2.636         reference: runs against the segment stream
+  merge2                220.89     1.12x      1.0963     2.359         single-pass two-cursor merge, no segment re-walking
+  skip                  217.68     1.13x      1.0804     2.324         a zero fill retires every run inside it in one step
+
+  W x W   (work unit: ewah word, mean 216.5 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                460.68     1.00x      2.1279     4.578         reference: segment merge, word at a time
+  neon                  469.46     0.98x      2.1684     4.665         NEON literal bodies
+  skip                  399.65     1.15x      1.8460     3.971         a zero fill swallows the other side's segments whole
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                142.95     1.00x      0.1396     0.300         reference: 1 word at a time
+  scalar_u4             203.76     0.70x      0.1990     0.428         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  340.65     0.42x      0.3327     0.716         AND+CNT+UADALP, 1 accumulator
+  neon_u2               183.26     0.78x      0.1790     0.385         2 accumulators
+  neon_u4               120.26     1.19x      0.1174     0.253         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               114.25     1.25x      0.1116     0.240         8 accumulators
+  neon_u16              114.13     1.25x      0.1115     0.240         16 accumulators -- has the series saturated?
+  neon_u8acc4           116.34     1.23x      0.1136     0.244         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           120.25     1.19x      0.1174     0.253         u8 accumulate, 8 accumulators
+  neon_ld2              124.72     1.15x      0.1218     0.262         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               133.16     1.07x      0.1300     0.280         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               202.20     0.71x      0.1975     0.425         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         136.98     1.04x      0.1338     0.288     K   skip all-zero 512b blocks via rank index
+  neon_rskip1            73.06     1.96x      0.0713     0.153     K   gate on the sparser side only -- half the index traffic
+
+  best non-B x B cell: B x R/scalar at 17.80 ns/pair
+  B x B floor:         73.06 ns/pair
+  speedup over fixed-cost dense pairing: 4.1x
+
+==============================================================================
+  L1  runs(mean=4096) / uniform spectrum / d=0.05
+==============================================================================
+calibrating clock ... 3.879 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=262144 structure=runs spectrum=uniform
+        cardinality mean=13107.0 min=13107 max=13107   runs mean=3.3
+        footprint  B=6144 kB  S=9830 kB  R=5 kB  W=19 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 13107.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               2769.56     1.00x      0.2113     0.820         reference: STORM_bitmap_x_list, one test per element
+  shift                2782.89     1.00x      0.2123     0.824         branchless (w >> bit) & 1
+  ilp2                 3878.85     0.71x      0.2959     1.148         2 independent accumulator chains
+  ilp4                 3146.38     0.88x      0.2401     0.931         4 chains
+  ilp8                 3029.22     0.91x      0.2311     0.897         8 chains
+  ilp4x                3395.29     0.82x      0.2590     1.005         4 chains, named accumulators (no array)
+  ilp8x                3077.66     0.90x      0.2348     0.911         8 chains, named accumulators
+  pack2                2955.35     0.94x      0.2255     0.875         two positions per 64-bit list load, 4 chains
+  split2               3515.55     0.79x      0.2682     1.041         two independent cursors over halves of the list
+  adaptive             2818.58     0.98x      0.2150     0.834         shift when the bitmap is L1-resident, ilp8x when not
+  ilp16x               3070.71     0.90x      0.2343     0.909         16 chains -- has the ILP series saturated?
+  cacheword            3706.94     0.75x      0.2828     1.097         reuse the last loaded word across same-word probes
+  rankskip             4717.55     0.59x      0.3599     1.396     K   skip list groups whose dense-side rank block is empty
+  collapse             4132.62     0.67x      0.3153     1.223         D2: fold same-word groups into one mask
+  collapse_peel        4122.46     0.67x      0.3145     1.220         D2 with the group-of-one case peeled out
+  prefetch16           5812.91     0.48x      0.4435     1.720         D4: software pipelined, prefetch distance 16
+  prefetch32           5742.43     0.48x      0.4381     1.700         D4: prefetch distance 32
+  neon_idx             5080.75     0.55x      0.3876     1.504         NEON index arithmetic + quad-local collapse
+  inflate             26155.69     0.11x      1.9956     7.742      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x R   (work unit: run, mean 3.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 27.85     1.00x      8.3174    32.266         reference: masked head/tail + word loop per run
+  neon                   23.20     1.20x      6.9292    26.881         NEON run interiors -- the real no-index baseline
+  rank                    8.53     3.27x      2.5474     9.882     K   M5: rank(end) - rank(start), Theta(runs)
+  rank_ilp                9.12     3.05x      2.7238    10.567     K   M5, two runs per iteration
+  rank_blk                9.14     3.05x      2.7305    10.593     K   M5, one block lookup when a run stays in one block
+  hybrid12                9.32     2.99x      2.7826    10.795     K   rank above 12 words of run, direct below
+  hybrid4                 9.04     3.08x      2.6986    10.469     K   crossover probe: rank above 4 words
+  hybrid32               12.23     2.28x      3.6533    14.173     K   crossover probe: rank above 32 words
+  skip                    9.30     2.99x      2.7771    10.773     K   skip runs inside an all-zero rank block
+  rank_pf                 9.34     2.98x      2.7906    10.826     K   M5 with rank/bitmap prefetch two runs ahead
+  inflate             26530.26     0.00x   7923.9150 30740.005      I  BASELINE ONLY: materialize R as a bitmap, run B x B
+
+  S x R   (work unit: elt+run, mean 13110.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                8433.69     1.00x      0.6433     2.496         reference: Theta(|S| + r) merge
+  merge_bl            15302.23     0.55x      1.1672     4.528         branchless merge
+  search              21413.57     0.39x      1.6333     6.336         gallop into the run array per list element
+  search_runs           231.04    36.50x      0.0176     0.068         two galloping searches into the LIST per run
+  neon                 3545.75     2.38x      0.2705     1.049         4 list elements tested against a run per step
+  neon                 3565.49     2.37x      0.2720     1.055         4 list elements tested against a run per step
+  adaptive              184.74    45.65x      0.0141     0.055         three-way cost comparison from the two sizes
+
+  B x W   (work unit: ewah word, mean 13.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 45.32     1.00x      3.4906    13.542         reference: segment walk, word at a time
+  neon                   44.12     1.03x      3.3982    13.183         NEON literal and fill bodies
+  rank                   38.63     1.17x      2.9757    11.544     K   one-fills collapse to a rank difference
+  hybrid                 37.75     1.20x      2.9076    11.280     K   rank for fills >= 4 words, direct below
+
+  S x W   (work unit: elt+word, mean 13119.7 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge               10145.85     1.00x      0.7733     3.000         reference: list against the segment stream
+  collapse             4194.75     2.42x      0.3197     1.240         same-word list elements folded into one mask
+  skip                 3496.80     2.90x      0.2665     1.034         a fill settles every list element inside it in one step
+  search                255.27    39.75x      0.0195     0.075         gallop the list past a fill instead of walking it
+
+  S x S   (work unit: elt, mean 26214.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge               35079.61     1.00x      1.3382     5.191         reference: branchy sorted merge
+  merge_bl            31192.05     1.12x      1.1899     4.616         branchless merge
+  gallop              34173.20     1.03x      1.3036     5.057         exponential + binary search from the shorter side
+  gallop_sym           1241.28    28.26x      0.0474     0.184         gallop whichever side is behind, both directions
+  neon8               10588.67     3.31x      0.4039     1.567         8x8 block compare -- 64 candidate pairs per step
+  clip                12898.42     2.72x      0.4920     1.909         clip both lists to their overlapping span first
+  adaptive            17176.47     2.04x      0.6552     2.542         merge or gallop on the length ratio
+  neon                17343.41     2.02x      0.6616     2.567         4x4 block compare via vextq rotation
+
+  R x R   (work unit: run, mean 6.6 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                   8.46     1.00x      1.2810     4.970         reference: overlap merge
+  merge_bl                8.14     1.04x      1.2320     4.780         branchless merge
+  gallop                  9.56     0.88x      1.4475     5.616         gallop from the shorter run array
+  adaptive                7.29     1.16x      1.1029     4.279         merge or gallop on the run-count ratio
+  clip                    9.28     0.91x      1.4045     5.449         disjoint-span early out, then clip both sides
+
+  R x W   (work unit: run+word, mean 16.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge                  31.57     1.00x      1.9673     7.632         reference: runs against the segment stream
+  merge2                 22.31     1.42x      1.3903     5.393         single-pass two-cursor merge, no segment re-walking
+  skip                   22.49     1.40x      1.4017     5.438         a zero fill retires every run inside it in one step
+
+  W x W   (work unit: ewah word, mean 25.7 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 75.39     1.00x      2.9359    11.390         reference: segment merge, word at a time
+  neon                   76.07     0.99x      2.9624    11.492         NEON literal bodies
+  skip                   63.19     1.19x      2.4606     9.546         a zero fill swallows the other side's segments whole
+
+  B x B   (work unit: word, mean 4096.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                648.63     1.00x      0.1584     0.614         reference: 1 word at a time
+  scalar_u4             887.52     0.73x      0.2167     0.841         libalgebra unrolled -- what the repo shipped on arm64
+  neon                 1684.63     0.39x      0.4113     1.596         AND+CNT+UADALP, 1 accumulator
+  neon_u2               915.68     0.71x      0.2236     0.867         2 accumulators
+  neon_u4               532.24     1.22x      0.1299     0.504         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               535.72     1.21x      0.1308     0.507         8 accumulators
+  neon_u16              525.29     1.23x      0.1282     0.498         16 accumulators -- has the series saturated?
+  neon_u8acc4           548.09     1.18x      0.1338     0.519         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           533.98     1.21x      0.1304     0.506         u8 accumulate, 8 accumulators
+  neon_ld2              476.75     1.36x      0.1164     0.452         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               617.95     1.05x      0.1509     0.585         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               913.74     0.71x      0.2231     0.865         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         185.88     3.49x      0.0454     0.176     K   skip all-zero 512b blocks via rank index
+  neon_rskip1           214.55     3.02x      0.0524     0.203     K   gate on the sparser side only -- half the index traffic
+
+  best non-B x B cell: R x R/adaptive at 7.29 ns/pair
+  B x B floor:         185.88 ns/pair
+  speedup over fixed-cost dense pairing: 25.5x
+
+==============================================================================
+  D1  uniform structure / uniform spectrum / d=0.35
+==============================================================================
+calibrating clock ... 2.211 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=uniform
+        cardinality mean=22938.0 min=22938 max=22938   runs mean=14909.8
+        footprint  B=1536 kB  S=17204 kB  R=22365 kB  W=1538 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 22938.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               7128.57     1.00x      0.3108     0.687         reference: STORM_bitmap_x_list, one test per element
+  shift                6261.47     1.14x      0.2730     0.603         branchless (w >> bit) & 1
+  ilp2                 8954.83     0.80x      0.3904     0.863         2 independent accumulator chains
+  ilp4                 6476.17     1.10x      0.2823     0.624         4 chains
+  ilp8                 6436.41     1.11x      0.2806     0.620         8 chains
+  ilp4x                6959.59     1.02x      0.3034     0.671         4 chains, named accumulators (no array)
+  ilp8x                6907.66     1.03x      0.3011     0.666         8 chains, named accumulators
+  pack2                8931.05     0.80x      0.3894     0.861         two positions per 64-bit list load, 4 chains
+  split2               8868.62     0.80x      0.3866     0.855         two independent cursors over halves of the list
+  adaptive             6540.73     1.09x      0.2851     0.630         shift when the bitmap is L1-resident, ilp8x when not
+  ilp16x               5701.14     1.25x      0.2485     0.549         16 chains -- has the ILP series saturated?
+  cacheword           11919.01     0.60x      0.5196     1.149         reuse the last loaded word across same-word probes
+  rankskip            22289.38     0.32x      0.9717     2.148     K   skip list groups whose dense-side rank block is empty
+  collapse            16531.93     0.43x      0.7207     1.593         D2: fold same-word groups into one mask
+  collapse_peel       15219.64     0.47x      0.6635     1.467         D2 with the group-of-one case peeled out
+  prefetch16          11710.83     0.61x      0.5105     1.129         D4: software pipelined, prefetch distance 16
+  prefetch32          10878.47     0.66x      0.4743     1.048         D4: prefetch distance 32
+  neon_idx            13819.55     0.52x      0.6025     1.332         NEON index arithmetic + quad-local collapse
+  inflate             48832.76     0.15x      2.1289     4.706      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x R   (work unit: run, mean 14911.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar              14278.56     1.00x      0.9576     2.117         reference: masked head/tail + word loop per run
+  neon                14726.55     0.97x      0.9876     2.183         NEON run interiors -- the real no-index baseline
+  rank                27106.05     0.53x      1.8178     4.019     K   M5: rank(end) - rank(start), Theta(runs)
+  rank_ilp            29746.15     0.48x      1.9949     4.410     K   M5, two runs per iteration
+  rank_blk            26633.51     0.54x      1.7862     3.949     K   M5, one block lookup when a run stays in one block
+  hybrid12            15142.60     0.94x      1.0155     2.245     K   rank above 12 words of run, direct below
+  hybrid4             17290.26     0.83x      1.1596     2.563     K   crossover probe: rank above 4 words
+  hybrid32            16401.49     0.87x      1.1000     2.432     K   crossover probe: rank above 32 words
+  skip                18690.46     0.76x      1.2535     2.771     K   skip runs inside an all-zero rank block
+  rank_pf             32770.18     0.44x      2.1977     4.858     K   M5 with rank/bitmap prefetch two runs ahead
+  inflate            117191.39     0.12x      7.8594    17.374      I  BASELINE ONLY: materialize R as a bitmap, run B x B
+
+  S x R   (work unit: elt+run, mean 37840.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge              145240.81     1.00x      3.8383     8.485         reference: Theta(|S| + r) merge
+  merge_bl           103092.06     1.41x      2.7244     6.023         branchless merge
+  search             110769.18     1.31x      2.9273     6.471         gallop into the run array per list element
+  search_runs        152345.06     0.95x      4.0260     8.900         two galloping searches into the LIST per run
+  neon               145216.16     1.00x      3.8376     8.484         4 list elements tested against a run per step
+  neon               147502.75     0.98x      3.8980     8.617         4 list elements tested against a run per step
+  adaptive           157690.32     0.92x      4.1673     9.212         three-way cost comparison from the two sizes
+
+  B x W   (work unit: ewah word, mean 1025.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                214.95     1.00x      0.2097     0.464         reference: segment walk, word at a time
+  neon                  138.83     1.55x      0.1354     0.299         NEON literal and fill bodies
+  rank                  140.33     1.53x      0.1369     0.303     K   one-fills collapse to a rank difference
+  hybrid                142.48     1.51x      0.1390     0.307     K   rank for fills >= 4 words, direct below
+
+  S x W   (work unit: elt+word, mean 23963.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge               24909.72     1.00x      1.0395     2.298         reference: list against the segment stream
+  collapse            15205.96     1.64x      0.6346     1.403         same-word list elements folded into one mask
+  skip                19995.44     1.25x      0.8344     1.845         a fill settles every list element inside it in one step
+  search              17609.71     1.41x      0.7349     1.625         gallop the list past a fill instead of walking it
+
+  S x S   (work unit: elt, mean 45876.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge               88056.21     1.00x      1.9194     4.243         reference: branchy sorted merge
+  merge_bl            73056.98     1.21x      1.5925     3.520         branchless merge
+  gallop             144770.20     0.61x      3.1557     6.976         exponential + binary search from the shorter side
+  gallop_sym         192035.30     0.46x      4.1860     9.254         gallop whichever side is behind, both directions
+  neon8               25065.89     3.51x      0.5464     1.208         8x8 block compare -- 64 candidate pairs per step
+  clip                47133.01     1.87x      1.0274     2.271         clip both lists to their overlapping span first
+  adaptive            44099.04     2.00x      0.9613     2.125         merge or gallop on the length ratio
+  neon                44089.40     2.00x      0.9611     2.125         4x4 block compare via vextq rotation
+
+  R x R   (work unit: run, mean 29813.2 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge              102539.89     1.00x      3.4394     7.603         reference: overlap merge
+  merge_bl            55420.14     1.85x      1.8589     4.109         branchless merge
+  gallop             118804.33     0.86x      3.9850     8.809         gallop from the shorter run array
+  adaptive            55025.84     1.86x      1.8457     4.080         merge or gallop on the run-count ratio
+  clip                55488.04     1.85x      1.8612     4.114         disjoint-span early out, then clip both sides
+
+  R x W   (work unit: run+word, mean 15936.1 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  merge               52037.54     1.00x      3.2654     7.219         reference: runs against the segment stream
+  merge2              28755.55     1.81x      1.8044     3.989         single-pass two-cursor merge, no segment re-walking
+  skip                28095.94     1.85x      1.7630     3.897         a zero fill retires every run inside it in one step
+
+  W x W   (work unit: ewah word, mean 2050.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                161.20     1.00x      0.0786     0.174         reference: segment merge, word at a time
+  neon                  139.46     1.16x      0.0680     0.150         NEON literal bodies
+  skip                  145.12     1.11x      0.0708     0.156         a zero fill swallows the other side's segments whole
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                142.47     1.00x      0.1391     0.308         reference: 1 word at a time
+  scalar_u4             210.40     0.68x      0.2055     0.454         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  350.79     0.41x      0.3426     0.757         AND+CNT+UADALP, 1 accumulator
+  neon_u2               186.96     0.76x      0.1826     0.404         2 accumulators
+  neon_u4               119.41     1.19x      0.1166     0.258         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               120.48     1.18x      0.1177     0.260         8 accumulators
+  neon_u16              115.50     1.23x      0.1128     0.249         16 accumulators -- has the series saturated?
+  neon_u8acc4           118.75     1.20x      0.1160     0.256         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           116.06     1.23x      0.1133     0.251         u8 accumulate, 8 accumulators
+  neon_ld2              131.43     1.08x      0.1284     0.284         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               133.62     1.07x      0.1305     0.288         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               210.51     0.68x      0.2056     0.454         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         355.76     0.40x      0.3474     0.768     K   skip all-zero 512b blocks via rank index
+  neon_rskip1           357.86     0.40x      0.3495     0.773     K   gate on the sparser side only -- half the index traffic
+
+  best non-B x B cell: B x W/neon at 138.83 ns/pair
+  B x B floor:         115.50 ns/pair
+  speedup over fixed-cost dense pairing: 0.8x

@@ -356,6 +356,138 @@ uint64_t bs_adaptive(const BitmapView& b, const ListView& s) {
     return (b.nw <= kBsL1Words / 2) ? bs_shift(b, s) : bs_ilp8x(b, s);
 }
 
+// --- V13: 16 accumulator chains ----------------------------------------------
+// 8 chains beat 4 and 4 beat 1; the series has not obviously saturated. If 16
+// also helps, the kernel is still latency bound and more lookahead is the lever.
+// If it does not, 8 is the plateau and the remaining gap is the scattered load
+// itself -- which is the answer that closes the cell.
+uint64_t bs_ilp16x(const BitmapView& b, const ListView& s) {
+    uint64_t a[16] = {0};
+    uint32_t i = 0;
+    for (; i + 16 <= s.n; i += 16) {
+#define STORM_BS_P(k) { const uint32_t v = s.v[i + k]; a[k] += (b.w[v >> 6] >> (v & 63)) & 1u; }
+        STORM_BS_P(0)  STORM_BS_P(1)  STORM_BS_P(2)  STORM_BS_P(3)
+        STORM_BS_P(4)  STORM_BS_P(5)  STORM_BS_P(6)  STORM_BS_P(7)
+        STORM_BS_P(8)  STORM_BS_P(9)  STORM_BS_P(10) STORM_BS_P(11)
+        STORM_BS_P(12) STORM_BS_P(13) STORM_BS_P(14) STORM_BS_P(15)
+#undef STORM_BS_P
+    }
+    uint64_t c = 0;
+    for (int k = 0; k < 16; ++k) c += a[k];
+    for (; i < s.n; ++i) c += (b.w[s.v[i] >> 6] >> (s.v[i] & 63)) & 1u;
+    return c;
+}
+
+// --- V14: byte-granular skip via a nonzero-word summary ----------------------
+// bs_rankskip skips at 512-bit granularity. Most of the win, though, is in
+// whether the single WORD a probe lands on is zero -- and the rank index can
+// answer that for a whole block boundary but not for one word.
+//
+// This variant instead exploits the dense side's own structure: it reads the
+// word once and reuses it for every list element in that word, so a group of
+// same-word probes costs one load rather than one per element. Unlike
+// bs_collapse it does NOT build a mask or branch per group -- it just caches
+// the last word and its index, which is a predictable compare against a value
+// already in a register.
+uint64_t bs_cacheword(const BitmapView& b, const ListView& s) {
+    uint64_t c = 0;
+    uint32_t last = UINT32_MAX;
+    uint64_t word = 0;
+    for (uint32_t i = 0; i < s.n; ++i) {
+        const uint32_t v = s.v[i], wi = v >> 6;
+        if (wi != last) { last = wi; word = b.w[wi]; }
+        c += (word >> (v & 63)) & 1u;
+    }
+    return c;
+}
+
+// --- V15: 16 chains with same-word reuse -------------------------------------
+// ilp16x won on two corpora and cacheword lost on all of them, but they attack
+// different costs: chains hide the scattered load's latency, word reuse removes
+// the load entirely when consecutive probes share a word. Combining them tests
+// whether the two are additive or whether the compare that enables reuse costs
+// more than the load it saves.
+uint64_t bs_ilp_cache(const BitmapView& b, const ListView& s) {
+    uint64_t a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+    uint32_t last0 = UINT32_MAX, last1 = UINT32_MAX;
+    uint64_t w0 = 0, w1 = 0;
+    uint32_t i = 0;
+    for (; i + 4 <= s.n; i += 4) {
+        const uint32_t v0 = s.v[i], v1 = s.v[i + 1], v2 = s.v[i + 2], v3 = s.v[i + 3];
+        const uint32_t i0 = v0 >> 6, i1 = v1 >> 6, i2 = v2 >> 6, i3 = v3 >> 6;
+        if (i0 != last0) { last0 = i0; w0 = b.w[i0]; }
+        a0 += (w0 >> (v0 & 63)) & 1u;
+        if (i1 != last0) { last0 = i1; w0 = b.w[i1]; }
+        a1 += (w0 >> (v1 & 63)) & 1u;
+        if (i2 != last1) { last1 = i2; w1 = b.w[i2]; }
+        a2 += (w1 >> (v2 & 63)) & 1u;
+        if (i3 != last1) { last1 = i3; w1 = b.w[i3]; }
+        a3 += (w1 >> (v3 & 63)) & 1u;
+    }
+    uint64_t c = (a0 + a1) + (a2 + a3);
+    for (; i < s.n; ++i) c += (b.w[s.v[i] >> 6] >> (s.v[i] & 63)) & 1u;
+    return c;
+}
+
+// --- V16: deep prefetch ------------------------------------------------------
+// bs_prefetch at distances 16 and 32 both lost. On a 2-load-per-element loop
+// with ~4-cycle L1 hits, 16 elements of lookahead is only ~30 cycles -- far
+// short of an L2 or SLC miss. If prefetch is going to help at all it needs a
+// distance matched to the miss latency, so this probes 128.
+uint64_t bs_prefetch_deep(const BitmapView& b, const ListView& s) {
+    uint64_t a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+    uint32_t i = 0;
+    constexpr uint32_t D = 128;
+    for (; i + 4 <= s.n; i += 4) {
+        if (i + D + 4 <= s.n) {
+            __builtin_prefetch(&b.w[s.v[i + D] >> 6], 0, 0);
+            __builtin_prefetch(&b.w[s.v[i + D + 2] >> 6], 0, 0);
+        }
+        const uint32_t v0 = s.v[i], v1 = s.v[i + 1], v2 = s.v[i + 2], v3 = s.v[i + 3];
+        a0 += (b.w[v0 >> 6] >> (v0 & 63)) & 1u;
+        a1 += (b.w[v1 >> 6] >> (v1 & 63)) & 1u;
+        a2 += (b.w[v2 >> 6] >> (v2 & 63)) & 1u;
+        a3 += (b.w[v3 >> 6] >> (v3 & 63)) & 1u;
+    }
+    uint64_t c = (a0 + a1) + (a2 + a3);
+    for (; i < s.n; ++i) c += (b.w[s.v[i] >> 6] >> (s.v[i] & 63)) & 1u;
+    return c;
+}
+
+// --- V17: zone-map gating ----------------------------------------------------
+// bs_rankskip gates on the rank index: two 64-bit counters per 512-bit block.
+// The zone map answers the same question -- "is this bin empty?" -- with ONE
+// BIT, so a single occ word covers 64 bins = 32,768 bits of universe. The index
+// traffic drops by ~128x and the whole zone map of a row stays in L1 even when
+// its bitmap does not.
+//
+// Same structure as bs_rankskip otherwise, so the difference measured between
+// them is purely the cost of consulting the summary.
+uint64_t bs_occ(const BitmapView& b, const ListView& s) {
+    if (b.occ == nullptr) return bs_ilp8x(b, s);
+    uint64_t c = 0;
+    uint32_t i = 0;
+    while (i < s.n) {
+        const uint32_t bin = s.v[i] >> 9;              // 8 words = 512 bits per bin
+        uint32_t j = i;
+        while (j < s.n && (s.v[j] >> 9) == bin) ++j;
+        const uint32_t ow = bin >> 6;
+        if (ow < b.n_occ && ((b.occ[ow] >> (bin & 63)) & 1u)) {
+            uint64_t a0 = 0, a1 = 0;
+            uint32_t k = i;
+            for (; k + 2 <= j; k += 2) {
+                const uint32_t v0 = s.v[k], v1 = s.v[k + 1];
+                a0 += (b.w[v0 >> 6] >> (v0 & 63)) & 1u;
+                a1 += (b.w[v1 >> 6] >> (v1 & 63)) & 1u;
+            }
+            c += a0 + a1;
+            for (; k < j; ++k) c += (b.w[s.v[k] >> 6] >> (s.v[k] & 63)) & 1u;
+        }
+        i = j;
+    }
+    return c;
+}
+
 // --- V7: the inflate-to-bitmap fallback, as a LABELLED baseline ------------
 // AGENTS.md standing rule 3: never inflate a sparse side to a bitmap to reuse
 // the B x B kernel -- it recovers zero of the available saving. It appears here
@@ -386,6 +518,11 @@ const Variant<fn_bs> kBS[] = {
     {"pack2",          bs_pack2,         "two positions per 64-bit list load, 4 chains"},
     {"split2",         bs_split2,        "two independent cursors over halves of the list"},
     {"adaptive",       bs_adaptive,      "shift when the bitmap is L1-resident, ilp8x when not"},
+    {"ilp16x",         bs_ilp16x,        "16 chains -- has the ILP series saturated?"},
+    {"cacheword",      bs_cacheword,     "reuse the last loaded word across same-word probes"},
+    {"ilp_cache",      bs_ilp_cache,     "16-chain style ILP plus same-word reuse"},
+    {"prefetch_deep",  bs_prefetch_deep, "prefetch 128 elements ahead, matched to a miss"},
+    {"occ",            bs_occ,           "zone map gates each 512-bit bin -- 1 bit per bin", true},
     {"rankskip",       bs_rankskip,      "skip list groups whose dense-side rank block is empty", true},
     {"collapse",       bs_collapse,      "D2: fold same-word groups into one mask"},
     {"collapse_peel",  bs_collapse_peel, "D2 with the group-of-one case peeled out"},

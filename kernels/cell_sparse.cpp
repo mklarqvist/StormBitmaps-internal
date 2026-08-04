@@ -27,6 +27,12 @@
 namespace storm {
 namespace {
 
+#if STORM_CELL_NEON
+// Forward declarations: the second-generation selectors are defined next to the
+// first-generation ones for readability, but dispatch to kernels defined below.
+uint64_t ss_neon8(const ListView&, const ListView&);
+#endif
+
 // ===========================================================================
 // S x S
 // ===========================================================================
@@ -155,6 +161,72 @@ uint64_t ss_adaptive(const ListView& a, const ListView& b) {
 #endif
 }
 
+#if STORM_CELL_NEON
+/* Second-generation selector, built from what the sweep actually showed rather
+ * than from one length ratio:
+ *
+ *   disjoint spans        -> 0, from two comparisons
+ *   lopsided lengths      -> gallop_sym (8.53x over neon8 on long-run data)
+ *   comparable lengths    -> neon8 8x8 block compare (1.76-1.77x over neon)
+ *
+ * gallop_sym rather than gallop because it drives from whichever side is
+ * behind, which is what wins when two rows have similar cardinality but sit in
+ * different parts of the universe -- the common case under a 1/i spectrum. */
+uint64_t ss_adaptive2(const ListView& a, const ListView& b) {
+    if (a.n == 0 || b.n == 0) return 0;
+    if (a.v[a.n - 1] < b.v[0] || b.v[b.n - 1] < a.v[0]) return 0;
+    const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
+    if (hi / lo >= kGallopRatio) return ss_gallop_sym(a, b);
+    return ss_neon8(a, b);
+}
+#endif
+
+#if STORM_CELL_NEON
+// 8x8 block compare: two vectors per side, so one advance step settles 64
+// candidate pairs instead of 16. Doubles the work per branch at the cost of
+// four more vceqq_u32 per step; whether that pays depends on how often the
+// blocks actually overlap, which is a property of the data rather than of the
+// kernel.
+uint64_t ss_neon8(const ListView& a, const ListView& b) {
+    uint64_t c = 0;
+    uint32_t i = 0, j = 0;
+    while (i + 8 <= a.n && j + 8 <= b.n) {
+        const uint32x4_t a0 = vld1q_u32(a.v + i), a1 = vld1q_u32(a.v + i + 4);
+        uint32x4_t b0 = vld1q_u32(b.v + j),       b1 = vld1q_u32(b.v + j + 4);
+        uint32x4_t m0 = vdupq_n_u32(0), m1 = vdupq_n_u32(0);
+        for (int r = 0; r < 4; ++r) {
+            m0 = vorrq_u32(m0, vorrq_u32(vceqq_u32(a0, b0), vceqq_u32(a0, b1)));
+            m1 = vorrq_u32(m1, vorrq_u32(vceqq_u32(a1, b0), vceqq_u32(a1, b1)));
+            b0 = vextq_u32(b0, b0, 1);
+            b1 = vextq_u32(b1, b1, 1);
+        }
+        c += vaddvq_u32(vshrq_n_u32(m0, 31)) + vaddvq_u32(vshrq_n_u32(m1, 31));
+        const uint32_t amax = a.v[i + 7], bmax = b.v[j + 7];
+        i += (amax <= bmax) ? 8 : 0;
+        j += (bmax <= amax) ? 8 : 0;
+    }
+    while (i < a.n && j < b.n) {
+        const uint32_t va = a.v[i], vb = b.v[j];
+        c += (va == vb); i += (va <= vb); j += (vb <= va);
+    }
+    return c;
+}
+
+// Range pre-filter. Two sorted lists whose spans barely overlap still cost a
+// full merge; clipping both to the intersection of their [min, max] ranges is
+// two galloping searches and can delete most of the work. Under a 1/i spectrum
+// rows land in different parts of the universe constantly.
+uint64_t ss_clip(const ListView& a, const ListView& b) {
+    if (a.n == 0 || b.n == 0) return 0;
+    if (a.v[a.n - 1] < b.v[0] || b.v[b.n - 1] < a.v[0]) return 0;   // disjoint spans
+    const uint32_t ia = gallop(a.v, a.n, 0, b.v[0]);
+    const uint32_t ib = gallop(b.v, b.n, 0, a.v[0]);
+    ListView ca{a.v + ia, a.n - ia};
+    ListView cb{b.v + ib, b.n - ib};
+    return ss_neon(ca, cb);
+}
+#endif
+
 // ===========================================================================
 // S x R  — P0
 // ===========================================================================
@@ -241,6 +313,20 @@ static inline uint32_t ilog2_up(uint32_t x) {
     return x <= 1 ? 1u : (uint32_t)(32 - __builtin_clz(x - 1));
 }
 
+/* Adds the disjoint-span early out to the three-way cost comparison. Two
+ * comparisons settle a pair whose list and run array do not overlap at all,
+ * which under a skewed spectrum is a large fraction of them. */
+uint64_t sr_adaptive2(const ListView& s, const RunView& r) {
+    if (s.n == 0 || r.n == 0) return 0;
+    if (s.v[s.n - 1] < r.start[0] || r.end[r.n - 1] <= s.v[0]) return 0;
+    const uint64_t c_merge  = (uint64_t)s.n + r.n;
+    const uint64_t c_search = (uint64_t)s.n * ilog2_up(r.n);
+    const uint64_t c_runs   = (uint64_t)r.n * ilog2_up(s.n);
+    if (c_runs <= c_search && c_runs <= c_merge)   return sr_search_runs(s, r);
+    if (c_search < c_merge)                        return sr_search(s, r);
+    return sr_merge(s, r);
+}
+
 uint64_t sr_adaptive(const ListView& s, const RunView& r) {
     if (s.n == 0 || r.n == 0) return 0;
     const uint64_t c_merge  = (uint64_t)s.n + r.n;
@@ -250,6 +336,34 @@ uint64_t sr_adaptive(const ListView& s, const RunView& r) {
     if (c_search < c_merge)                        return sr_search(s, r);
     return sr_merge(s, r);
 }
+
+#if STORM_CELL_NEON
+// Test four list elements against one run at a time. A run is a half-open
+// interval, so containment inside it is one vector compare per quad -- no
+// branch per element, which is what sr_merge pays. Advancing the run pointer
+// stays scalar because it is data dependent, but that is once per run rather
+// than once per element.
+uint64_t sr_neon(const ListView& s, const RunView& r) {
+    uint64_t c = 0;
+    uint32_t i = 0, j = 0;
+    while (i < s.n && j < r.n) {
+        const uint32_t lo = r.start[j], hi = r.end[j];
+        while (i < s.n && s.v[i] < lo) ++i;            // skip up to this run
+        const uint32x4_t vhi = vdupq_n_u32(hi);
+        bool ran_out = false;
+        while (i + 4 <= s.n) {
+            const uint32x4_t v = vld1q_u32(s.v + i);
+            const uint32_t k = vaddvq_u32(vshrq_n_u32(vcltq_u32(v, vhi), 31));
+            c += k;
+            i += k;
+            if (k != 4) { ran_out = true; break; }     // quad straddles the run end
+        }
+        if (!ran_out) while (i < s.n && s.v[i] < hi) { ++c; ++i; }
+        ++j;
+    }
+    return c;
+}
+#endif
 
 // ===========================================================================
 // R x R
@@ -301,11 +415,56 @@ uint64_t rr_gallop(const RunView& a, const RunView& b) {
     return c;
 }
 
+// Disjoint-span early out, plus clipping both run arrays to the overlapping
+// span before merging. Same idea as ss_clip: the cheapest overlap is the one
+// proved absent from two comparisons.
+uint64_t rr_clip(const RunView& a, const RunView& b) {
+    if (a.n == 0 || b.n == 0) return 0;
+    if (a.end[a.n - 1] <= b.start[0] || b.end[b.n - 1] <= a.start[0]) return 0;
+    const uint32_t ia = gallop(a.end, a.n, 0, b.start[0] + 1);
+    const uint32_t ib = gallop(b.end, b.n, 0, a.start[0] + 1);
+    RunView ca{a.start + ia, a.end + ia, a.n - ia};
+    RunView cb{b.start + ib, b.end + ib, b.n - ib};
+    uint64_t c = 0;
+    uint32_t i = 0, j = 0;
+    while (i < ca.n && j < cb.n) {
+        const uint32_t ea = ca.end[i], eb = cb.end[j];
+        const uint32_t lo = std::max(ca.start[i], cb.start[j]);
+        const uint32_t hi = std::min(ea, eb);
+        c += (hi > lo) ? (hi - lo) : 0;
+        i += (ea <= eb);
+        j += (eb <= ea);
+    }
+    return c;
+}
+
+/* A vectorized R x R merge was attempted and abandoned. The overlap arithmetic
+ * itself vectorizes cleanly -- max(0, min(ea,eb) - max(sa,sb)) is two vector
+ * min/max and one saturating subtract, with vqsubq_u32 giving the max(0, .) for
+ * free. What does not vectorize is the ADVANCE: which side steps forward
+ * depends on the comparison just computed, so a SIMD block cannot know how many
+ * run pairs it actually consumed. Processing four pairs positionally is only
+ * correct when both arrays advance in lockstep, which is not a property the
+ * data has.
+ *
+ * Recorded here rather than left as a gap: the reason R x R stays scalar is
+ * structural, not an omission, and the same argument applies to every
+ * merge-shaped cell (S x S escapes it only because the all-pairs block compare
+ * sidesteps the advance question entirely). */
+
 constexpr uint32_t kRrGallopRatio = 8;
 
 uint64_t rr_adaptive(const RunView& a, const RunView& b) {
     const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
     if (lo == 0) return 0;
+    return (hi / lo >= kRrGallopRatio) ? rr_gallop(a, b) : rr_merge_bl(a, b);
+}
+
+// Adaptive with the disjoint-span early out in front of it.
+uint64_t rr_adaptive2(const RunView& a, const RunView& b) {
+    if (a.n == 0 || b.n == 0) return 0;
+    if (a.end[a.n - 1] <= b.start[0] || b.end[b.n - 1] <= a.start[0]) return 0;
+    const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
     return (hi / lo >= kRrGallopRatio) ? rr_gallop(a, b) : rr_merge_bl(a, b);
 }
 
@@ -316,6 +475,11 @@ const Variant<fn_ss> kSS[] = {
     {"merge_bl",  ss_merge_bl,  "branchless merge"},
     {"gallop",    ss_gallop,    "exponential + binary search from the shorter side"},
     {"gallop_sym",ss_gallop_sym,"gallop whichever side is behind, both directions"},
+#if STORM_CELL_NEON
+    {"neon8",     ss_neon8,     "8x8 block compare -- 64 candidate pairs per step"},
+    {"clip",      ss_clip,      "clip both lists to their overlapping span first"},
+    {"adaptive2", ss_adaptive2, "disjoint -> 0, lopsided -> gallop_sym, else neon8"},
+#endif
     {"adaptive",  ss_adaptive,  "merge or gallop on the length ratio"},
 #if STORM_CELL_NEON
     {"neon",      ss_neon,      "4x4 block compare via vextq rotation"},
@@ -327,7 +491,14 @@ const Variant<fn_sr> kSR[] = {
     {"merge_bl",  sr_merge_bl,  "branchless merge"},
     {"search",    sr_search,    "gallop into the run array per list element"},
     {"search_runs", sr_search_runs, "two galloping searches into the LIST per run"},
+#if STORM_CELL_NEON
+    {"neon",      sr_neon,      "4 list elements tested against a run per step"},
+#endif
+#if STORM_CELL_NEON
+    {"neon",      sr_neon,      "4 list elements tested against a run per step"},
+#endif
     {"adaptive",  sr_adaptive,  "three-way cost comparison from the two sizes"},
+    {"adaptive2", sr_adaptive2, "three-way cost comparison plus a disjoint-span early out"},
 };
 
 const Variant<fn_rr> kRR[] = {
@@ -335,6 +506,8 @@ const Variant<fn_rr> kRR[] = {
     {"merge_bl",  rr_merge_bl,  "branchless merge"},
     {"gallop",    rr_gallop,    "gallop from the shorter run array"},
     {"adaptive",  rr_adaptive,  "merge or gallop on the run-count ratio"},
+    {"clip",      rr_clip,      "disjoint-span early out, then clip both sides"},
+    {"adaptive2", rr_adaptive2, "disjoint-span early out in front of the ratio choice"},
 };
 
 } // namespace

@@ -185,7 +185,7 @@ void generate(Corpus& out, const CorpusSpec& spec) {
 
     double   sum_card = 0, sum_runs = 0;
     uint32_t mn = UINT32_MAX, mx = 0;
-    double   bB = 0, bS = 0, bR = 0, bW = 0;
+    double   bB = 0, bS = 0, bR = 0, bW = 0, bK = 0, bO = 0;
 
     for (uint32_t i = 0; i < spec.n_rows; ++i) {
         const uint32_t c = draw_cardinality(rng, spec, T, inv_limit);
@@ -218,6 +218,8 @@ void generate(Corpus& out, const CorpusSpec& spec) {
         bS += (double)m.cardinality * 4.0;
         bR += (double)m.n_runs * 8.0;
         bW += (double)out.rows[i].ewah.size() * 8.0;
+        bK += (double)out.rows[i].rank.size() * 8.0;
+        bO += (double)out.rows[i].occ.size()  * 8.0;
     }
 
     out.mean_card = sum_card / spec.n_rows;
@@ -225,6 +227,7 @@ void generate(Corpus& out, const CorpusSpec& spec) {
     out.min_card  = (mn == UINT32_MAX) ? 0 : mn;
     out.max_card  = mx;
     out.bytes_B = bB; out.bytes_S = bS; out.bytes_R = bR; out.bytes_W = bW;
+    out.bytes_rank = bK; out.bytes_occ = bO;
 }
 
 } // namespace storm

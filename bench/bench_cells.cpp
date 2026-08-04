@@ -402,6 +402,9 @@ int main(int argc, char** argv) {
     std::printf("        footprint  B=%.0f kB  S=%.0f kB  R=%.0f kB  W=%.0f kB\n",
                 corpus.bytes_B / kB, corpus.bytes_S / kB,
                 corpus.bytes_R / kB, corpus.bytes_W / kB);
+    std::printf("        indexes    rank=%.0f kB (%.1f%% of B)   zone map=%.1f kB (%.3f%% of B)\n",
+                corpus.bytes_rank / kB, 100.0 * corpus.bytes_rank / corpus.bytes_B,
+                corpus.bytes_occ / kB, 100.0 * corpus.bytes_occ / corpus.bytes_B);
     std::printf("        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB\n");
     std::printf("        pairs benchmarked: %zu\n", pairs.size());
 

@@ -68,6 +68,8 @@ struct Corpus {
     double   bytes_S     = 0;
     double   bytes_R     = 0;
     double   bytes_W     = 0;
+    double   bytes_rank  = 0;   // rank9 index
+    double   bytes_occ   = 0;   // zone map
 };
 
 void generate(Corpus& out, const CorpusSpec& spec);

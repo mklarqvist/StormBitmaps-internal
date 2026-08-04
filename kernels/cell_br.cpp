@@ -198,6 +198,97 @@ uint64_t br_hybrid(const BitmapView& b, const RunView& r) {
     return c;
 }
 
+// --- V6: skip runs that land in an all-zero rank block -----------------------
+// The work-avoidance form. rank_block_empty() proves 512 bits are zero from two
+// counters already in cache, so a run confined to such a block contributes
+// nothing and needs no bitmap touch at all. Complements the rank difference
+// rather than replacing it: rank makes a LONG run cheap, this makes an EMPTY
+// region cheap, and skewed data has both.
+uint64_t br_skip(const BitmapView& b, const RunView& r) {
+    if (b.rank == nullptr) return br_scalar(b, r);
+    const uint32_t nblk = (b.nw + BitmapView::RANK_STRIDE - 1) / BitmapView::RANK_STRIDE;
+    uint64_t c = 0;
+    for (uint32_t i = 0; i < r.n; ++i) {
+        const uint32_t lo = r.start[i], hi = r.end[i];
+        const uint32_t blo = (lo >> 6) >> 3, bhi = ((hi - 1) >> 6) >> 3;
+        if (blo == bhi && blo < nblk && rank_block_empty(b, blo)) continue;
+        if ((hi - lo) >= kBrRankMinWords * 64u) c += rank_at(b, hi) - rank_at(b, lo);
+        else                                    c += count_range(b, lo, hi);
+    }
+    return c;
+}
+
+// --- V7: prefetch the rank entries of upcoming runs --------------------------
+// Runs are sorted, so the rank probes march forward -- but with gaps, since a
+// run may skip many blocks. That is the access pattern a stride prefetcher
+// handles worst. Two runs of lookahead costs two hints per run.
+uint64_t br_rank_pf(const BitmapView& b, const RunView& r) {
+    if (b.rank == nullptr) return br_scalar(b, r);
+    uint64_t c0 = 0, c1 = 0;
+    for (uint32_t i = 0; i < r.n; ++i) {
+        if (i + 2 < r.n) {
+            __builtin_prefetch(&b.rank[2 * ((r.start[i + 2] >> 6) >> 3)], 0, 1);
+            __builtin_prefetch(&b.w[r.start[i + 2] >> 6], 0, 1);
+        }
+        c0 += rank_at(b, r.end[i]);
+        c1 += rank_at(b, r.start[i]);
+    }
+    return c0 - c1;
+}
+
+// --- V8: two-pass rank, ends and starts separately ---------------------------
+// br_rank interleaves rank_at(end) and rank_at(start), so the two index probes
+// for one run are adjacent in the instruction stream but land in different
+// cache lines whenever the run is long. Splitting into two passes gives each
+// pass a monotonically increasing probe sequence -- the pattern a stride
+// prefetcher handles best -- at the cost of reading the run array twice.
+//
+// Three previous B x R hypotheses failed (shared block lookup, empty-block skip,
+// prefetch), so the working assumption is now that the cell is bound by the
+// rank probes' cache behaviour rather than by their count. This tests that
+// directly: if locality is the problem, restructuring the access order helps
+// even though the number of probes is identical.
+uint64_t br_rank_2pass(const BitmapView& b, const RunView& r) {
+    if (b.rank == nullptr) return br_scalar(b, r);
+    uint64_t hi = 0, lo = 0;
+    uint32_t i = 0;
+    for (; i + 2 <= r.n; i += 2) {
+        hi += rank_at(b, r.end[i]);
+        hi += rank_at(b, r.end[i + 1]);
+    }
+    for (; i < r.n; ++i) hi += rank_at(b, r.end[i]);
+    i = 0;
+    for (; i + 2 <= r.n; i += 2) {
+        lo += rank_at(b, r.start[i]);
+        lo += rank_at(b, r.start[i + 1]);
+    }
+    for (; i < r.n; ++i) lo += rank_at(b, r.start[i]);
+    return hi - lo;
+}
+
+// --- V9: hybrid driven by the pair, not the run ------------------------------
+// Every hybrid so far tests each run's length individually, so a pair of rows
+// with 500 runs pays 500 branches to reach the same answer 500 times. Mean run
+// length is one division from data the caller already has, so the strategy can
+// be chosen ONCE per pair and the inner loop left branch-free.
+//
+// This is the shape standing rule 7 asks selection decisions to take, applied
+// inside a cell rather than above it.
+uint64_t br_hybrid_pair(const BitmapView& b, const RunView& r) {
+    if (b.rank == nullptr || r.n == 0) return br_scalar(b, r);
+    const uint32_t span = r.end[r.n - 1] - r.start[0];
+    const uint32_t mean_run = span / r.n;              // upper bound on the true mean
+    uint64_t c = 0;
+    if (mean_run >= kBrRankMinWords * 64u) {
+        for (uint32_t i = 0; i < r.n; ++i)
+            c += rank_at(b, r.end[i]) - rank_at(b, r.start[i]);
+    } else {
+        for (uint32_t i = 0; i < r.n; ++i)
+            c += count_range(b, r.start[i], r.end[i]);
+    }
+    return c;
+}
+
 // --- V5: the inflate-to-bitmap fallback, LABELLED baseline -----------------
 // Standing rule 3. Present so P3/P4 have something to beat.
 thread_local std::vector<uint64_t> g_inflate_r;
@@ -226,6 +317,10 @@ const Variant<fn_br> kBR[] = {
     {"hybrid12",    br_hybrid<kBrRankMinWords>,"rank above 12 words of run, direct below", true},
     {"hybrid4",     br_hybrid<4>,             "crossover probe: rank above 4 words",       true},
     {"hybrid32",    br_hybrid<32>,            "crossover probe: rank above 32 words",      true},
+    {"rank_2pass",  br_rank_2pass,            "ends and starts in separate monotonic passes", true},
+    {"hybrid_pair", br_hybrid_pair,           "choose rank vs direct ONCE per pair, not per run", true},
+    {"skip",        br_skip,                  "skip runs inside an all-zero rank block",   true},
+    {"rank_pf",     br_rank_pf,               "M5 with rank/bitmap prefetch two runs ahead",true},
     {"inflate",     br_inflate,               "BASELINE ONLY: materialize R as a bitmap, run B x B",
                                                false, true},
 };

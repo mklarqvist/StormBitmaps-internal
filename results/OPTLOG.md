@@ -83,6 +83,58 @@ project's kernels *are*: the deliverable is not a set of hand-tuned SIMD
 routines but a set of work-avoidance strategies plus the O(1) machinery to pick
 between them.
 
+**F8 — Zone maps: a 0.195% summary is worth up to 25x, and the win comes from
+PLANNING rather than from a kernel.** A Parquet/ORC-style occupancy bitmap —
+one bit per 512-bit bin, set when the bin holds anything — makes
+`occ_A & occ_B` a bitmap intersection over m/512 bits. Its popcount is the
+*exact* number of bins that need visiting, not an estimate, and zero proves the
+rows disjoint.
+
+B×B, best SIMD kernel vs zone-map-planned (`occ_sel`), same run each:
+
+| corpus | best SIMD | zone map raw | **planned** |
+|---|---:|---:|---:|
+| U1 uniform density | 117.3 ns | 376.2 (0.31×) | **127.6** (0.92×) |
+| S1 1/i spectrum | 118.7 | 70.1 | **48.5 (2.45×)** |
+| C1 clustered 1/i | 132.7 | 23.1 | **21.1 (6.3×)** |
+| L1 long runs | 455.4 | 16.5 | **18.3 (24.9×)** |
+| D1 dense | 124.5 | 384.7 (0.32×) | 172.3 (0.72×) |
+
+B×B on the long-run corpus goes from 0.49 to **0.013 cycles/word**.
+
+Three things this establishes:
+
+1. **Applied unconditionally the zone map is a 3× pessimization** on
+   uniform-density data — every bin is occupied, the summary filters nothing,
+   and the bit-scan is pure overhead. A filter only pays when it filters.
+2. **Consulted as a plan it is nearly free to be wrong.** The selectivity scan
+   costs m/512 and is exact, so the kernel choice that follows is a decision
+   rather than a guess. That recovers the uniform-density case to 0.92× while
+   keeping 25× at the sparse end, and it makes the skewed case *faster than the
+   zone-map kernel alone* (48.5 vs 70.1) because disjoint pairs never reach a
+   kernel at all.
+3. **Build cost is a single forward pass**, O(m) per row, amortized over the
+   N−1 pairings that row participates in — and in a real system it would be
+   stored with the data, as columnar formats already store zone maps, so it
+   would not be paid at query time at all.
+
+This is F5 with a mechanism attached. SIMD wins only where work is
+irreducible; the zone map is how work becomes reducible, and it operates above
+the kernel rather than inside it.
+
+**Open, not explained:** on the dense corpus the planning step costs ~28% when
+the summary is 0.195% of the data. That is far more than the size ratio
+predicts and it has not been isolated — candidate causes are the extra
+dependent load chain in front of the kernel and lost inlining. It bounds how
+good `occ_sel` can be in the regime where it should be free.
+
+**F9 — the zone map does NOT transfer to B×S**, measuring 0.23–0.59×. Grouping
+list elements by bin and testing the summary costs more than simply probing,
+because the list is already sparse — there is little to filter and the grouping
+is per-element work. Same result for the rank-gated form. The zone map pays
+where a *dense* representation is being scanned, not where a sparse one is
+being walked.
+
 **F6 — Sequential per-variant timing is a measurement bug on a thermally
 managed part.** The harness originally timed each variant to completion in turn,
 so any monotonic drift over a long sweep landed unevenly and favoured whichever

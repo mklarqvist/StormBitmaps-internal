@@ -156,6 +156,68 @@ uint64_t bw_rank(const BitmapView& b, const EwahView& w) {
     return c;
 }
 
+// Fill-length adaptive. bw_rank collapses EVERY one-fill to a rank difference,
+// but B x R measured the rank/direct crossover at ~4 words of run -- and a fill
+// is a run. Below that the two rank probes cost more than just counting the
+// words. Same threshold, same reason.
+constexpr uint32_t kBwRankMinWords = 4;
+
+uint64_t bw_hybrid(const BitmapView& b, const EwahView& w) {
+    if (b.rank == nullptr) return bw_neon(b, w);
+    uint64_t c = 0;
+    uint32_t pos = 0;
+    Cursor cw(w);
+    while (!cw.done() && pos < b.nw) {
+        uint32_t k = cw.seg();
+        if (pos + k > b.nw) k = b.nw - pos;
+        if (cw.in_fill()) {
+            if (cw.fill_val) {
+                if (k >= kBwRankMinWords)
+                    c += rank_at(b, (pos + k) * 64) - rank_at(b, pos * 64);
+                else
+                    c += popcnt_words(b.w + pos, k);
+            }
+        } else {
+            c += and_popcnt_words(b.w + pos, cw.lit(), k);
+        }
+        pos += k;
+        cw.consume(k);
+    }
+    return c;
+}
+
+/* Bulk zero-fill skipping for B x W. bw_hybrid still advances one segment at a
+ * time; this lets a long zero fill retire without the per-segment bookkeeping,
+ * and uses the rank difference for one-fills above the measured crossover.
+ * The combination of both skips is what the density sweep says should win at
+ * the sparse end. */
+uint64_t bw_skip(const BitmapView& b, const EwahView& w) {
+    uint64_t c = 0;
+    uint32_t pos = 0;
+    Cursor cw(w);
+    const bool have_rank = (b.rank != nullptr);
+    while (!cw.done() && pos < b.nw) {
+        uint32_t k = cw.seg();
+        if (pos + k > b.nw) k = b.nw - pos;
+        if (cw.in_fill()) {
+            if (!cw.fill_val) {            // zero fill: nothing to do at any length
+                pos += k;
+                cw.consume(cw.seg());
+                continue;
+            }
+            if (have_rank && k >= kBwRankMinWords)
+                c += rank_at(b, (pos + k) * 64) - rank_at(b, pos * 64);
+            else
+                c += popcnt_words(b.w + pos, k);
+        } else {
+            c += and_popcnt_words(b.w + pos, cw.lit(), k);
+        }
+        pos += k;
+        cw.consume(k);
+    }
+    return c;
+}
+
 // ===========================================================================
 // W x W
 // ===========================================================================
@@ -381,26 +443,215 @@ uint64_t rw_merge(const RunView& r, const EwahView& w) {
 
 // ---------------------------------------------------------------------------
 
+/* Two-cursor merge over runs and segments.
+ *
+ * rw_merge walks the segment stream with a LOCAL copy for each run, which keeps
+ * it correct when a run spans many segments but re-walks those segments for
+ * every run that touches them. This form advances a single pair of cursors and
+ * retires whichever side ends first, so each run and each segment is visited
+ * exactly once: Theta(r + segments) with no re-walking, and a zero fill costs
+ * one comparison no matter how many words it covers.
+ */
+uint64_t rw_merge2(const RunView& r, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < r.n && !cw.done()) {
+        const uint64_t slo = (uint64_t)pos * 64;
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if (r.end[i] <= slo) { ++i; continue; }                       // run is behind
+        if (r.start[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+
+        const uint32_t a = (uint32_t)std::max<uint64_t>(r.start[i], slo);
+        const uint32_t b = (uint32_t)std::min<uint64_t>(r.end[i],   shi);
+        if (cw.in_fill()) { if (cw.fill_val) c += b - a; }
+        else              c += range_in_words(cw.lit(), pos, a, b);
+
+        if ((uint64_t)r.end[i] <= shi) ++i;
+        else { pos += cw.seg(); cw.consume(cw.seg()); }
+    }
+    return c;
+}
+
+/* Same merge, but a ZERO fill retires runs in bulk instead of one at a time.
+ * Under a skewed spectrum most of the stream is zero fills, so most runs are
+ * settled by this branch and never reach the counting path at all. */
+uint64_t rw_skip(const RunView& r, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < r.n && !cw.done()) {
+        const uint64_t slo = (uint64_t)pos * 64;
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if (r.end[i] <= slo) { ++i; continue; }
+        if (r.start[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+
+        if (cw.in_fill() && !cw.fill_val) {          // zero fill: skip every run in it
+            while (i < r.n && (uint64_t)r.end[i] <= shi) ++i;
+            pos += cw.seg();
+            cw.consume(cw.seg());
+            continue;
+        }
+        const uint32_t a = (uint32_t)std::max<uint64_t>(r.start[i], slo);
+        const uint32_t b = (uint32_t)std::min<uint64_t>(r.end[i],   shi);
+        if (cw.in_fill()) c += b - a;                // one fill
+        else              c += range_in_words(cw.lit(), pos, a, b);
+
+        if ((uint64_t)r.end[i] <= shi) ++i;
+        else { pos += cw.seg(); cw.consume(cw.seg()); }
+    }
+    return c;
+}
+
 const Variant<fn_bw> kBW[] = {
     {"scalar",   bw_scalar,   "reference: segment walk, word at a time"},
     {"neon",     bw_neon,     "NEON literal and fill bodies"},
     {"rank",     bw_rank,     "one-fills collapse to a rank difference", true},
+    {"hybrid",   bw_hybrid,   "rank for fills >= 4 words, direct below",  true},
+    {"skip",     bw_skip,     "zero fills retire outright, one-fills via rank", true},
 };
+
+/* Binary-search the list past each segment instead of walking it.
+ *
+ * sw_skip advances the list index linearly through a fill; when the fill is
+ * long and the list is dense inside it that is still Theta(elements). Galloping
+ * to the fill's end is Theta(log), and for a ZERO fill the elements skipped
+ * never needed to be looked at individually at all. */
+uint64_t sw_search(const ListView& s, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < s.n && !cw.done()) {
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if ((uint64_t)s.v[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+        if (cw.in_fill()) {
+            // Every element below shi is settled by the fill value alone.
+            const uint32_t key = (shi > UINT32_MAX) ? UINT32_MAX : (uint32_t)shi;
+            uint32_t j = i, step = 1;
+            while (j + step < s.n && s.v[j + step] < key) { j += step; step <<= 1; }
+            uint32_t hi = std::min<uint32_t>(j + step, s.n);
+            while (j < hi) {
+                const uint32_t mid = j + ((hi - j) >> 1);
+                if (s.v[mid] < key) j = mid + 1; else hi = mid;
+            }
+            if (cw.fill_val) c += j - i;
+            i = j;
+            continue;
+        }
+        c += (cw.lit()[(s.v[i] >> 6) - pos] >> (s.v[i] & 63)) & 1u;
+        ++i;
+    }
+    return c;
+}
+
+/* sw_skip walks the list through a fill; sw_search gallops past it. The sweep
+ * put 13.7x between them on long-fill data and had sw_skip ahead on short-fill
+ * data, so neither dominates. The crossover is a fill length: galloping costs
+ * ~log(elements) and walking costs the elements themselves, so gallop once a
+ * fill is long enough to contain many of them. Expressed in WORDS of fill,
+ * which is what the cursor knows without touching the list. */
+constexpr uint32_t kSwSearchMinFill = 8;
+
+uint64_t sw_adaptive(const ListView& s, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < s.n && !cw.done()) {
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if ((uint64_t)s.v[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+        if (cw.in_fill()) {
+            const uint32_t key = (shi > UINT32_MAX) ? UINT32_MAX : (uint32_t)shi;
+            uint32_t j = i;
+            if (cw.seg() >= kSwSearchMinFill) {          // long fill: gallop past it
+                uint32_t step = 1;
+                while (j + step < s.n && s.v[j + step] < key) { j += step; step <<= 1; }
+                uint32_t hi = std::min<uint32_t>(j + step, s.n);
+                while (j < hi) {
+                    const uint32_t mid = j + ((hi - j) >> 1);
+                    if (s.v[mid] < key) j = mid + 1; else hi = mid;
+                }
+            } else {                                      // short fill: just walk
+                while (j < s.n && s.v[j] < key) ++j;
+            }
+            if (cw.fill_val) c += j - i;
+            i = j;
+            continue;
+        }
+        c += (cw.lit()[(s.v[i] >> 6) - pos] >> (s.v[i] & 63)) & 1u;
+        ++i;
+    }
+    return c;
+}
 
 const Variant<fn_sw> kSW[] = {
     {"merge",    sw_merge,    "reference: list against the segment stream"},
     {"collapse", sw_collapse, "same-word list elements folded into one mask"},
     {"skip",     sw_skip,     "a fill settles every list element inside it in one step"},
+    {"search",   sw_search,   "gallop the list past a fill instead of walking it"},
+    {"adaptive", sw_adaptive, "gallop past long fills, walk short ones"},
 };
+
+/* rw_merge2 and rw_skip traded wins across the corpora with margins under 10%,
+ * which is what you expect when the only difference is a bulk-retire branch
+ * that fires often on some data and never on others. Taking the skip form
+ * unconditionally is the right call -- the branch is one comparison and it is
+ * predictable in both directions -- but the adaptive is measured rather than
+ * assumed so the claim is checkable. */
+uint64_t rw_adaptive(const RunView& r, const EwahView& w) {
+    if (r.n == 0) return 0;
+    return rw_skip(r, w);
+}
 
 const Variant<fn_rw> kRW[] = {
     {"merge",    rw_merge,    "reference: runs against the segment stream"},
+    {"merge2",   rw_merge2,   "single-pass two-cursor merge, no segment re-walking"},
+    {"skip",     rw_skip,     "a zero fill retires every run inside it in one step"},
+    {"adaptive", rw_adaptive, "skip form, with an empty-run-array early out"},
 };
+
+/* ww_skip wins on 4 of 5 corpora but loses to ww_neon on dense data, where the
+ * stream is all literals and the zero-fill branch never fires. This form keeps
+ * the bulk skip and adds an early out for the case that makes it useless: if
+ * NEITHER side has a fill in front of it, go straight to the vectorized literal
+ * AND without re-testing the fill conditions. */
+uint64_t ww_skip2(const EwahView& a, const EwahView& b) {
+    uint64_t c = 0;
+    Cursor ca(a), cb(b);
+    while (!ca.done() && !cb.done()) {
+        if (!ca.in_fill() && !cb.in_fill()) {              // the dense-data path
+            const uint32_t k = std::min(ca.seg(), cb.seg());
+            c += and_popcnt_words(ca.lit(), cb.lit(), k);
+            ca.consume(k);
+            cb.consume(k);
+            continue;
+        }
+        if (ca.in_fill() && !ca.fill_val) {
+            uint32_t k = ca.fill_left;
+            while (k && !cb.done()) { const uint32_t t = std::min(k, cb.seg()); cb.consume(t); k -= t; }
+            ca.consume(ca.fill_left - k);
+            continue;
+        }
+        if (cb.in_fill() && !cb.fill_val) {
+            uint32_t k = cb.fill_left;
+            while (k && !ca.done()) { const uint32_t t = std::min(k, ca.seg()); ca.consume(t); k -= t; }
+            cb.consume(cb.fill_left - k);
+            continue;
+        }
+        const uint32_t k = std::min(ca.seg(), cb.seg());
+        if (ca.in_fill() && cb.in_fill()) c += uint64_t(k) * 64;
+        else if (ca.in_fill())            c += popcnt_words(cb.lit(), k);
+        else                              c += popcnt_words(ca.lit(), k);
+        ca.consume(k);
+        cb.consume(k);
+    }
+    return c;
+}
 
 const Variant<fn_ww> kWW[] = {
     {"scalar",   ww_scalar,   "reference: segment merge, word at a time"},
     {"neon",     ww_neon,     "NEON literal bodies"},
     {"skip",     ww_skip,     "a zero fill swallows the other side's segments whole"},
+    {"skip2",    ww_skip2,    "bulk skip plus a literal-vs-literal fast path"},
 };
 
 } // namespace
