@@ -334,7 +334,7 @@ Two hard requirements follow:
 | # | Status | Evidence |
 |---|---|---|
 | **P1** | **HOLDS conditionally** | 55–91× over all-bitmap on run-structured data across four microarchitectures; 47–56× at density 2e-4 on three of four. Does **not** hold in the mid-density band, where bitmap × bitmap is genuinely correct. `results/CROSS_ISA.md` |
-| **P2** | **REFUTED as measured** | Selection costs 28.3% of runtime against a 2% budget; oracle regret 94.1%. Gate 1 fails. The prescribed fallback (M3 tile hoisting) is unbuilt. `results/OPTLOG.md` |
+| **P2** | **HOLDS — tile-hoisted** | Per-pair selection costs 28–48% of runtime (FAIL). Deciding once per 64×64 tile brings it to **0.10–0.29%**, and probe-and-commit to 0.30–0.48% — both inside the 2% budget, on 3 hosts. Gate 1 **passes**. Caveat: the *passing* policy has no oracle-regret number; the 94.1% regret figure describes the per-pair policy that failed. `results/OPTLOG.md` |
 | **P3** | **REFUTED as worded** | The asymmetric cells beat inflate-to-bitmap, but never by vectorizing: a SIMD kernel wins 0 of 25 corpus-cell points. `bs_neon_idx` and `br_neon` are correct and lose 0.51–0.86× |
 | **P4** | **HOLDS** | Run count pinned, length varied 256×: no-index grows 18×, indexed shows no trend. Crossover measured at ~256-bit runs (the analytic estimate said 600–1000 and was wrong). `bench/p4_runlength.sh` |
 | **P5** | **HOLDS, cross-ISA** | Beats a `run_optimize()`-tuned CRoaring at every density on all four hosts, 1.7–13.8×. Note the "15-cell matrix" of the original wording does not exist — Roaring cells were never built, only the 10 non-Ro cells |

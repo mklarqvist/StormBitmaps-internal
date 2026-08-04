@@ -1,3 +1,8 @@
+# SUPERSEDED 2026-08-04 -- measured BEFORE the AVX-512 dense kernel existed.
+# The "storm B x B dense" numbers here (742-3055 ns/pair) are the "before" side of
+# a 10x fix; see results/hosts/fpga-sapphire_dsweep.txt for current numbers and
+# results/CROSS_ISA.md for the narrative. Kept as the before/after record.
+
 # host=fpga-sapphire corpus=uniform/uniform d=0.01 rows=128 universe=65536 pairs=5000 card_mean=655.0 runs_mean=648.9
 # footprint storm_B=1024kB roaring=166kB roaring_ro=166kB zonemap=2.0kB
 kernel                      ns/pair vs roaring_ro

@@ -805,3 +805,123 @@ submitted.
 
 **Either way:** the blog post ships. It costs a week on top of work already done and it is the
 outcome that survives a failed gate.
+
+
+---
+
+## 12. Literature and landscape review, 2026-08-04
+
+Five-agent survey of papers, GitHub, adjacent techniques, application domains, and
+an adversarial audit of our own claims. Findings that change the plan.
+
+### 12.1 Three papers that partially anticipate our mechanisms — cite, do not claim around
+
+- **Han, Zou & Yu, "Speeding Up Set Intersections in Graph Algorithms using SIMD
+  Instructions," SIGMOD 2018.** Partitions each adjacency list into fixed-size
+  blocks, each indexed by a bit-vector over its value range. **This partially
+  anticipates the zone map** (§2.6 of the problem statement) from the graph side.
+  Diff our bin granularity against their block size before claiming anything
+  about zone-mapped bitmap intersection.
+- **GraphTwin, PACMMOD/SIGMOD 2025.** Per-vertex 64-bit membership vectors resolve
+  ~95% of queries in one cache-resident AND, falling back to adjacency lists for
+  the residual. The closest published analogue to our cheap-dense-probe +
+  exact-sparse-fallback structure. Different axis (which vertices get a bit slot,
+  via NP-hard set packing) — but a reviewer will find it.
+- **Han et al., "Accelerating Set Intersections by Reducing-Merging," KDD 2021 →
+  VLDB Journal 2024.** A general framework: cheap filters shrink both operands
+  before the merge, amortized across intersections sharing a list. Check its
+  selection logic is not a superset of our metadata-driven selection.
+
+### 12.2 Probe-and-commit is Micro Adaptivity — cite it by name
+
+**Răducanu, Boncz & Żukowski, "Micro Adaptivity in Vectorwise," SIGMOD 2013.**
+Keeps N alternative implementations per primitive and selects among them with an
+**ε-greedy multi-armed bandit**, re-sampling continuously at vector-block
+granularity (~1000 tuples) — the same altitude as our tile of ~4,000 pairs.
+
+Our probe-and-commit is the ε→0 special case: sample once at tile entry, then
+freeze. **This must be cited by name**; reviewers who know OLAP internals will
+ask. It also suggests a concrete improvement: if per-pair cost drifts *within* a
+tile, an ε-greedy re-probe every K tiles catches regime shifts that probe-then-
+freeze misses. Lineage to cite beneath it: Kabra & DeWitt (SIGMOD 1998),
+Avnur & Hellerstein Eddies (SIGMOD 2000).
+
+### 12.3 §5.3's load-balancing citation was wrong
+
+The plan cites "the affine-plane decomposition of Sapin & Keller." **No such paper
+could be verified.** The correct citation is **Hall, Kelly & Tian, "Optimal Data
+Distribution for Big-Data All-to-All Comparison using Finite Projective and
+Affine Planes," arXiv:2308.15000 (2023)**, with bounds in Hall, Horsley & Stinson
+(2024). It balances *pair count* per worker, not row count — which is exactly the
+right unit given our 10–70× per-pair cost spread. Pair with **COWS
+(TACO 2024)** / Prabhu et al. (ICS 2020) for the work-stealing layer: chunk
+triangular loops by element count, never by row count.
+
+### 12.4 SuiteSparse:GraphBLAS is the closest existing system — confirmed, not assumed
+
+`GrB_Matrix` carries four runtime formats (sparse, hypersparse, bitmap, full) and
+masked `GrB_mxm` **does** pick dot-product vs saxpy per output tile, and
+Gustavson vs hash accumulation per task, from mask and operand density. That is
+genuine adaptive per-operand format selection for boolean matrix products.
+
+What it does not have: RLE/WAH representations, a zone-map pre-filter, or
+selection at per-(i,j)-pair granularity. Our claim must be stated against
+GraphBLAS explicitly rather than against naive all-bitmap.
+
+### 12.5 Corrections to LANDSCAPE.md §5
+
+- **SimSIMD was renamed NumKong** (March 2026, 1,864 stars) and is the live
+  descendant, not the small `JaccardIndex` repo the landscape tracks. It ships
+  emulated `VP2INTERSECT` (Diez-Cañas, arXiv:2112.06342) and SVE2 `HISTCNT`/
+  `MATCH` intersection — but pairwise sorted-list only, no bitmap side, no batch.
+- **VP2INTERSECT is Intel-dead / AMD-alive**: removed after Tiger Lake (never on
+  Sapphire Rapids), microcoded at ~25 cycles; **AMD Zen5 added it natively**.
+  Emulation beats the Intel instruction. Nobody has built a *batched* one.
+- **Faiss `IndexBinaryFlat` is confirmed dumb** — plain XOR+popcount in
+  `faiss/utils/hamming.cpp`, no sparsity handling at all.
+- **UNSW-database/simd_set_operations** is the most complete S×S kernel survey in
+  existence. Cross-check our closed S×S winners against their BMiss/galloping
+  variants before claiming anything there.
+- **Lemire et al., arXiv:2412.16370 (Dec 2024)** — newer AVX2/AVX-512/ASIMD
+  popcount kernels. Source B×B baselines from this rather than Muła 2018.
+
+### 12.6 The real dataset — §7.2's outstanding requirement
+
+**1000 Genomes Phase 3, chromosome 22** is the recommendation: ~1.1–1.3M variants
+× 5,008 haplotypes, public domain, direct FTP, no registration. It is the only
+candidate that tests the *exact* data shape the project targets, and its skew is
+theoretically grounded rather than merely observed — **Fu, "Statistical properties
+of segregating sites," Theor. Pop. Biol. 48(2), 1995** derives E[ξᵢ] ∝ θ/i, which
+is the canonical citation §2.2 has been missing.
+
+Secondary cross-domain anchor, near-zero cost: **FIMI `kosarak`** (990,001 × 41,270
+clickstream, direct `.gz`). Skew confirmed in market-basket, inverted-index,
+recommendation and graph-degree domains — so the premise is not genomics-specific.
+
+### 12.7 Audit findings against our own claims
+
+- **`allpairs_tiles` has zero callers.** It compiles, is listed as "shipped", and
+  is neither tested nor benchmarked. Either exercise it or stop claiming it.
+- **The zone map has only ever been measured at one bin width** (512 bits,
+  `OCC_BIN_WORDS` is a hardcoded `constexpr`). Every "0.195%" and "25×" figure
+  describes one unswept parameterization.
+- **Gate 1 is measured on 3 hosts, not 4** — Neoverse V1 is absent from every
+  Gate-1 table.
+- **The probe policy has no regret number.** The 94.1% figure belongs to the
+  per-pair policy that failed; the policy that passes is unmeasured on the metric
+  §5.1 calls "the metric that makes this a contribution".
+- The AVX-512 kernel was measured at 7 density points, not on the 20-point sweep
+  that produced `results/density.png` (which remains M4-only).
+
+### 12.8 Revised priority
+
+1. **Regret for the probe policy** — §5.1's own headline metric, currently absent
+   for the only policy that passes Gate 1.
+2. **1000 Genomes chr22** as the real-data anchor — closes §7.2's last hole and
+   is the single most credibility-bearing missing artifact.
+3. **Bin-width sweep for the zone map** — one unswept constant underpins the
+   project's strongest mechanism.
+4. **Exercise or withdraw `allpairs_tiles`.**
+5. Threading, using Hall/Kelly/Tian for static balance + COWS for stealing.
+6. Cross-pair blocking (BLIS packed-panel structure) — F11 says the DRAM win is
+   here.

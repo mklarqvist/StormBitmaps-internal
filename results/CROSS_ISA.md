@@ -26,6 +26,13 @@ inflated every number.
 
 ## Storm vs CRoaring, clustered / 1-over-i spectrum
 
+> **The sapphire column below is PRE-AVX-512 and is superseded.** It was measured
+> before the dense kernel of the next section existed and was never regenerated,
+> so it disagrees with the "after" table at identical density points (e.g. 4.6×
+> vs 17.2× at d = 0.1). It is kept only because the ARM columns are still current
+> and because deleting a superseded measurement hides the size of the fix. **For
+> Sapphire Rapids use the "after the AVX-512 kernel" table.**
+
 | density | apple-m4 | neoverse-sve | neoverse-sve2 | sapphire |
 |---:|---:|---:|---:|---:|
 | 0.0002 | 4.4× | 2.3× | 2.5× | 2.2× |
