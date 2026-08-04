@@ -32,27 +32,24 @@ a batch containing any win resets that cell's counter to 0.
 
 | cell | consecutive non-improving | best variant now | last positive finding |
 |---|---:|---|---|
-| **B × S** | **5 — CONVERGED** | `ilp8` / `shift` (within ~5%) | r6 `ilp16x` |
-| **B × W** | **4** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
-| **B × B** | **4** | `occ_sel` / `occ` | r8 `occ_sel` |
-| **B × R** | **3** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
-| **S × W** | **2** | `adapt_f64` / `search` | r7 `adaptive` |
-| **R × R** | **2** | `adapt_r3` / `merge_bl` | r7 `adaptive2` |
-| **R × W** | **2** | `skip2` / `merge2` | r7 `adaptive` |
-| **W × W** | **2** | `skip2` / `skip` | r7 `skip2` |
-| **S × R** | 0 | `adapt_b8` / `merge_bl` | r10 `adapt_b8` (1.24×) |
-| **S × S** | 0 | `adapt_r3` / `adapt_r24` | r10 `adapt_r24` (1.15×) |
+| **B × B** | **8 — CLOSED** | `occ_sel` / `occ` | r8 `occ_sel` |
+| **B × W** | **7 — CLOSED** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
+| **B × R** | **6 — CLOSED** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
+| **B × S** | **5 — CLOSED** | `ilp8` / `shift` (within ~5%) | r6 `ilp16x` |
+| **S × R** | 3 | `adapt_b8` / `merge_bl` | r10 `adapt_b8` (1.24×) |
+| **S × S** | 3 | `adapt_r3` / `adapt_r24` | r10 `adapt_r24` (1.15×) |
+| **R × W** | 2 | `skip2` / `merge2` | r7 `adaptive` |
+| **W × W** | 2 | `skip2` / `skip` | r7 `skip2` |
+| **R × R** | 0 | `adapt_r6` | r11 `adapt_r6` (1.06×) |
+| **S × W** | 0 | `adapt_f1` | r11 `adapt_f1` (1.07×) |
 
-**Counting correction.** Rounds 6–10 credited any corpus win as an improvement,
-including margins of 1.00–1.05× — which round 3 had already established is
-within the within-run noise floor. Applying that standard consistently
-(`/tmp/margin.py` against `results/iter10_raw.txt`), only **two** of round 10's
-ten cells improved by more than 5%: S×R (1.24×) and S×S (1.15×). The other
-eight were noise and their counters advance. This is not a relaxation of the
-rule — it is the rule measured against the noise floor the project already
-committed to, and the earlier accounting was the inconsistent one.
+**Four of ten cells are closed.** Round 11 sampled 17 further threshold and
+unroll settings across every open cell and only two cleared the 5% noise floor —
+S×W `adapt_f1` at 1.07× and R×R `adapt_r6` at 1.06×, both barely. That is what
+exhaustion looks like: round 10's threshold sweep found the optima, and round 11
+confirmed they are optima by failing to beat them from either side.
 
-**B × S is closed** at 5 consecutive non-improving iterations: `ilp12` and
+**B × S closed first** at 5 consecutive non-improving iterations: `ilp12` and
 `prefetch64` joined `ilp_cache`, `prefetch_deep` and `occ` in failing. The cell
 sits at ~0.80–1.23 cycles per list element against a 0.67 load-port floor, its
 top three variants are within ~5% of each other on every corpus, and eleven

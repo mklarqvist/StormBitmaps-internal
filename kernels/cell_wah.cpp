@@ -573,6 +573,9 @@ const Variant<fn_bw> kBW[] = {
     {"hybrid",   bw_hybrid,   "rank for fills >= 4 words, direct below",  true},
     {"skip",     bw_skip,     "zero fills retire outright, one-fills via rank", true},
     {"occ",      bw_occ,      "zone map skips literal bins empty on the bitmap side", true},
+    {"hybrid1",  bw_hybrid_t<1>,  "rank for every one-fill",    true},
+    {"hybrid8",  bw_hybrid_t<8>,  "rank for fills >= 8 words",  true},
+    {"hybrid64", bw_hybrid_t<64>, "rank for fills >= 64 words", true},
     {"hybrid2",  bw_hybrid_t<2>,  "rank for fills >= 2 words",  true},
     {"hybrid16", bw_hybrid_t<16>, "rank for fills >= 16 words", true},
 };
@@ -687,6 +690,9 @@ const Variant<fn_sw> kSW[] = {
     {"skip",     sw_skip,     "a fill settles every list element inside it in one step"},
     {"search",   sw_search,   "gallop the list past a fill instead of walking it"},
     {"adaptive", sw_adaptive, "gallop past long fills, walk short ones"},
+    {"adapt_f1", sw_adaptive_t<1>,   "gallop past every fill"},
+    {"adapt_f16",sw_adaptive_t<16>,  "gallop past fills of 16 words or more"},
+    {"adapt_f256",sw_adaptive_t<256>,"gallop only past fills of 256 words or more"},
     {"adapt_f2", sw_adaptive_t<2>,  "gallop past fills of 2 words or more"},
     {"adapt_f64",sw_adaptive_t<64>, "gallop only past fills of 64 words or more"},
 };
