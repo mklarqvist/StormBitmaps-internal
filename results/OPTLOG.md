@@ -685,9 +685,11 @@ Flat above 8. The reason is the same singleton mass: pairs are oriented so the
 every pair regardless of where the threshold sits. Only the degenerate
 all-bitmap policy is different, and it is 5x worse.
 
-So the storage decision that matters is binary -- "keep sparse rows sparse" --
-not the precise crossover. That is worth knowing because the crossover is
-exactly the kind of constant the cost model would otherwise spend effort fitting.
+~~So the storage decision that matters is binary -- "keep sparse rows sparse" --
+not the precise crossover.~~ **RETRACTED, iteration 15.** That flatness was an
+artifact of the broken pair sampler: on the narrow slice the sparse side was
+never large enough for the choice to matter. On a representative sample the
+sweep has a clear optimum and real penalties either side (see iteration 15).
 
 **A bug this exposed:** the first packed measurement reported `correct=NO`. Row
 lengths were being derived from consecutive offsets, which included up to 7
@@ -874,3 +876,29 @@ only a per-stream length histogram exposed it.
 **Corrected running total: 5.49 -> ~1.95 ns/pair on a representative sample.**
 (The 5.49 baseline came from `bench_real`, which samples with stride 400 across
 the whole file and is therefore comparable.)
+
+### Iteration 15 — the crossover sweep, redone on a valid sample
+
+Iteration 1 concluded the array/bitmap crossover "is not the lever" because
+every threshold from 8 to 5008 measured 2.10 ns. That was the broken sampler:
+on the first ~200 rows the sparse side is never big enough for the decision to
+matter. Redone with the spanning sampler:
+
+| threshold | %array | %bitmap | best ns/pair |
+|---:|---:|---:|---:|
+| 8 | 70.2% | 29.4% | 2.35 |
+| **32** | 80.7% | 18.8% | **1.95** |
+| **64** | 85.1% | 14.5% | **1.95** |
+| 128 | 88.1% | 11.5% | 2.10 |
+| 256 | 90.5% | 9.1% | 2.25 |
+| 1024 | 94.4% | 5.2% | 3.45 |
+
+There is a genuine optimum at 32-64 and **storing too many rows as arrays costs
+1.8x**. The shipped default (32) already sits on it, so this iteration produced
+no speed gain -- but it **retracts iteration 1's conclusion**, which was that the
+crossover does not matter and only "keep sparse rows sparse" does. It does
+matter; the earlier flatness was measurement error.
+
+Worth noting what this says about the cost model: this is exactly the constant
+M4 exists to fit, the fit is host- and corpus-dependent, and a wrong value costs
+nearly 2x. The iteration-1 conclusion would have told M4 not to bother.
