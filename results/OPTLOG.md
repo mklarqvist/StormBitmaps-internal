@@ -268,6 +268,37 @@ Three things this settles:
 The practical consequence: the selection layer (M2) needs a two-sided test, not
 a sparsity threshold. Panel 3 of the figure is the map it has to reproduce.
 
+**F11 — Work avoidance scales with the memory hierarchy; work acceleration does
+not.** The whole campaign ran L2-resident, so every conclusion was residency-
+local. Re-measured on B×B at three scales (Apple M4, clustered/1-over-i,
+96 rows, 2,000 pairs):
+
+| corpus | scalar | best SIMD | zone map |
+|---|---:|---:|---:|
+| 1 MB — L2 | 0.511 c/w | 0.336 (**1.52×**) | 0.058 (**8.8×**) |
+| 12 MB — SLC | 0.562 | 0.437 (1.29×) | 0.038 (**14.8×**) |
+| 48 MB — DRAM | 0.796 | 0.679 (1.17×) | 0.039 (**20.5×**) |
+
+The two mechanisms move in **opposite directions**:
+
+- **SIMD's advantage decays**, 1.52× → 1.17×, because the kernel becomes
+  memory-bound and instruction throughput stops being the constraint. At 48 MB
+  `neon_u4` actually *loses* to the auto-vectorized scalar loop (0.85×).
+- **The zone map's advantage grows**, 8.8× → 20.5×, because what it avoids is
+  memory traffic, and memory traffic is exactly what starts binding.
+
+This is the strongest single argument for the project's thesis and the campaign
+could not have found it: every round was tuned on corpora that fit L2, where
+the mechanism that matters least looks best.
+
+It also **refines rather than overturns** F1. Within-pair MR×NR register
+blocking still does not pay at DRAM scale — the `neon_ld2` paired-load proxy
+measures 0.95× at 48 MB — because the bottleneck there is bandwidth, not
+load-issue slots. What *would* pay is **cross-pair reuse**: loading a row once
+and pairing it against many, which is the L1/L2 blocking level
+`RESEARCH_PLAN.md` §2 lists as missing and which no kernel in this project can
+express, since every signature is `(view, view) -> count`.
+
 **F4 — Two of the plan's four B×S designs do not exist on this ISA.**
 `RESEARCH_PLAN.md` §4 proposes D1 (gather) and D3 (`VPCONFLICTD`); NEON has
 neither. The portable designs are the ones that exploit *data structure* (D2 run
