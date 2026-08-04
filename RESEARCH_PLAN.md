@@ -45,7 +45,7 @@ Priority is set by `PROBLEM_STATEMENT.md` §6: the asymmetric cells carry the re
 
 | Cell | Cost | Priority | Status |
 |---|---|---|---|
-| **B × S** | Θ(\|S\|) | **P0** | scalar only, and **broken** (`storm.c:594`, `:602`, `:636`, `:644`) |
+| **B × S** | Θ(\|S\|) | **P0** | **scalar only** — correct as of Phase 0, but unvectorized. §4 |
 | **B × R** | Θ(r) with rank index | **P0** | does not exist — §4.5 |
 | **S × R** | Θ(\|S\| + r) or Θ(\|S\| log r) | **P0** | does not exist |
 | **B × W** | Θ(literals + fills) | P1 | does not exist |
@@ -63,7 +63,7 @@ Priority is set by `PROBLEM_STATEMENT.md` §6: the asymmetric cells carry the re
 | **M1** | Per-row metadata (cardinality, run count, chunk-occupancy mask) | does not exist |
 | **M2** | O(1) pairing decision from metadata | does not exist |
 | **M3** | Tile-level hoisting via density/run-count partitioning | does not exist |
-| **M4** | Calibrated cost model producing the decision thresholds | hardcoded guesses today (`storm.c:1016`, `storm.h:46`) |
+| **M4** | Calibrated cost model producing the decision thresholds | hardcoded guesses today (`STORM_contig_new()`, `storm.h:46`) |
 | **M5** | Rank/prefix-popcount index (enables Θ(r) run pairings) | does not exist — §4.5 |
 
 `B × B` is deliberately **P2**. It is ~1% of pairs on skewed data and the only cell where fixed
@@ -85,7 +85,7 @@ register blocking does not apply to them in this form.
 | **L0** | Lane | SIMD width (512b = 8 words) | Done, via `libalgebra` |
 | **L1** | **Register** | MR×NR accumulators in ZMM/YMM/Z-regs | **Missing — §3** |
 | **L2** | **L1-cache panel** | Packed panel of vectors resident in L1d | **Missing — §3.4** |
-| **L3** | L2/L3 cache block | `STORM_CACHE_BLOCK_SIZE` 256 kB | Present (`storm.c:222`, `:282`) |
+| **L3** | L2/L3 cache block | `STORM_CACHE_BLOCK_SIZE` 256 kB | Present (`STORM_wrapper_diag*_blocked`) |
 | **L4** | Schedule | Triangle traversal, thread partition, density order | Partial; no threading; §5 |
 
 This mirrors Goto/van de Geijn and BLIS. Their contribution was never cache blocking alone — it
@@ -99,7 +99,7 @@ the part that matters.
 
 ### 3.1 The problem with the current inner loop
 
-`STORM_wrapper_diag_blocked` (`storm.c:222`) and `STORM_wrapper_diag_list_blocked` (`storm.c:282`)
+`STORM_wrapper_diag_blocked` (`storm.cpp`) and `STORM_wrapper_diag_list_blocked`
 block for cache, but the innermost statement is still `f(left, right, n_ints)` — a **pairwise**
 kernel invocation. Each call re-streams both operands end to end.
 
@@ -241,7 +241,7 @@ the same word, merge their masks, then one load per distinct word. A branch-free
 D2.
 
 **D4 — Software-pipelined scalar.** For very sparse lists, plain scalar with prefetch may beat all
-vector approaches. Note `storm.c:119` and `:124` already contain commented-out
+vector approaches. Note `STORM_intersect_bitmaps_scalar_list` already contain commented-out
 `__builtin_prefetch` calls — someone started this and stopped. Finish it; it is the honest
 baseline the vector kernels must beat.
 
@@ -290,7 +290,7 @@ Experiments:
 ### 5.1 Replace the magic numbers
 
 Currently hardcoded guesses:
-- `storm.c:1016` — `scalar_cutoff = min(vector_length / 200, 200)`
+- `STORM_contig_new()` — `scalar_cutoff = min(vector_length / 200, 200)`
 - `storm.h:46` — `STORM_DEFAULT_SCALAR_THRESHOLD 4096`
 
 Replace with a cost model over three calibrated constants:
@@ -461,15 +461,27 @@ Ordered by where the value is (`PROBLEM_STATEMENT.md` §6), not by what is easie
 | **7** | Cross-ISA + community | 2–3 wk (rolling) | ≥4 ISAs reported |
 | **8** | Write-up | 2–3 wk | submission |
 
-### Phase 0 — Foundation (must precede everything)
+### Phase 0 — Foundation — **substantially COMPLETE (2026-08-04)**
 
-- `git submodule update --init` — `libalgebra` is empty.
-- Fix all defects in `LANDSCAPE.md` §8. The `storm.c:594/602/636/644` precedence bug corrupts
-  every bitmap↔scalar path, i.e. the entire mixed-density mode.
-- **Build the test suite.** There is currently none. A numerical library with zero correctness
-  tests is the single largest gap in the repo.
-- Replace dead Travis/AppVeyor with a GitHub Actions matrix (x86-64 + ARM runners; SDE for
+Done:
+
+- ✅ `libalgebra` submodule initialised; CRoaring vendored and pinned at **v4.7.2**.
+- ✅ All 13 defects in `LANDSCAPE.md` §8 fixed, including the precedence bug that corrupted every
+  bitmap↔scalar path (the entire mixed-density mode) and the UB in the B×S kernel.
+- ✅ **Test suite built** — `tests/test_storm.c`, 1,279 checks against an independent oracle,
+  wired into CTest. Every fix verified by reverting it and confirming failure.
+- ✅ Repo builds on arm64 (it previously did not compile at all) and configures on CMake ≥ 4.
+- ✅ Switched to **C++17 internals with an `extern "C"` public ABI**; `tests/test_storm.c` stays C
+  so it doubles as the ABI regression test. Verified: 42 unmangled `STORM_` exports, 0 mangled.
+
+Outstanding:
+
+- ⬜ Replace dead Travis/AppVeyor with a GitHub Actions matrix (x86-64 + ARM runners; SDE for
   AVX-512 if no hardware).
+- ⬜ Push the `libalgebra` arm64 portability fix upstream and bump the pin — it currently lives
+  only in the submodule working tree, so **a fresh clone still fails on arm64**.
+- ⬜ Representation layer (B/S/R/W/Ro constructors, converters, metadata M1) and the skewed data
+  generators of §7.2 — both are prerequisites for Phase 1.
 - Benchmark harness skeleton + JSON results schema (§9).
 - Fix the README's 114 GB/s framing (§7.1).
 
@@ -507,7 +519,7 @@ M5 and the B × R / B × W cells (§4.5). Test P4: run length must drop out of t
 
 ### Phase 4 — Cost model and tiling → **GATE 3 (P1/P5)**
 
-M4 calibration microbenchmark, derived thresholds replacing `storm.c:1016` and `storm.h:46`,
+M4 calibration microbenchmark, derived thresholds replacing `STORM_contig_new()` and `storm.h:46`,
 oracle-regret measurement across the full grid, density-sorted tiling.
 
 - **Regret <5%, ≥50× over all-bitmap on skewed data, beats CRoaring** → P1/P5 hold. Paper is

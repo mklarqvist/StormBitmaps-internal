@@ -112,17 +112,31 @@ Consult them **before** searching the web for anything they cover.
 10. **Results are data, not prose.** Every figure regenerates from `results/*.json` by script. No
     hand-curated numbers anywhere.
 
+## Language and ABI
+
+The library is **C++17 internally** (`storm.cpp`) with a **pure C ABI** (`extern "C"` in
+`storm.h`). Rules:
+
+1. **Never let anything escape the `extern "C"` boundary that C cannot represent.** A C++
+   exception unwinding through an `extern "C"` frame is undefined behaviour. Since C++ internals
+   may now allocate (`std::vector` throws `std::bad_alloc`), every public entry point must be
+   exception-tight: catch at the boundary and return an error code. There is no exception today —
+   keep it that way.
+2. **The public header must remain C-includable.** No templates, no `class`, no default arguments,
+   no references in `storm.h`'s `extern "C"` block. C++ lives in `storm.cpp` and future internal
+   headers, not the public surface.
+3. **`tests/test_storm.c` stays C.** It is compiled by the C compiler and linked against the
+   C++ objects, which makes it the ABI regression test — if the boundary breaks, it fails to link.
+   Verify with `nm`: 42 unmangled `STORM_` exports, zero `__Z` symbols.
+4. **C++17 is for compile-time specialisation** of the pairing-matrix kernels — `template<Repr A,
+   Repr B, int MR, int NR>` with `if constexpr`. That is the reason for the switch; do not
+   introduce runtime polymorphism (virtuals, `std::function`) into hot paths.
+
 ## Known-broken code
 
-Do not build on these paths until fixed — `LANDSCAPE.md` §8 has the full list.
+All 13 Phase 0 defects are fixed and covered by regression tests — see `LANDSCAPE.md` §8 for the
+record, including how each fix was verified. What remains:
 
-- `storm.c:594`, `:602`, `:636`, `:644` — C precedence bug: `data[x] & (1ULL << y) != 0` parses as
-  `data[x] & 1`. **All four bitmap↔scalar paths test only bit 0.** This is the B×S cell, i.e. the
-  highest-priority kernel in the project, and it means the mixed-density path has never been
-  correctly measured.
-- `storm.c:1066` — `memcpy` missing `* sizeof(uint32_t)`.
-- `storm.c:1071`, `:1098` — `n_scalar` indexed by `j` (buffer offset) instead of `i` (vector index).
-- `storm.c:1124-1127` — duplicate-skipping loop writes at source index, leaving gaps.
 - **`libalgebra` carries an uncommitted local fix.** `libalgebra/libalgebra.h` guarded
   `#include <x86intrin.h>` on `_MSC_VER` (a *compiler* test, not an architecture test), so arm64
   never compiled. The fix lives in the submodule working tree only — the pin is still upstream
@@ -132,8 +146,12 @@ Do not build on these paths until fixed — `LANDSCAPE.md` §8 has the full list
 
 ## Conventions
 
-- C99. Header + implementation. Apache-2.0 (already correct — keep it).
-- No mandatory dependencies beyond `libalgebra`. Baselines are optional at build time.
+- **C++17 implementation, C ABI** (see Language and ABI above). `storm.cpp` + `storm.h`.
+  Apache-2.0 (already correct — keep it).
+- Tests are compiled as **C11** so they exercise the C ABI. CRoaring forces C11 anyway
+  (`<stdatomic.h>`), and `CMAKE_C_STANDARD` is inherited by `add_subdirectory()`.
+- No mandatory dependencies beyond `libalgebra`. CRoaring is vendored at `third_party/CRoaring`
+  (pinned **v4.7.2**) and needed only by `benchmark`; the library and tests build without it.
 - Public symbols keep the `STORM_` prefix.
 - `-march=native` by default, defeatable with `-DSTORM_DISABLE_NATIVE=ON`.
 - Runtime ISA dispatch, not build-time. (BitMagic's compile-time-only selection is a documented

@@ -68,13 +68,25 @@ per-ISA register-file budgets (§3.2). `AGENTS.md` has the full list.
   ladder above — the ~0.125 c/word ceiling and the Harley-Seal loss argument are analytic, not
   measured, and not yet even sourced.
 
-## Known-broken code — do not build on it
+## Language and ABI
 
-`storm.c:594`, `:602`, `:636`, `:644` — C precedence: `data[x] & (1ULL << y) != 0` parses as
-`data[x] & 1`, so **all four bitmap↔scalar paths test only bit 0**. That is the B×S cell, the
-project's top-priority kernel — it has never been correctly measured.
+**C++17 internals** (`storm.cpp`), **pure C ABI** (`extern "C"` in `storm.h`).
 
-Also `storm.c:1066` (missing `sizeof`), `:1071`/`:1098` (wrong index variable), `:1124-1127`
-(gap-leaving copy). Submodule needs `git submodule update --init`. Full list in `LANDSCAPE.md` §8.
+- Never let a C++ exception unwind through `extern "C"` — that is UB. Public entry points must be
+  exception-tight; catch at the boundary and return an error code.
+- `storm.h` must stay C-includable: no templates, classes, references, or default arguments in the
+  `extern "C"` block.
+- `tests/test_storm.c` stays **C** on purpose — it links against the C++ objects and is therefore
+  the ABI regression test. Check with `nm`: 42 unmangled `STORM_` exports, zero `__Z`.
+- C++17 exists here for **compile-time specialisation** of pairing-matrix kernels
+  (`template<Repr A, Repr B, int MR, int NR>` + `if constexpr`). No virtuals or `std::function`
+  in hot paths.
 
-There is **no test suite**. Building one is Phase 0 and blocks everything else.
+## State of the code
+
+All 13 Phase 0 defects are fixed, each verified by reverting it and confirming the tests fail.
+`tests/test_storm.c` has 1,279 checks against an independent oracle, wired into CTest. Full record
+in `LANDSCAPE.md` §8.
+
+Still outstanding: the `libalgebra` arm64 fix lives only in the submodule working tree (pin
+unchanged), so **a fresh clone does not build on arm64**; and CI is still dead Travis/AppVeyor.

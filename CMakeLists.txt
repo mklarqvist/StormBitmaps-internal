@@ -11,23 +11,22 @@ if (POLICY CMP0025)
   cmake_policy(SET CMP0025 NEW)
 endif ()
 
-macro(use_cxx11)
-  if (CMAKE_VERSION VERSION_LESS "3.1")
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-      set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
-    endif ()
-  else ()
-    set (CMAKE_CXX_STANDARD 11)
-    # C11, not C99: CMAKE_C_STANDARD is inherited by add_subdirectory(), and
-    # CRoaring's reference counting needs C11 <stdatomic.h>. Under C99 its
-    # atomic detection falls through to "#error Unknown atomic implementation".
-    # storm.c is plain C99 and builds unchanged as C11.
-    set (CMAKE_C_STANDARD 11)
-  endif ()
-endmacro(use_cxx11)
-
-use_cxx11()
+# Language standards.
+#
+# The library is implemented in C++17 (storm.cpp) but exposes a pure C ABI via
+# the extern "C" block in storm.h, so callers in C, Python/cffi, Rust, Go, Julia
+# and R can bind it without a C++ toolchain. C++17 is for the implementation
+# only -- it buys compile-time specialisation of the representation-pairing
+# kernels (see PROBLEM_STATEMENT.md), which is macro soup in C.
+#
+# C11, not C99: CMAKE_C_STANDARD is inherited by add_subdirectory(), and
+# CRoaring's reference counting needs C11 <stdatomic.h>. Under C99 its atomic
+# detection falls through to "#error Unknown atomic implementation".
+set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set (CMAKE_CXX_EXTENSIONS OFF)
+set (CMAKE_C_STANDARD 11)
+set (CMAKE_C_STANDARD_REQUIRED ON)
 
 option(STORM_ENABLE_SIMD_AVX512 "Enable AVX512 optimizations" OFF)
 option(STORM_ENABLE_SIMD_AVX2 "Enable AVX2 optimizations" OFF)
@@ -123,7 +122,7 @@ endif()
 
 # ---------------------------------------------------------------- targets
 if(STORM_HAVE_ROARING)
-	add_executable(benchmark storm.c benchmark.cpp)
+	add_executable(benchmark storm.cpp benchmark.cpp)
 	target_include_directories(benchmark PUBLIC "${PROJECT_SOURCE_DIR}")
 	if(TARGET roaring)
 		target_link_libraries(benchmark PUBLIC roaring)
@@ -134,7 +133,12 @@ if(STORM_HAVE_ROARING)
 endif()
 
 # Correctness tests. No third-party dependencies: these must always build.
+#
+# test_storm.c is deliberately compiled as C, not C++. Linking a C translation
+# unit against the C++-compiled library is the ABI regression test: if the
+# extern "C" boundary in storm.h ever breaks, this target fails to link.
 enable_testing()
-add_executable(test_storm storm.c tests/test_storm.c)
+add_executable(test_storm storm.cpp tests/test_storm.c)
 target_include_directories(test_storm PUBLIC "${PROJECT_SOURCE_DIR}")
+set_target_properties(test_storm PROPERTIES LINKER_LANGUAGE CXX)
 add_test(NAME storm_correctness COMMAND test_storm)
