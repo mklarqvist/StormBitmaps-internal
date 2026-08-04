@@ -60,20 +60,57 @@ Note the ordering: **the advantage is largest on Sapphire Rapids**, the machine
 with the strongest dense kernel. Work avoidance scales with how expensive the
 work you avoid is.
 
-## The finding that costs us something
+## The finding that cost us something — and its fix (iteration 2)
 
-On the dense corpus (d = 0.35, uniform) on Sapphire Rapids, **CRoaring beats
-Storm 5×** (173.6 vs 742.1 ns/pair). Cause: Storm has **no AVX-512 kernel**.
-Every vector path in `kernels/` is gated on `__ARM_NEON`; on x86 the dense cell
-falls back to the portable multi-accumulator scalar loop, and GCC 11.5 does not
-turn it into `VPOPCNTQ`. CRoaring's `bitset_container_and_justcard` is
-hand-vectorized for AVX-512 and wins accordingly.
+The first cross-ISA run measured **CRoaring beating Storm 5×** on dense uniform
+data on Sapphire Rapids (173.6 vs 742.1 ns/pair). Cause: Storm had **no AVX-512
+kernel**. Every vector path was gated on `__ARM_NEON`, so on x86 the dense cell
+fell back to a scalar loop that GCC 11.5 does not turn into `VPOPCNTQ`, while
+CRoaring's `bitset_container_and_justcard` is hand-vectorized.
 
-This must be reported, not buried. It bounds the claim precisely: **Storm's
-contribution is representation selection and work avoidance, and on the one
-cell where the work is irreducible it is currently behind the state of the art
-on x86.** Writing an AVX-512 B×B kernel is a known, bounded piece of work; until
-it exists, the dense cell on x86 is a documented weakness.
+Fixed by adding an AVX-512 path to `kernels/storm_simd.h`, sourced from the
+Intel Intrinsics Guide corpus rather than recalled:
+
+| intrinsic | instruction | CPUID | SPR latency | SPR CPI |
+|---|---|---|---:|---:|
+| `_mm512_popcnt_epi64` | `VPOPCNTQ` | AVX512VPOPCNTDQ | 3 | **1** |
+| `_mm512_and_si512` | `VPANDD` | AVX512F | 1 | 0.5 |
+| `_mm512_add_epi64` | `VPADDQ` | AVX512F | — | — |
+
+Two consequences, and the first settles an open item in `RESEARCH_PLAN.md` §3.3:
+
+1. **`VPOPCNTQ` at CPI 1 is the binding resource** — `VPANDD` retires twice as
+   fast. One popcount/cycle over 8 words is exactly the **0.125 cycles/word**
+   ceiling that section derives. That figure was flagged **tier-1 (recalled)**
+   and is now **tier-2 (sourced)** for Sapphire Rapids.
+2. **Latency 3 at throughput 1 needs ≥3 accumulators**, so the loop is 4-way.
+   This is the identical lesson NEON's `UADALP` taught by measurement (OPTLOG
+   F3), reached here from Intel's published numbers instead.
+
+Result: **dense B×B 742.1 → 73.3 ns/pair, a 10× improvement**, and the 5× loss
+becomes a **1.21× win** over CRoaring on the same corpus.
+
+## Sapphire Rapids after the AVX-512 kernel
+
+| corpus | CRoaring_ro | storm best | vs CRoaring | vs all-bitmap |
+|---|---:|---:|---:|---:|
+| clustered/1-over-i d=2e-4 | 17.1 | 5.23 | 3.3× | 14.1× |
+| d=0.001 | 48.4 | 6.48 | 7.5× | 11.4× |
+| d=0.005 | 171.8 | 19.25 | 8.9× | 3.9× |
+| **d=0.02** | 437.9 | 22.98 | **19.1×** | 3.2× |
+| d=0.1 | 423.6 | 24.66 | 17.2× | 3.0× |
+| d=0.4 | 311.2 | 28.02 | 11.1× | 2.6× |
+| long runs | 38.7 | 14.42 | 2.7× | **68.0×** |
+
+**19.1× over CRoaring is now the best result in the project**, and it is on the
+machine with the strongest baseline.
+
+Note what improving our own dense kernel did to P1: the "vs all-bitmap" column
+*fell*, because all-bitmap got 10× faster. That is correct and worth stating —
+P1 measures the value of representation selection against a dense kernel, so it
+shrinks precisely when the dense kernel improves. P1 ≥50× now holds on
+run-structured data (68×) rather than broadly on x86. The honest headline is the
+CRoaring column, not the P1 column.
 
 ## What this resolves
 

@@ -42,6 +42,44 @@
 #  define STORM_SIMD_NEON 0
 #endif
 
+/* x86: native vector popcount.
+ *
+ * Added after the cross-ISA run measured CRoaring beating Storm 5x on dense
+ * uniform data on Sapphire Rapids (173.6 vs 742.1 ns/pair). The cause was not
+ * the algorithm: every vector path in this project was gated on __ARM_NEON, so
+ * on x86 the dense cell fell back to a scalar loop that GCC 11.5 does not turn
+ * into VPOPCNTQ, while CRoaring's bitset_container_and_justcard is hand-written
+ * AVX-512. This closes that gap.
+ *
+ * Preflight (AGENTS.md evidence ladder), from the local Intel Intrinsics Guide
+ * corpus -- tier 2, sourced, with Intel's own published figures:
+ *
+ *   _mm512_popcnt_epi64  -> VPOPCNTQ  CPUID AVX512VPOPCNTDQ
+ *                           Sapphire Rapids: latency 3, throughput (CPI) 1
+ *   _mm512_and_si512     -> VPANDD    CPUID AVX512F
+ *                           Sapphire Rapids: latency 1, throughput (CPI) 0.5
+ *   _mm512_add_epi64     -> VPADDQ    CPUID AVX512F
+ *   header: immintrin.h
+ *
+ * Two things follow, and they settle a question RESEARCH_PLAN.md 3.3 had open:
+ *
+ *  1. VPOPCNTQ at CPI 1 is the binding resource -- VPANDD retires twice as
+ *     fast. One popcount per cycle over 8 words is the **0.125 cycles/word**
+ *     ceiling that section derives. That figure was flagged tier-1 (recalled)
+ *     and is now tier-2 (sourced) for Sapphire Rapids specifically.
+ *  2. Latency 3 with throughput 1 means a single accumulator chain retires one
+ *     vector per 3 cycles -- a third of peak. At least 3, and comfortably 4,
+ *     independent accumulators are needed. This is the identical lesson NEON's
+ *     UADALP taught (OPTLOG F3), arrived at from Intel's published numbers
+ *     rather than by measurement, and it is why the loop below is 4-way.
+ */
+#if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
+#  include <immintrin.h>
+#  define STORM_SIMD_AVX512_VPOPCNT 1
+#else
+#  define STORM_SIMD_AVX512_VPOPCNT 0
+#endif
+
 namespace storm {
 
 #if STORM_SIMD_NEON
@@ -57,7 +95,23 @@ static inline uint64_t simd_reduce_u16(uint16x8_t a, uint16x8_t b,
 
 // popcount over n 64-bit words.
 static inline uint64_t simd_popcnt(const uint64_t* w, uint32_t n) {
-#if STORM_SIMD_NEON
+#if STORM_SIMD_AVX512_VPOPCNT
+    __m512i a0 = _mm512_setzero_si512(), a1 = _mm512_setzero_si512();
+    __m512i a2 = _mm512_setzero_si512(), a3 = _mm512_setzero_si512();
+    uint32_t i = 0;
+    for (; i + 32 <= n; i += 32) {
+        a0 = _mm512_add_epi64(a0, _mm512_popcnt_epi64(_mm512_loadu_si512((const void*)(w + i))));
+        a1 = _mm512_add_epi64(a1, _mm512_popcnt_epi64(_mm512_loadu_si512((const void*)(w + i + 8))));
+        a2 = _mm512_add_epi64(a2, _mm512_popcnt_epi64(_mm512_loadu_si512((const void*)(w + i + 16))));
+        a3 = _mm512_add_epi64(a3, _mm512_popcnt_epi64(_mm512_loadu_si512((const void*)(w + i + 24))));
+    }
+    for (; i + 8 <= n; i += 8)
+        a0 = _mm512_add_epi64(a0, _mm512_popcnt_epi64(_mm512_loadu_si512((const void*)(w + i))));
+    uint64_t c = _mm512_reduce_add_epi64(_mm512_add_epi64(_mm512_add_epi64(a0, a1),
+                                                          _mm512_add_epi64(a2, a3)));
+    for (; i < n; ++i) c += STORM_POPCOUNT(w[i]);
+    return c;
+#elif STORM_SIMD_NEON
     const uint8_t* p = (const uint8_t*)w;
     const uint32_t nb = n * 8;
     uint16x8_t a0 = vdupq_n_u16(0), a1 = vdupq_n_u16(0);
@@ -88,7 +142,34 @@ static inline uint64_t simd_popcnt(const uint64_t* w, uint32_t n) {
 
 // popcount of the AND of two n-word arrays.
 static inline uint64_t simd_and_popcnt(const uint64_t* a, const uint64_t* b, uint32_t n) {
-#if STORM_SIMD_NEON
+#if STORM_SIMD_AVX512_VPOPCNT
+    __m512i c0 = _mm512_setzero_si512(), c1 = _mm512_setzero_si512();
+    __m512i c2 = _mm512_setzero_si512(), c3 = _mm512_setzero_si512();
+    uint32_t i = 0;
+    // 4 independent chains: VPOPCNTQ is latency 3, throughput 1 (Intel, SPR).
+    for (; i + 32 <= n; i += 32) {
+        c0 = _mm512_add_epi64(c0, _mm512_popcnt_epi64(_mm512_and_si512(
+                 _mm512_loadu_si512((const void*)(a + i)),
+                 _mm512_loadu_si512((const void*)(b + i)))));
+        c1 = _mm512_add_epi64(c1, _mm512_popcnt_epi64(_mm512_and_si512(
+                 _mm512_loadu_si512((const void*)(a + i + 8)),
+                 _mm512_loadu_si512((const void*)(b + i + 8)))));
+        c2 = _mm512_add_epi64(c2, _mm512_popcnt_epi64(_mm512_and_si512(
+                 _mm512_loadu_si512((const void*)(a + i + 16)),
+                 _mm512_loadu_si512((const void*)(b + i + 16)))));
+        c3 = _mm512_add_epi64(c3, _mm512_popcnt_epi64(_mm512_and_si512(
+                 _mm512_loadu_si512((const void*)(a + i + 24)),
+                 _mm512_loadu_si512((const void*)(b + i + 24)))));
+    }
+    for (; i + 8 <= n; i += 8)
+        c0 = _mm512_add_epi64(c0, _mm512_popcnt_epi64(_mm512_and_si512(
+                 _mm512_loadu_si512((const void*)(a + i)),
+                 _mm512_loadu_si512((const void*)(b + i)))));
+    uint64_t c = _mm512_reduce_add_epi64(_mm512_add_epi64(_mm512_add_epi64(c0, c1),
+                                                          _mm512_add_epi64(c2, c3)));
+    for (; i < n; ++i) c += STORM_POPCOUNT(a[i] & b[i]);
+    return c;
+#elif STORM_SIMD_NEON
     const uint8_t* pa = (const uint8_t*)a;
     const uint8_t* pb = (const uint8_t*)b;
     const uint32_t nb = n * 8;

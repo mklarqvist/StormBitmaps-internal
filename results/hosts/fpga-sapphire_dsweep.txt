@@ -1,139 +1,139 @@
 # host=fpga-sapphire corpus=clustered/inverse d=0.0002 rows=112 universe=65536 pairs=4000 card_mean=14.6 runs_mean=2.1
 # footprint storm_B=896kB roaring=5kB roaring_ro=2kB zonemap=1.8kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                      47.25        0.62x
-CRoaring run_optimize         29.50        1.00x
-storm B x B dense            740.54        0.04x
-storm B x B zonemap           16.00        1.84x
-storm B x S                   24.69        1.19x
-storm B x R                   13.13        2.25x
-storm B x W                   60.78        0.49x
-storm S x S                   46.86        0.63x
-storm S x R                   28.42        1.04x
-storm R x R                   15.76        1.87x
-storm W x W                  156.33        0.19x
+CRoaring                      29.11        0.59x
+CRoaring run_optimize         17.11        1.00x
+storm B x B dense             73.98        0.23x
+storm B x B zonemap            5.58        3.06x
+storm B x S                   13.05        1.31x
+storm B x R                    5.23        3.27x
+storm B x W                   36.53        0.47x
+storm S x S                   24.03        0.71x
+storm S x R                   15.67        1.09x
+storm R x R                    7.40        2.31x
+storm W x W                   97.00        0.18x
 
-BEST storm cell: B x R at 13.13 ns/pair
-  vs CRoaring(run_optimize):     2.25x
-  vs CRoaring(default):          3.60x
-  vs storm all-bitmap:          56.41x   [claim P1]
+BEST storm cell: B x R at 5.23 ns/pair
+  vs CRoaring(run_optimize):     3.27x
+  vs CRoaring(default):          5.57x
+  vs storm all-bitmap:          14.15x   [claim P1]
 
 # host=fpga-sapphire corpus=clustered/inverse d=0.001 rows=112 universe=65536 pairs=4000 card_mean=76.1 runs_mean=8.0
 # footprint storm_B=896kB roaring=18kB roaring_ro=5kB zonemap=1.8kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                     108.39        0.73x
-CRoaring run_optimize         78.81        1.00x
-storm B x B dense            744.47        0.11x
-storm B x B zonemap           19.89        3.96x
-storm B x S                   43.80        1.80x
-storm B x R                   19.83        3.97x
-storm B x W                  113.23        0.70x
-storm S x S                  201.33        0.39x
-storm S x R                  100.14        0.79x
-storm R x R                   58.63        1.34x
-storm W x W                  474.70        0.17x
+CRoaring                      64.60        0.75x
+CRoaring run_optimize         48.38        1.00x
+storm B x B dense             74.03        0.65x
+storm B x B zonemap            6.48        7.46x
+storm B x S                   20.95        2.31x
+storm B x R                    8.27        5.85x
+storm B x W                   69.13        0.70x
+storm S x S                  101.61        0.48x
+storm S x R                   60.61        0.80x
+storm R x R                   33.42        1.45x
+storm W x W                  297.70        0.16x
 
-BEST storm cell: B x R at 19.83 ns/pair
-  vs CRoaring(run_optimize):     3.97x
-  vs CRoaring(default):          5.47x
-  vs storm all-bitmap:          37.55x   [claim P1]
+BEST storm cell: B x B at 6.48 ns/pair
+  vs CRoaring(run_optimize):     7.46x
+  vs CRoaring(default):          9.97x
+  vs storm all-bitmap:          11.42x   [claim P1]
 
 # host=fpga-sapphire corpus=clustered/inverse d=0.005 rows=112 universe=65536 pairs=4000 card_mean=364.2 runs_mean=35.3
 # footprint storm_B=896kB roaring=81kB roaring_ro=17kB zonemap=1.8kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                     312.81        0.85x
-CRoaring run_optimize        264.53        1.00x
-storm B x B dense            787.09        0.34x
-storm B x B zonemap           66.48        3.98x
-storm B x S                  129.97        2.04x
-storm B x R                   46.96        5.63x
-storm B x W                  302.48        0.87x
-storm S x S                 1145.07        0.23x
-storm S x R                  388.60        0.68x
-storm R x R                  227.75        1.16x
-storm W x W                 1813.02        0.15x
+CRoaring                     183.01        0.94x
+CRoaring run_optimize        171.79        1.00x
+storm B x B dense             74.19        2.32x
+storm B x B zonemap           19.25        8.92x
+storm B x S                   56.19        3.06x
+storm B x R                   20.98        8.19x
+storm B x W                  185.61        0.93x
+storm S x S                  526.64        0.33x
+storm S x R                  240.95        0.71x
+storm R x R                  149.06        1.15x
+storm W x W                 1149.16        0.15x
 
-BEST storm cell: B x R at 46.96 ns/pair
-  vs CRoaring(run_optimize):     5.63x
-  vs CRoaring(default):          6.66x
-  vs storm all-bitmap:          16.76x   [claim P1]
+BEST storm cell: B x B at 19.25 ns/pair
+  vs CRoaring(run_optimize):     8.92x
+  vs CRoaring(default):          9.51x
+  vs storm all-bitmap:           3.85x   [claim P1]
 
 # host=fpga-sapphire corpus=clustered/inverse d=0.02 rows=112 universe=65536 pairs=4000 card_mean=1405.7 runs_mean=137.5
 # footprint storm_B=896kB roaring=206kB roaring_ro=61kB zonemap=1.8kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                     345.31        2.12x
-CRoaring run_optimize        732.56        1.00x
-storm B x B dense            791.11        0.93x
-storm B x B zonemap          119.69        6.12x
-storm B x S                  267.76        2.74x
-storm B x R                   94.39        7.76x
-storm B x W                  492.43        1.49x
-storm S x S                 3499.44        0.21x
-storm S x R                  956.08        0.77x
-storm R x R                  586.40        1.25x
-storm W x W                 2967.68        0.25x
+CRoaring                     182.42        2.40x
+CRoaring run_optimize        437.91        1.00x
+storm B x B dense             74.17        5.90x
+storm B x B zonemap           22.98       19.06x
+storm B x S                  109.25        4.01x
+storm B x R                   42.86       10.22x
+storm B x W                  301.39        1.45x
+storm S x S                 1546.60        0.28x
+storm S x R                  605.39        0.72x
+storm R x R                  384.72        1.14x
+storm W x W                 1876.21        0.23x
 
-BEST storm cell: B x R at 94.39 ns/pair
-  vs CRoaring(run_optimize):     7.76x
-  vs CRoaring(default):          3.66x
-  vs storm all-bitmap:           8.38x   [claim P1]
+BEST storm cell: B x B at 22.98 ns/pair
+  vs CRoaring(run_optimize):    19.06x
+  vs CRoaring(default):          7.94x
+  vs storm all-bitmap:           3.23x   [claim P1]
 
 # host=fpga-sapphire corpus=clustered/inverse d=0.1 rows=112 universe=65536 pairs=4000 card_mean=6087.9 runs_mean=492.9
 # footprint storm_B=896kB roaring=275kB roaring_ro=153kB zonemap=1.8kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                     379.91        1.88x
-CRoaring run_optimize        713.98        1.00x
-storm B x B dense            786.74        0.91x
-storm B x B zonemap          154.03        4.64x
-storm B x S                  956.76        0.75x
-storm B x R                  405.98        1.76x
-storm B x W                  666.41        1.07x
-storm S x S                17753.82        0.04x
-storm S x R                 3857.64        0.19x
-storm R x R                 2328.81        0.31x
-storm W x W                 2620.27        0.27x
+CRoaring                     186.24        2.27x
+CRoaring run_optimize        423.64        1.00x
+storm B x B dense             74.07        5.72x
+storm B x B zonemap           24.66       17.18x
+storm B x S                  380.11        1.11x
+storm B x R                  194.89        2.17x
+storm B x W                  398.59        1.06x
+storm S x S                 7672.25        0.06x
+storm S x R                 2411.83        0.18x
+storm R x R                 1451.98        0.29x
+storm W x W                 1670.73        0.25x
 
-BEST storm cell: B x B at 154.03 ns/pair
-  vs CRoaring(run_optimize):     4.64x
-  vs CRoaring(default):          2.47x
-  vs storm all-bitmap:           5.11x   [claim P1]
+BEST storm cell: B x B at 24.66 ns/pair
+  vs CRoaring(run_optimize):    17.18x
+  vs CRoaring(default):          7.55x
+  vs storm all-bitmap:           3.00x   [claim P1]
 
 # host=fpga-sapphire corpus=clustered/inverse d=0.4 rows=112 universe=65536 pairs=4000 card_mean=12517.3 runs_mean=311.6
 # footprint storm_B=896kB roaring=316kB roaring_ro=99kB zonemap=1.8kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                     390.91        1.37x
-CRoaring run_optimize        534.40        1.00x
-storm B x B dense            740.51        0.72x
-storm B x B zonemap          196.09        2.73x
-storm B x S                 2739.75        0.20x
-storm B x R                  515.61        1.04x
-storm B x W                  744.98        0.72x
-storm S x S                31630.52        0.02x
-storm S x R                 1823.59        0.29x
-storm R x R                 1264.20        0.42x
-storm W x W                 2441.59        0.22x
+CRoaring                     189.09        1.65x
+CRoaring run_optimize        311.25        1.00x
+storm B x B dense             73.98        4.21x
+storm B x B zonemap           28.02       11.11x
+storm B x S                 1037.05        0.30x
+storm B x R                  242.18        1.29x
+storm B x W                  441.96        0.70x
+storm S x S                13544.33        0.02x
+storm S x R                 1150.51        0.27x
+storm R x R                  762.60        0.41x
+storm W x W                 1522.08        0.20x
 
-BEST storm cell: B x B at 196.09 ns/pair
-  vs CRoaring(run_optimize):     2.73x
-  vs CRoaring(default):          1.99x
-  vs storm all-bitmap:           3.78x   [claim P1]
+BEST storm cell: B x B at 28.02 ns/pair
+  vs CRoaring(run_optimize):    11.11x
+  vs CRoaring(default):          6.75x
+  vs storm all-bitmap:           2.64x   [claim P1]
 
 # host=fpga-sapphire corpus=runs/uniform d=0.05 rows=112 universe=262144 pairs=4000 card_mean=13107.0 runs_mean=3.2
 # footprint storm_B=3584kB roaring=1569kB roaring_ro=4kB zonemap=7.0kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                    1673.43        0.04x
-CRoaring run_optimize         62.73        1.00x
-storm B x B dense           3059.67        0.02x
-storm B x B zonemap           56.48        1.11x
-storm B x S                13303.10        0.00x
-storm B x R                   35.49        1.77x
-storm B x W                  174.64        0.36x
-storm S x S                29529.46        0.00x
-storm S x R                  225.84        0.28x
-storm R x R                   33.53        1.87x
-storm W x W                  399.53        0.16x
+CRoaring                     713.61        0.05x
+CRoaring run_optimize         38.69        1.00x
+storm B x B dense            980.08        0.04x
+storm B x B zonemap           22.66        1.71x
+storm B x S                 5017.67        0.01x
+storm B x R                   14.42        2.68x
+storm B x W                  105.47        0.37x
+storm S x S                10115.14        0.00x
+storm S x R                  147.08        0.26x
+storm R x R                   21.35        1.81x
+storm W x W                  250.75        0.15x
 
-BEST storm cell: R x R at 33.53 ns/pair
-  vs CRoaring(run_optimize):     1.87x
-  vs CRoaring(default):         49.91x
-  vs storm all-bitmap:          91.25x   [claim P1]
+BEST storm cell: B x R at 14.42 ns/pair
+  vs CRoaring(run_optimize):     2.68x
+  vs CRoaring(default):         49.48x
+  vs storm all-bitmap:          67.96x   [claim P1]
