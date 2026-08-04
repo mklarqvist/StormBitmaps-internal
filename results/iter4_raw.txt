@@ -1,0 +1,255 @@
+
+==============================================================================
+  U1  uniform structure / uniform spectrum / d=0.01
+==============================================================================
+calibrating clock ... 3.809 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=uniform
+        cardinality mean=655.0 min=655 max=655   runs mean=648.7
+        footprint  B=1536 kB  S=491 kB  R=973 kB  W=1112 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 655.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                157.17     1.00x      0.2399     0.914         reference: STORM_bitmap_x_list, one test per element
+  shift                 154.61     1.02x      0.2360     0.899         branchless (w >> bit) & 1
+  ilp2                  210.27     0.75x      0.3210     1.223         2 independent accumulator chains
+  ilp4                  171.99     0.91x      0.2626     1.000         4 chains
+  ilp8                  147.31     1.07x      0.2249     0.857         8 chains
+  ilp4x                 185.35     0.85x      0.2830     1.078         4 chains, named accumulators (no array)
+  ilp8x                 153.67     1.02x      0.2346     0.894         8 chains, named accumulators
+  pack2                 169.27     0.93x      0.2584     0.984         two positions per 64-bit list load, 4 chains
+  split2                186.53     0.84x      0.2848     1.085         two independent cursors over halves of the list
+  adaptive              153.37     1.02x      0.2342     0.892         shift when the bitmap is L1-resident, ilp8x when not
+  collapse              768.55     0.20x      1.1734     4.470         D2: fold same-word groups into one mask
+  collapse_peel         495.40     0.32x      0.7563     2.881         D2 with the group-of-one case peeled out
+  prefetch16            308.81     0.51x      0.4715     1.796         D4: software pipelined, prefetch distance 16
+  prefetch32            290.96     0.54x      0.4442     1.692         D4: prefetch distance 32
+  neon_idx              308.67     0.51x      0.4712     1.795         NEON index arithmetic + quad-local collapse
+  inflate               554.40     0.28x      0.8464     3.224      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                141.46     1.00x      0.1381     0.526         reference: 1 word at a time
+  scalar_u4             199.87     0.71x      0.1952     0.744         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  337.94     0.42x      0.3300     1.257         AND+CNT+UADALP, 1 accumulator
+  neon_u2               182.43     0.78x      0.1782     0.679         2 accumulators
+  neon_u4               128.47     1.10x      0.1255     0.478         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               130.43     1.08x      0.1274     0.485         8 accumulators
+  neon_u8acc4           120.57     1.17x      0.1177     0.449         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           121.83     1.16x      0.1190     0.453         u8 accumulate, 8 accumulators
+  neon_ld2              126.13     1.12x      0.1232     0.469         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               132.03     1.07x      0.1289     0.491         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               204.11     0.69x      0.1993     0.759         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         336.18     0.42x      0.3283     1.251     K   skip all-zero 512b blocks via rank index
+
+  best non-B x B cell: B x S/ilp8 at 147.31 ns/pair
+  B x B floor:         120.57 ns/pair
+  speedup over fixed-cost dense pairing: 0.8x
+
+==============================================================================
+  S1  uniform structure / 1-over-i spectrum / d=0.01
+==============================================================================
+calibrating clock ... 3.911 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=inverse
+        cardinality mean=485.3 min=1 max=5166   runs mean=467.4
+        footprint  B=1536 kB  S=364 kB  R=701 kB  W=460 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 99.3 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 30.59     1.00x      0.3080     1.205         reference: STORM_bitmap_x_list, one test per element
+  shift                  31.11     0.98x      0.3133     1.226         branchless (w >> bit) & 1
+  ilp2                   38.87     0.79x      0.3915     1.531         2 independent accumulator chains
+  ilp4                   33.07     0.92x      0.3331     1.303         4 chains
+  ilp8                   32.00     0.96x      0.3222     1.260         8 chains
+  ilp4x                  37.41     0.82x      0.3767     1.474         4 chains, named accumulators (no array)
+  ilp8x                  32.68     0.94x      0.3291     1.287         8 chains, named accumulators
+  pack2                  36.62     0.84x      0.3688     1.443         two positions per 64-bit list load, 4 chains
+  split2                 36.58     0.84x      0.3684     1.441         two independent cursors over halves of the list
+  adaptive               30.36     1.01x      0.3057     1.196         shift when the bitmap is L1-resident, ilp8x when not
+  collapse               88.44     0.35x      0.8906     3.483         D2: fold same-word groups into one mask
+  collapse_peel          79.26     0.39x      0.7982     3.122         D2 with the group-of-one case peeled out
+  prefetch16             52.28     0.59x      0.5265     2.059         D4: software pipelined, prefetch distance 16
+  prefetch32             51.61     0.59x      0.5197     2.033         D4: prefetch distance 32
+  neon_idx               55.71     0.55x      0.5610     2.194         NEON index arithmetic + quad-local collapse
+  inflate               225.79     0.14x      2.2738     8.894      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                142.79     1.00x      0.1394     0.545         reference: 1 word at a time
+  scalar_u4             199.70     0.72x      0.1950     0.763         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  336.73     0.42x      0.3288     1.286         AND+CNT+UADALP, 1 accumulator
+  neon_u2               180.24     0.79x      0.1760     0.688         2 accumulators
+  neon_u4               120.93     1.18x      0.1181     0.462         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               114.47     1.25x      0.1118     0.437         8 accumulators
+  neon_u8acc4           118.51     1.20x      0.1157     0.453         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           138.57     1.03x      0.1353     0.529         u8 accumulate, 8 accumulators
+  neon_ld2              133.69     1.07x      0.1306     0.511         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               134.58     1.06x      0.1314     0.514         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               205.15     0.70x      0.2003     0.784         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         185.44     0.77x      0.1811     0.708     K   skip all-zero 512b blocks via rank index
+
+  best non-B x B cell: B x S/adaptive at 30.36 ns/pair
+  B x B floor:         114.47 ns/pair
+  speedup over fixed-cost dense pairing: 3.8x
+
+==============================================================================
+  C1  clustered(0.9) / 1-over-i spectrum / d=0.01
+==============================================================================
+calibrating clock ... 3.638 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=clustered spectrum=inverse
+        cardinality mean=666.0 min=1 max=5474   runs mean=64.4
+        footprint  B=1536 kB  S=500 kB  R=97 kB  W=164 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 155.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                 43.56     1.00x      0.2810     1.022         reference: STORM_bitmap_x_list, one test per element
+  shift                  43.56     1.00x      0.2810     1.022         branchless (w >> bit) & 1
+  ilp2                   55.96     0.78x      0.3610     1.313         2 independent accumulator chains
+  ilp4                   46.88     0.93x      0.3024     1.100         4 chains
+  ilp8                   44.97     0.97x      0.2900     1.055         8 chains
+  ilp4x                  51.57     0.84x      0.3326     1.210         4 chains, named accumulators (no array)
+  ilp8x                  44.36     0.98x      0.2861     1.041         8 chains, named accumulators
+  pack2                  54.64     0.80x      0.3524     1.282         two positions per 64-bit list load, 4 chains
+  split2                 51.41     0.85x      0.3316     1.206         two independent cursors over halves of the list
+  adaptive               44.85     0.97x      0.2893     1.052         shift when the bitmap is L1-resident, ilp8x when not
+  collapse               84.47     0.52x      0.5448     1.982         D2: fold same-word groups into one mask
+  collapse_peel          99.93     0.44x      0.6445     2.345         D2 with the group-of-one case peeled out
+  prefetch16             79.30     0.55x      0.5114     1.861         D4: software pipelined, prefetch distance 16
+  prefetch32             79.31     0.55x      0.5115     1.861         D4: prefetch distance 32
+  neon_idx               65.13     0.67x      0.4200     1.528         NEON index arithmetic + quad-local collapse
+  inflate               458.11     0.10x      2.9548    10.750      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                160.69     1.00x      0.1569     0.571         reference: 1 word at a time
+  scalar_u4             212.96     0.75x      0.2080     0.757         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  351.32     0.46x      0.3431     1.248         AND+CNT+UADALP, 1 accumulator
+  neon_u2               188.16     0.85x      0.1837     0.668         2 accumulators
+  neon_u4               128.03     1.26x      0.1250     0.455         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               115.10     1.40x      0.1124     0.409         8 accumulators
+  neon_u8acc4           118.31     1.36x      0.1155     0.420         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           119.03     1.35x      0.1162     0.423         u8 accumulate, 8 accumulators
+  neon_ld2              127.06     1.26x      0.1241     0.451         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               138.69     1.16x      0.1354     0.493         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               210.54     0.76x      0.2056     0.748         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         136.98     1.17x      0.1338     0.487     K   skip all-zero 512b blocks via rank index
+
+  best non-B x B cell: B x S/shift at 43.56 ns/pair
+  B x B floor:         115.10 ns/pair
+  speedup over fixed-cost dense pairing: 2.6x
+
+==============================================================================
+  L1  runs(mean=4096) / uniform spectrum / d=0.05
+==============================================================================
+calibrating clock ... 3.733 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=262144 structure=runs spectrum=uniform
+        cardinality mean=13107.0 min=13107 max=13107   runs mean=3.3
+        footprint  B=6144 kB  S=9830 kB  R=5 kB  W=19 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 13107.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               2812.54     1.00x      0.2146     0.801         reference: STORM_bitmap_x_list, one test per element
+  shift                2810.93     1.00x      0.2145     0.801         branchless (w >> bit) & 1
+  ilp2                 3868.35     0.73x      0.2951     1.102         2 independent accumulator chains
+  ilp4                 3094.79     0.91x      0.2361     0.881         4 chains
+  ilp8                 3328.76     0.84x      0.2540     0.948         8 chains
+  ilp4x                3371.03     0.83x      0.2572     0.960         4 chains, named accumulators (no array)
+  ilp8x                3180.50     0.88x      0.2427     0.906         8 chains, named accumulators
+  pack2                3046.07     0.92x      0.2324     0.868         two positions per 64-bit list load, 4 chains
+  split2               3688.17     0.76x      0.2814     1.050         two independent cursors over halves of the list
+  adaptive             3100.07     0.91x      0.2365     0.883         shift when the bitmap is L1-resident, ilp8x when not
+  collapse             5260.82     0.53x      0.4014     1.498         D2: fold same-word groups into one mask
+  collapse_peel        7451.07     0.38x      0.5685     2.122         D2 with the group-of-one case peeled out
+  prefetch16           5803.95     0.48x      0.4428     1.653         D4: software pipelined, prefetch distance 16
+  prefetch32           5800.74     0.48x      0.4426     1.652         D4: prefetch distance 32
+  neon_idx             5083.01     0.55x      0.3878     1.448         NEON index arithmetic + quad-local collapse
+  inflate             26955.52     0.10x      2.0566     7.677      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x B   (work unit: word, mean 4096.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                599.63     1.00x      0.1464     0.547         reference: 1 word at a time
+  scalar_u4             877.33     0.68x      0.2142     0.800         libalgebra unrolled -- what the repo shipped on arm64
+  neon                 1692.89     0.35x      0.4133     1.543         AND+CNT+UADALP, 1 accumulator
+  neon_u2               796.86     0.75x      0.1945     0.726         2 accumulators
+  neon_u4               517.70     1.16x      0.1264     0.472         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               512.51     1.17x      0.1251     0.467         8 accumulators
+  neon_u8acc4           541.56     1.11x      0.1322     0.494         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           525.09     1.14x      0.1282     0.479         u8 accumulate, 8 accumulators
+  neon_ld2              559.58     1.07x      0.1366     0.510         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               615.46     0.97x      0.1503     0.561         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               918.46     0.65x      0.2242     0.837         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         247.05     2.43x      0.0603     0.225     K   skip all-zero 512b blocks via rank index
+
+  best non-B x B cell: B x S/shift at 2810.93 ns/pair
+  B x B floor:         247.05 ns/pair
+  speedup over fixed-cost dense pairing: 0.1x
+
+==============================================================================
+  D1  uniform structure / uniform spectrum / d=0.35
+==============================================================================
+calibrating clock ... 3.162 GHz (measured, dependent-add chain)
+
+corpus: rows=192 universe=65536 structure=uniform spectrum=uniform
+        cardinality mean=22938.0 min=22938 max=22938   runs mean=14909.8
+        footprint  B=1536 kB  S=17204 kB  R=22365 kB  W=1538 kB
+        host L1d=64 kB  L2=4 MB (P-cluster)  SLC=16 MB
+        pairs benchmarked: 8000
+
+  B x S   (work unit: list elt, mean 22938.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar               5384.06     1.00x      0.2347     0.742         reference: STORM_bitmap_x_list, one test per element
+  shift                5354.17     1.01x      0.2334     0.738         branchless (w >> bit) & 1
+  ilp2                 7349.57     0.73x      0.3204     1.013         2 independent accumulator chains
+  ilp4                 6344.71     0.85x      0.2766     0.875         4 chains
+  ilp8                 5452.16     0.99x      0.2377     0.752         8 chains
+  ilp4x                6826.60     0.79x      0.2976     0.941         4 chains, named accumulators (no array)
+  ilp8x                5765.92     0.93x      0.2514     0.795         8 chains, named accumulators
+  pack2                7421.60     0.73x      0.3236     1.023         two positions per 64-bit list load, 4 chains
+  split2               7023.70     0.77x      0.3062     0.968         two independent cursors over halves of the list
+  adaptive             5447.39     0.99x      0.2375     0.751         shift when the bitmap is L1-resident, ilp8x when not
+  collapse            14142.54     0.38x      0.6166     1.949         D2: fold same-word groups into one mask
+  collapse_peel       19378.78     0.28x      0.8448     2.671         D2 with the group-of-one case peeled out
+  prefetch16          12121.66     0.44x      0.5285     1.671         D4: software pipelined, prefetch distance 16
+  prefetch32          10917.55     0.49x      0.4760     1.505         D4: prefetch distance 32
+  neon_idx            13668.71     0.39x      0.5959     1.884         NEON index arithmetic + quad-local collapse
+  inflate             47175.95     0.11x      2.0567     6.503      I  BASELINE ONLY: materialize S as a bitmap, run B x B
+
+  B x B   (work unit: word, mean 1024.0 per pair)
+  variant              ns/pair    vs ref     ns/unit  cyc/unit  flags  note
+  --------------------------------------------------------------------------------------------------------------
+  scalar                150.65     1.00x      0.1471     0.465         reference: 1 word at a time
+  scalar_u4             229.88     0.66x      0.2245     0.710         libalgebra unrolled -- what the repo shipped on arm64
+  neon                  363.59     0.41x      0.3551     1.123         AND+CNT+UADALP, 1 accumulator
+  neon_u2               183.27     0.82x      0.1790     0.566         2 accumulators
+  neon_u4               122.20     1.23x      0.1193     0.377         4 accumulators -- predicted first to cover UADALP lat 3
+  neon_u8               127.13     1.19x      0.1241     0.393         8 accumulators
+  neon_u8acc4           155.23     0.97x      0.1516     0.479         u8 accumulate, widen every 31 -- shorter recurrence
+  neon_u8acc8           126.12     1.19x      0.1232     0.389         u8 accumulate, 8 accumulators
+  neon_ld2              134.30     1.12x      0.1312     0.415         vld1q_u8_x2 paired loads -- issue-bound probe
+  neon_pf               155.09     0.97x      0.1515     0.479         4 accumulators + prefetch, for the DRAM-resident regime
+  neon_hs               247.62     0.61x      0.2418     0.765         Harley-Seal CSA -- labelled negative control
+  neon_rankskip         373.22     0.40x      0.3645     1.152     K   skip all-zero 512b blocks via rank index
+
+  best non-B x B cell: B x S/shift at 5354.17 ns/pair
+  B x B floor:         122.20 ns/pair
+  speedup over fixed-cost dense pairing: 0.0x

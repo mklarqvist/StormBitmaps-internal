@@ -155,6 +155,42 @@ matrix (§7) should settle rather than one machine's intuition.
 > (Intel-published latency/throughput, instruction/XED mapping, CPUID gates), then to *measured*
 > with `perf`/`uops` counters in Phase 5. See `AGENTS.md` → evidence ladder. Applies to the port
 > assignments, the 0.125 c/word ceiling, and the Harley-Seal argument that rests on them.
+>
+> **The AArch64 half of this is now settled — and it inverts the conclusion.** See §3.3a.
+
+### 3.3a AArch64 — sourced and measured, and the load-bound premise does not hold
+
+The analysis below §3.3 is specific to AVX-512, where `VPOPCNTQ` occupies a port of its own and
+the AND/ADD issue elsewhere. **On NEON every operation in the kernel competes for the same four
+pipes**, so the conclusion reverses.
+
+Sourced (tier 2, `applecpu`, Firestorm — *not* this host, so used as hypothesis only):
+
+| Instruction | LAT | recip TP | Units |
+|---|---|---|---|
+| `AND` / `CNT` / `UADALP` / `ADDP` (16B) | 2–3 | **0.25** | u11-14 — 4 SIMD pipes |
+| `LDR` (Q) | ≤9 | **0.333** | u8-10 — 3 load pipes |
+
+Per 16 bytes the kernel issues **3 SIMD ops against 2 loads** → 0.75 cyc/16B from the SIMD pipes
+versus 0.667 from the load pipes. The kernel is **SIMD-issue bound, not load bound**, and the
+derived ceiling is **0.375 cycles/word**.
+
+Measured (tier 3, Apple M4, `bench/bench_cells.cpp`): **0.42–0.49 cycles/word** at L2 residency,
+against that 0.375 ceiling. What moved the number was accumulator count, not instruction
+selection: identical instruction mix measures 0.41× with one accumulator and ~1.24× with eight,
+because `UADALP` has latency 3 and four pipes retire 4/cycle.
+
+**Consequence for §3.2.** MR×NR register blocking exists to cut *loads*. On this ISA loads are
+not the binding resource, so the expected payoff for B×B is small or zero. A cheap proxy for the
+full experiment — replacing paired `LDR` with `LD1 (multiple, 2 regs)`, halving load instructions
+without changing the SIMD op count — is in the harness as `neon_ld2`. Phase 5 should treat "does
+register blocking pay on AArch64?" as an open question with a negative prior, not as a port of the
+AVX-512 result.
+
+**Harley-Seal (the §3.3 corollary) is confirmed by measurement, on the ISA where the argument is
+strongest.** A CSA is 5 ops and buys back `CNT`s that cost 1 op each at 4/cycle; reducing 16
+vectors costs 15 CSAs = 75 ops to remove ~30. Measured **0.38–0.72×** across corpora. Retained in
+the harness as a labelled negative control.
 
 Per output on AVX-512: `VPANDQ` (p0/p1/p5) + `VPOPCNTQ` (**p5 only**, 1/cycle on Ice Lake, Sapphire
 Rapids, Zen 4) + `VPADDQ` (p0/p1/p5).
@@ -225,6 +261,26 @@ Always iterate the **shorter** representation against the denser one.
 
 Four candidate designs, to be built and raced against each other and against scalar:
 
+> **Measured status (Apple M4, `results/OPTLOG.md`).** Two of the four designs below **do not
+> exist on AArch64**: NEON has neither a gather (D1) nor `VPCONFLICTD` (D3). The portable field is
+> D2 and D4 plus ILP restructuring.
+>
+> **D2 — run collapsing — is the design this section bets on, and it loses.** Measured
+> **0.25–0.51×** against the straight-line kernel, *including on clustered data*. The mechanism:
+> folding a same-word group costs one unpredictable branch per group, and at a mean run of ~10
+> bits that is one misprediction per ~10 elements ≈ 2 cycles/element — which is what the
+> straight-line version costs anyway. It trades ILP for fewer loads, and on this core loads are
+> cheap while mispredictions are not. **D4 (prefetch) also loses** (0.47–0.65×): the list is
+> sorted, so the access stream is monotonic and the hardware prefetcher already has it.
+>
+> What wins is prosaic: branchless `(w>>bit)&1` and eight *named* accumulator chains, at ~1.14
+> cycles per list element against a load-port floor of 0.67.
+>
+> **The finding that matters more than any of this**: on clustered data the right answer is not a
+> better B×S kernel, it is to stop using B×S. On corpus C1, B×R costs 18.1 ns/pair against B×S's
+> 42.3 for the same rows. That is the pairing matrix working as designed, and it means B×S's real
+> job is the *unclustered* sparse case — precisely where D2 has nothing to exploit.
+
 **D1 — Gather.** Load 16 × `uint32` positions; word indices `v >> 6`; `VPGATHERDD`/`VPGATHERQQ`
 from the bitmap; bit masks via `VPSLLVQ` of `1 << (v & 63)`; `VPTESTMQ` → mask; `KPOPCNT` the
 mask register. Gathers are slow (multi-cycle throughput) but amortize over 8–16 lookups. Likely
@@ -271,6 +327,30 @@ Rank/select is mature (Jacobson; Clark; Vigna's `rank9`; `sdsl`) with ~25% space
 constant-time rank, but the prior-art search found **no application of it to all-pairs
 intersection cardinality against run containers**. Cheap to test, and a real contribution if it
 holds.
+
+> **P4 — MEASURED, and it holds.** `bench/p4_runlength.sh`, Apple M4, 1,048,576-bit universe, run
+> **count** pinned at ~15.3 per pair while run **length** varies 256×:
+>
+> | mean run | no-index (NEON) | rank9 index | ratio |
+> |---:|---:|---:|---:|
+> | 64 b | 1.72 ns/run | 2.20 ns/run | 0.78× |
+> | 256 b | 2.91 | 2.51 | 1.16× |
+> | 1024 b | 4.80 | 2.74 | 1.76× |
+> | 4096 b | 10.46 | 4.49 | 2.33× |
+> | 16384 b | 31.75 | 3.29 | **9.65×** |
+>
+> The no-index kernel grows 18× across the sweep; the indexed one shows no trend. **Run length
+> drops out of the cost**, which is exactly and only what P4 asserts. Reporting the two axes
+> separately, as this section demands, is what makes that visible — a single "runs/second" figure
+> would have hidden it.
+>
+> **Amortization threshold, measured: ~256-bit runs (4 words).** The analytic estimate was
+> 600–1000 bits and was wrong in the expensive direction — it counted instructions, when the
+> no-index path's real cost past L1 is memory traffic. Shipping threshold corrected from 12 words
+> to 4. A worked example of why `AGENTS.md` rule 8 exists.
+>
+> **The same index does accelerate B×W** (the last bullet below): 1.20× on long-fill data, since
+> a one-fill is a run. Bounded by the literal fraction of the stream, which is irreducible.
 
 Experiments:
 - `rank9`-style two-level index vs block-granularity rank (coarse counters + local popcount);
@@ -474,14 +554,33 @@ Done:
 - ✅ Switched to **C++17 internals with an `extern "C"` public ABI**; `tests/test_storm.c` stays C
   so it doubles as the ABI regression test. Verified: 42 unmangled `STORM_` exports, 0 mangled.
 
+- ✅ **Representation layer** — `kernels/storm_repr.{h,cpp}`. B, S, R (SoA `[start, end)`),
+  W (EWAH-64), rank9 index, and per-row metadata M1. Ro is deliberately not built: CRoaring
+  already covers its 3×3 sub-case and it is a *meta* representation, so it belongs in the
+  selection layer rather than as a 5th set of kernels.
+- ✅ **Skewed data generators** (§7.2) — `kernels/storm_gen.{h,cpp}`. Both axes independent:
+  within-row structure (uniform / Markov-gap clustered / run-structured) × across-row spectrum
+  (uniform / **1-over-i** / bimodal). The 1/i upper limit is *solved* so its mean cardinality
+  matches the uniform spectrum's — otherwise the two corpora differ in density as well as skew and
+  the comparison measures the wrong thing, flattering the result for the wrong reason.
+- ✅ **All ten non-Roaring cells implemented and differentially tested** — 1.93 M checks against
+  an independent oracle (`tests/test_cells.cpp`, wired into CTest), sweeping universes that are
+  not multiples of 64/512/the rank stride, empty/full/single-bit/single-run rows, and both
+  argument orders.
+- ✅ **Per-cell benchmark harness** — `bench/bench_cells.cpp` + `bench/sweep.sh` +
+  `bench/compare.py`. Reports ns/pair, ns per work unit, derived cycles per work unit, corpus
+  footprint against this host's cache hierarchy, and a measured clock. Emits JSON (§9).
+- ✅ **libalgebra vendored** with the arm64 portability fix — a fresh clone now builds on arm64.
+
 Outstanding:
 
-- ⬜ Push the `libalgebra` arm64 portability fix upstream and bump the pin — it currently lives
-  only in the submodule working tree, so **a fresh clone still fails on arm64**.
-- ⬜ Representation layer (B/S/R/W/Ro constructors, converters, metadata M1) and the skewed data
-  generators of §7.2 — both are prerequisites for Phase 1.
-- Benchmark harness skeleton + JSON results schema (§9).
-- Fix the README's 114 GB/s framing (§7.1).
+- ⬜ JSON results schema + `plot.py` (§9.1) — the harness emits records, but there is no
+  versioned schema and no figure regeneration yet.
+- ⬜ Fix the README's 114 GB/s framing (§7.1). The Status block flags it as unverified; the
+  table itself still stands unqualified.
+
+**Results so far: `results/OPTLOG.md`** — per-cell iteration log, hypotheses and refutations
+included.
 
 Phase 0 additionally must deliver the **representation layer** (B/S/R/W/Ro constructors,
 converters, and per-row metadata M1) and the **skewed data generators** of §7.2 — a 1/i frequency

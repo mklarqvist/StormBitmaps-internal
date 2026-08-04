@@ -132,6 +132,29 @@ if(STORM_HAVE_ROARING)
 	endif()
 endif()
 
+# ---------------------------------------------------------------- kernels
+#
+# The pairing-matrix kernel layer: representations, generators, and one
+# translation unit per group of cells. This is C++17-internal (PROBLEM_STATEMENT.md,
+# AGENTS.md "Language and ABI") and is NOT exposed through storm.h -- it has no
+# C ABI surface and is not meant to have one yet.
+set(STORM_KERNEL_SOURCES
+	kernels/storm_repr.cpp
+	kernels/storm_gen.cpp
+	kernels/oracle.cpp
+	kernels/cell_bb.cpp
+	kernels/cell_bs.cpp
+	kernels/cell_br.cpp
+	kernels/cell_sparse.cpp
+	kernels/cell_wah.cpp)
+
+add_library(storm_kernels STATIC ${STORM_KERNEL_SOURCES})
+target_include_directories(storm_kernels PUBLIC "${PROJECT_SOURCE_DIR}")
+
+# Per-cell microbenchmark. Races every variant of a cell over one corpus.
+add_executable(bench_cells bench/bench_cells.cpp)
+target_link_libraries(bench_cells PUBLIC storm_kernels)
+
 # Correctness tests. No third-party dependencies: these must always build.
 #
 # test_storm.c is deliberately compiled as C, not C++. Linking a C translation
@@ -142,3 +165,9 @@ add_executable(test_storm storm.cpp tests/test_storm.c)
 target_include_directories(test_storm PUBLIC "${PROJECT_SOURCE_DIR}")
 set_target_properties(test_storm PROPERTIES LINKER_LANGUAGE CXX)
 add_test(NAME storm_correctness COMMAND test_storm)
+
+# Differential test for the kernel layer: every variant of every cell against
+# the oracle, across representations, structures and spectra. Standing rule 6.
+add_executable(test_cells tests/test_cells.cpp)
+target_link_libraries(test_cells PUBLIC storm_kernels)
+add_test(NAME cells_correctness COMMAND test_cells)

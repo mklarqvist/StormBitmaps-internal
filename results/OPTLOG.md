@@ -1,0 +1,272 @@
+# Per-cell optimization log
+
+Running record of the pairing-matrix kernel campaign (`RESEARCH_PLAN.md` §1).
+One section per cell. Each numbered entry is one **iteration**: a hypothesis, a
+change, and what the measurement said — including when it said "no".
+
+**Stopping rule.** A cell is closed after **5 consecutive iterations with no
+improvement** to its best correct variant. A positive finding resets the count.
+
+**Host.** Apple M4, 10 cores, L1d 64 kB, L2 4 MB (P-cluster), SLC 16 MB.
+Apple clang 21.0.0, `-O3 -march=native`, C++17. All figures **tier 3 (measured)**
+unless marked otherwise. Cycles are derived from a per-run measured frequency
+(~3.8 GHz, dependent-ADD-chain calibration), not a PMU counter — macOS exposes
+no unprivileged per-core cycle counter, so cycles/unit is time × measured
+frequency and is labelled derived throughout.
+
+**Reading the numbers.** Within one benchmark process every variant sees the
+identical pair list under identical conditions, so the `vs ref` column is
+reliable. Absolute ns/pair carries **~10% run-to-run variance** from DVFS even
+with QoS pinned to the P-cluster; do not read a cross-run 5% delta as a result.
+
+**Corpora** (`bench/sweep.sh`): U1 uniform/uniform, S1 uniform/1-over-i,
+C1 clustered/1-over-i, L1 long-runs, D1 dense. Standing rule 4 requires U1 and
+S1 to be reported together — the gap between them is the result.
+
+---
+
+## Cross-cutting findings
+
+These came out of the campaign but are not specific to one cell.
+
+**F1 — The NEON B×B kernel is SIMD-issue bound, not load bound.** `RESEARCH_PLAN.md`
+§3.1 derives a load-bound kernel from the AVX-512 port structure, where
+`VPOPCNTQ` has a dedicated port and the AND/ADD go elsewhere, so cutting loads
+via MR×NR register blocking pays. On NEON, `AND`, `CNT` and `UADALP` all issue
+on the same four pipes (u11-14, recip TP 0.25 — applecpu, tier 2), while loads
+have three of their own (u8-10, recip TP 0.333). Per 16 bytes the kernel issues
+3 SIMD ops against 2 loads → 0.75 cyc/16B from SIMD vs 0.667 from loads.
+**Register blocking would cut a resource that is not binding.** Measured B×B
+floor is 0.42–0.49 cycles/word against the 0.375 derived ceiling.
+
+**F2 — Harley-Seal is a measured loss on NEON**, 0.38–0.72× depending on corpus.
+`RESEARCH_PLAN.md` §3.3 predicts this for AVX-512 and the NEON arithmetic is
+more lopsided still: a CSA is 5 ops and it buys back `CNT`s that cost 1 op each
+at 4/cycle. Reducing 16 vectors costs 15 CSAs = 75 ops to remove ~30 ops.
+The kernel is kept as a labelled negative control.
+
+**F3 — Accumulator count dominates instruction choice on this microarchitecture.**
+The same instruction mix measured 0.41× with one accumulator and 1.24× with
+eight. Three of the first-cut cell kernels (B×W, W×W, R×W) *lost to their own
+scalar reference* purely from a single-accumulator recurrence, because clang
+auto-vectorizes `c += POPCOUNT(w[k])` with several. Fixed centrally in
+`kernels/storm_simd.h`. A hand-written SIMD kernel that loses to the compiler's
+version of the same loop is a bug, not a finding.
+
+**F5 — SIMD wins only where the work is irreducible. Everywhere else the win is
+doing less work.** This is the campaign's central result and it is sharp:
+
+| cell group | corpus-cell points | won by a SIMD-throughput kernel |
+|---|---:|---:|
+| **Asymmetric** (B×S, B×R, S×R, S×W, R×W) | 25 | **0** |
+| Same-representation (B×B, S×S, W×W, R×R, B×W) | 25 | 7 |
+
+Across every mixed-representation cell on every corpus, **a vectorized kernel
+never wins**. The winners are plain scalar loops (`ilp8`, `scalar`), index
+lookups (`rank`), search-strategy selection (`adaptive`, `search`, `merge_bl`),
+and structural folding (`collapse`). `bs_neon_idx` and `br_neon` exist, are
+correct, and lose everywhere — 0.51–0.86×.
+
+Where SIMD does win it is exactly where the work cannot be reduced: **B×B on 4
+of 5 corpora** — dense against dense, every word must be touched — plus S×S on
+long balanced lists, and the literal bodies of B×W/W×W.
+
+The exception proves the rule. On the long-run corpus, B×B is won not by the
+best SIMD variant (`neon_u8acc4`, 1.21×) but by `neon_rankskip` at **3.12×** —
+skipping all-zero blocks. Once the data is sparse, even *inside the dense cell*
+the win comes from not doing the work rather than from doing it faster.
+
+This is the empirical case for `PROBLEM_STATEMENT.md` §2. Faster popcount is a
+constant factor on the one cell where the cost is unavoidable; representation
+pairing is an asymptotic factor on the other nine. It also reframes what this
+project's kernels *are*: the deliverable is not a set of hand-tuned SIMD
+routines but a set of work-avoidance strategies plus the O(1) machinery to pick
+between them.
+
+**F6 — Sequential per-variant timing is a measurement bug on a thermally
+managed part.** The harness originally timed each variant to completion in turn,
+so any monotonic drift over a long sweep landed unevenly and favoured whichever
+ran first. Effect size: B×B `neon_u8` measured **0.64× of scalar in one sweep
+and 1.17× in the next**, same binary, same corpus, with the difference tracking
+how much work had run before the cell started — and 0.64× was briefly written
+up as a real finding ("hand-written NEON loses to the compiler on DRAM-resident
+data") before the second run contradicted it. Fixed by round-robin interleaving:
+every repeat times every variant once. Any result in this log predating that fix
+that rests on a <20% margin should be treated as unconfirmed.
+
+**F4 — Two of the plan's four B×S designs do not exist on this ISA.**
+`RESEARCH_PLAN.md` §4 proposes D1 (gather) and D3 (`VPCONFLICTD`); NEON has
+neither. The portable designs are the ones that exploit *data structure* (D2 run
+collapsing) rather than an instruction. This is a finding about the plan, not a
+gap in the implementation.
+
+---
+
+## B × S — Θ(|S|), P0
+
+Best: **`ilp8x`** (8 named accumulator chains) on skewed/clustered corpora,
+`shift` on uniform. ~1.14 cycles/list-element; the load-port floor is 0.67
+(2 loads/element ÷ 3 loads/cycle).
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | `scalar` 187.8 ns (U1), 31.1 (S1), 45.8 (C1) |
+| 1 | Branchless `(w>>bit)&1` beats `(w&(1<<bit))!=0` | **YES**, 1.13× on U1 |
+| 1 | D2 run-collapsing (plan's favoured design) | **NO — 0.25–0.51×.** See below |
+| 1 | D4 software prefetch | **NO**, 0.47–0.65×. The list is sorted, so the stream is monotonic and the HW prefetcher already has it |
+| 1 | NEON index arithmetic | **NO**, 0.51–0.73×. The bitmap loads stay scalar, so only the cheap part vectorizes |
+| 2 | `bs_ilp<U>` used an accumulator ARRAY and lost (0.76×); naming the accumulators should fix it | **YES**, `ilp8x` 1.03–1.04× and now beats `shift` on C1/S1 |
+| 2 | Two positions per 64-bit list load cuts list traffic in half | **NO**, 0.86×. Not load-count bound at the list end |
+| 3 | Two independent cursors over halves of the list double the MLP | **NO**, 0.83–0.94×. One stream already saturates the available memory parallelism |
+| 4 | Pick `shift` vs `ilp8x` on the dense side's L1 footprint | **NO**, ties the better of the two. The two forms are within ~5% of each other on every corpus, so there is nothing for a selector to recover |
+
+**Status: 3 consecutive non-improving iterations.** B×S is at ~0.80–1.23
+cycles/element against a 0.67 load-port floor, and the remaining gap is the
+scattered bitmap load. Nothing in the design space tried so far moves it.
+
+**D2 run-collapsing is the plan's headline B×S design and it loses everywhere,
+including on clustered data.** Worth stating plainly. The mechanism: folding a
+same-word group costs one *unpredictable* branch per group, and with a mean run
+of ~10 bits that is one misprediction per ~10 elements ≈ 2 cycles/element —
+precisely what the straight-line version costs anyway. It trades ILP for fewer
+loads, and on this core loads are cheap while mispredictions are not.
+
+The deeper point: **on clustered data the right answer is not a better B×S
+kernel, it is to stop using B×S.** On C1, B×R costs 18.1 ns/pair against B×S's
+42.3 for the same rows. That is the pairing matrix working as intended, and it
+means B×S's real job is the *unclustered* sparse case — exactly where D2 has
+nothing to exploit.
+
+---
+
+## B × R — Θ(runs) with the rank index, P0 — **claim P4**
+
+Best: **`rank`** on long runs, `scalar`/`hybrid4` on short. This is the cell
+carrying the project's strongest claim and it holds.
+
+**P4 measured** (`bench/p4_runlength.sh`, run count fixed at ~15.3/pair, run
+length varied 256×):
+
+| mean run | no-index (neon) | rank | ratio |
+|---:|---:|---:|---:|
+| 64 b | 1.72 ns/run | 2.20 ns/run | 0.78× |
+| 256 b | 2.91 | 2.51 | 1.16× |
+| 1024 b | 4.80 | 2.74 | 1.76× |
+| 4096 b | 10.46 | 4.49 | 2.33× |
+| 16384 b | 31.75 | 3.29 | **9.65×** |
+
+The no-index kernel grows 18× across the sweep; rank shows no trend. **Run
+length drops out of the cost.**
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | `scalar` 525 ns (U1), 19.1 (C1), 29.6 (L1) |
+| 1 | rank9 index makes B×R Θ(runs) | **YES on long runs** — 3.36× on L1, 9.65× at 16 kbit runs. **NO on short runs** — 0.5× on U1/S1/C1, where runs are ~1 word |
+| 1 | Interleaving two runs per iteration exposes ILP | **NO**, 0.51–0.60×. The rank loads already overlap |
+| 2 | Analytic crossover estimate (600–1000 bit runs) | **WRONG — measured ~256 bits.** The estimate counted instructions; the no-index path's real cost is memory traffic. Shipping threshold corrected 12 words → 4 |
+| 3 | When a run stays inside one 512-bit rank block the block counter cancels, so the pair costs one rank load instead of two | **NO.** 0.54× on short-run corpora (vs `rank`'s 0.52× — no real gain) and 1.79× on long runs where plain `rank` gets 2.37×. The saved load was not the cost |
+
+**Status: 1 consecutive non-improving iteration.**
+
+---
+
+## S × R — Θ(|S| + r), P0
+
+Best: **`adaptive`** (three-way cost comparison). **The largest single win of
+the campaign.**
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | `merge` 5123 ns (U1), 8487 (L1) |
+| 1 | Branchless merge | Mixed: 1.54× on U1, **0.54× on L1** |
+| 1 | Gallop into the run array per list element | 2.68× on S1, 0.45× on L1 |
+| 1 | **Search from the RUN side** — two galloping searches into the list per run, Θ(r log \|S\|) | **YES, 70×.** See below |
+| 1 | Replace the single hardcoded ratio with a three-way cost comparison | **YES**, now picks correctly on every corpus |
+
+The cell could exploit a short *list* but not a short *run array* — an
+asymmetry with no justification, since the entire premise of the pairing matrix
+is that either side may be the sparse one. On L1 (r = 3.3, |S| = 13,107) every
+variant walked all 13,107 list elements when the answer is six binary searches:
+**8487 → 121 ns/pair.**
+
+The replacement selector compares `|S|+r`, `|S| log r` and `r log |S|` directly
+from the two sizes — O(1) metadata, which is the shape standing rule 7 demands.
+
+---
+
+## S × S — Θ(|A|+|B|), P1 (mature prior art)
+
+Best: **`adaptive`** → NEON 4×4 block compare, or gallop when the sizes are
+lopsided.
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | `merge` 3146 ns (U1) |
+| 1 | Branchless merge | **YES**, 1.19–1.21× |
+| 1 | NEON 4×4 all-pairs compare via `vextq` rotation | **YES**, 1.94–2.39× on balanced pairs |
+| 1 | Gallop when lopsided | **YES**, 2.35–2.46× on S1/C1 |
+| 2 | `adaptive` fell back to the scalar merge, not the NEON kernel | **YES**, 1.54–1.63× on S1/C1 |
+
+---
+
+## R × R — Θ(r_A + r_B), P1
+
+Best: **`adaptive`**; `merge_bl` on long-run data.
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | `merge` 3526 ns (U1), 7.99 (L1) |
+| 1 | Branchless overlap merge | **YES**, 1.09–1.35× |
+| 1 | Gallop from the shorter run array | **YES**, 1.44–1.59× on C1 |
+| 1 | Adaptive on the run-count ratio | **YES**, 2.19–2.23× on C1 |
+
+**R×R is the fastest cell in the matrix on run-structured data: 6.63 ns/pair
+against a B×B floor of 214 ns — 32×.**
+
+---
+
+## B × W / S × W / R × W / W × W — the WAH-fill cells, P1/P2
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | B×W 2135 ns (U1), 47.1 (L1); W×W 4200 (U1), 75.4 (L1) |
+| 1 | Explicit NEON bodies beat the scalar reference | **NO at first — 0.74–0.96×**, the single-accumulator bug (F3) |
+| 1 | Rank index also accelerates one-fills (plan §4.5's open question) | **YES**, 1.20× on L1 — fills are runs, so the same mechanism applies |
+| 1 | A zero fill can swallow the other stream's segments whole | **YES**, `ww_skip` 1.12–1.20× |
+| 1 | Same-word collapse in S×W | **YES on long runs**, 2.29×; ~1.0× elsewhere |
+| 2 | Multi-accumulator shared primitives (F3 fix) | **YES**, R×W 1.28× on L1, W×W 1.04–1.12× |
+
+---
+
+## B × B — Θ(m) fixed cost, P2
+
+Best: **`neon_u8`** / `neon_u4` (within noise of each other), **0.42–0.49
+cycles/word** at L2 residency against a 0.375 derived ceiling.
+
+| # | Hypothesis | Result |
+|---|---|---|
+| 0 | baseline | `scalar` 148.8 ns (U1); `scalar_u4` — what the repo shipped on arm64 — is **0.68×, slower than plain scalar** |
+| 1 | NEON AND+CNT+UADALP, 1 accumulator | **NO, 0.41×** — latency bound on UADALP (lat 3) |
+| 1 | 4 accumulators cover the latency-3 recurrence | **YES**, 1.07–1.31× |
+| 1 | 8 accumulators | **YES**, ~1.24×; ties u4 within noise |
+| 1 | u8 accumulation shortens the recurrence (ADD lat 2 vs UADALP lat 3) | **NO**, ties. Issue bound, not latency bound, once ≥4 chains exist |
+| 1 | Harley-Seal | **NO, 0.38–0.72×** (F2) |
+| 1 | Skip all-zero 512-bit blocks via the rank index | **YES on sparse data**, 3.12× on L1; 0.40× on dense, where the test is pure overhead |
+| 3 | **`vld1q_u8_x2` paired loads** — halves load instructions without changing the SIMD op count. A cheap proxy for "does register blocking pay?" | **NO, and that is the point.** 1.07–1.19× against `neon_u8`'s 1.18–1.40×. Cutting loads changes nothing because loads are not the binding resource — **so MR×NR register blocking (§3.2) will not pay on this ISA either.** Phase 5's central question, answered for ~30 lines |
+| 4 | Explicit prefetch helps once the working set exceeds L2 | **NO**, 0.97–1.16×, never wins. The hardware prefetcher already has a unit-stride stream |
+
+**Status: 2 consecutive non-improving iterations.** Best is 0.34–0.49
+cycles/word depending on residency.
+
+**M4 exceeds the Firestorm-derived ceiling.** The 0.375 cyc/word floor derived
+from applecpu's 4-SIMD-pipe Firestorm data is beaten: **0.340 measured** on the
+dense corpus. Firestorm is M1 and this host is M4, and the skill's own guidance
+says not to treat one as the other — this is what that caution looks like when
+it bites. Tier 3 overrides tier 2; the ceiling is a hypothesis that measurement
+has now falsified for this core.
+
+`neon_rankskip` is the one B×B variant that engages the project's thesis: it
+recovers part of the sparse-side win *without leaving the bitmap
+representation*. It is still Θ(m/8) — it cannot reach what B×S or B×R reach —
+and quantifying that gap is the direct answer to the "why not just skip zeros?"
+objection to `PROBLEM_STATEMENT.md` §2.
