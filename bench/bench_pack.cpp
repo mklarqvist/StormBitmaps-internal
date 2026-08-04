@@ -209,6 +209,129 @@ int main(int argc,char**argv){
         for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
     for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
     return c; };
+  /* Iteration 8: precomputed singleton probes.
+   *
+   * 75% of pairs have |S| = 1. For those the entire kernel is one bit test, yet
+   * every pair recomputes v>>6 and 1<<(v&63) from the stored position. Both are
+   * properties of the ROW, not the pair, and a row participates in N-1 pairs --
+   * so at N = 4000 each shift pair is recomputed ~4000 times to produce the same
+   * two values. Hoist them to load time: one u32 word index and one u64 mask per
+   * singleton row, and the probe becomes load-and-test with no shifts at all. */
+  std::vector<uint16_t> sg_pos(rows.size(),0xFFFF);   // 13-bit position, 2 B/row
+  std::vector<uint32_t> sg_word(rows.size(),0);
+  std::vector<uint64_t> sg_mask(rows.size(),0);
+  uint32_t n_single=0;
+  for(size_t i=0;i<rows.size();++i)
+    if(rows[i].t==T_ARRAY16 && rows[i].n16==1){
+      const uint32_t v=arena[aoff[i]]; sg_word[i]=v>>6; sg_mask[i]=1ull<<(v&63);
+      sg_pos[i]=(uint16_t)v; ++n_single; }
+  printf("   singleton rows: %u of %zu (%.1f%%)\n",n_single,rows.size(),100.0*n_single/rows.size());
+
+  auto tmplS=[&](auto WT)->uint64_t{
+    constexpr int W=decltype(WT)::value;
+    uint64_t acc[W]={}; size_t k=0;
+    for(;k+W<=g_arr.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u){ const uint32_t d=g_arr[k+u].first,s=g_arr[k+u].second;
+        acc[u]+= sg_mask[s] ? ((BV[d].w[sg_word[s]] & sg_mask[s])!=0)
+                            : bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+    uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+    for(;k<g_arr.size();++k){ const uint32_t d=g_arr[k].first,s=g_arr[k].second;
+      c+= sg_mask[s] ? ((BV[d].w[sg_word[s]] & sg_mask[s])!=0)
+                     : bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  printf("   + precomputed singleton probe:\n");
+  auto runS=[&](auto WT){ constexpr int W=decltype(WT)::value;
+    uint64_t gg=tmplS(WT); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=tmplS(WT); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("     W=%-2d %7.3f ns/pair%s\n",W,(double)b/pr.size(),ok); };
+  runS(std::integral_constant<int,4>{}); runS(std::integral_constant<int,6>{});
+  runS(std::integral_constant<int,8>{});
+
+  /* Iteration 9: generalize the singleton hoist to every short row.
+   *
+   * If precomputing (word, mask) pays for |S| = 1, it should pay for |S| <= 4 --
+   * 89% of pairs. Precompute the whole (word, mask) list per row, which also
+   * folds same-word positions into a single mask at LOAD time instead of
+   * probing them separately on every one of the row's N-1 pairings. That is the
+   * D2 run-collapsing idea from RESEARCH_PLAN.md 4, which lost decisively as a
+   * per-pair kernel (0.25-0.51x, OPTLOG) -- but it was losing because it paid a
+   * branch per group per PAIR. Paid once per ROW it costs nothing. */
+  std::vector<uint32_t> wm_off(rows.size()+1,0);
+  std::vector<uint32_t> wm_word; std::vector<uint64_t> wm_mask;
+  for(size_t i=0;i<rows.size();++i){ wm_off[i]=(uint32_t)wm_word.size();
+    if(rows[i].t==T_ARRAY16){ const uint16_t* v=arena.data()+aoff[i];
+      for(uint32_t k=0;k<rows[i].n16;){ const uint32_t wd=v[k]>>6; uint64_t m=0;
+        while(k<rows[i].n16 && (uint32_t)(v[k]>>6)==wd){ m|=1ull<<(v[k]&63); ++k; }
+        wm_word.push_back(wd); wm_mask.push_back(m); } } }
+  wm_off[rows.size()]=(uint32_t)wm_word.size();
+  printf("   (word,mask) entries %zu for %zu array positions (%.2f collapse)\n",
+         wm_word.size(),arena.size(),(double)arena.size()/std::max<size_t>(1,wm_word.size()));
+
+  auto tmplWM=[&](auto WT)->uint64_t{
+    constexpr int W=decltype(WT)::value;
+    uint64_t acc[W]={}; size_t k=0;
+    auto one=[&](uint32_t d,uint32_t s)->uint64_t{
+      const uint32_t b0=wm_off[s],b1=wm_off[s+1];
+      if(b1-b0==1) return (BV[d].w[wm_word[b0]]&wm_mask[b0])!=0;
+      uint64_t c=0; for(uint32_t t=b0;t<b1;++t)
+        c+=__builtin_popcountll(BV[d].w[wm_word[t]]&wm_mask[t]);
+      return c; };
+    for(;k+W<=g_arr.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u) acc[u]+=one(g_arr[k+u].first,g_arr[k+u].second); }
+    uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+    for(;k<g_arr.size();++k) c+=one(g_arr[k].first,g_arr[k].second);
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  /* Iteration 10: same hoist, 6x smaller side table.
+   * Iteration 9 showed working-set size is what binds. The singleton tables are
+   * u32 word + u64 mask = 12 B/row; the position itself is 13 bits and fits one
+   * u16. Recomputing the shift from it costs one instruction and shrinks the
+   * table 6x, so more of it stays resident alongside the arena. */
+  auto tmplP=[&](auto WT)->uint64_t{
+    constexpr int W=decltype(WT)::value;
+    uint64_t acc[W]={}; size_t k=0;
+    auto one=[&](uint32_t d,uint32_t s)->uint64_t{
+      const uint16_t p=sg_pos[s];
+      if(p!=0xFFFF) return (BV[d].w[p>>6]>>(p&63))&1u;
+      return bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); };
+    for(;k+W<=g_arr.size();k+=W){
+#pragma unroll
+      for(int u=0;u<W;++u) acc[u]+=one(g_arr[k+u].first,g_arr[k+u].second); }
+    uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+    for(;k<g_arr.size();++k) c+=one(g_arr[k].first,g_arr[k].second);
+    for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+      for(uint32_t kk=0;kk<RV[s].n;++kk)
+        for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+    for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+    return c; };
+  printf("   + singleton as packed u16 position (2 B/row):\n");
+  auto runP=[&](auto WT){ constexpr int W=decltype(WT)::value;
+    uint64_t gg=tmplP(WT); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=tmplP(WT); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("     W=%-2d %7.3f ns/pair%s\n",W,(double)b/pr.size(),ok); };
+  runP(std::integral_constant<int,4>{}); runP(std::integral_constant<int,6>{});
+  runP(std::integral_constant<int,8>{});
+
+  printf("   + precomputed (word,mask) for ALL rows:\n");
+  auto runWM=[&](auto WT){ constexpr int W=decltype(WT)::value;
+    uint64_t gg=tmplWM(WT); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=tmplWM(WT); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("     W=%-2d %7.3f ns/pair%s\n",W,(double)b/pr.size(),ok); };
+  runWM(std::integral_constant<int,4>{}); runWM(std::integral_constant<int,6>{});
+  runWM(std::integral_constant<int,8>{});
+
   printf("   cross-pair ILP, compile-time width:\n");
   auto runW=[&](auto WT){ constexpr int W=decltype(WT)::value;
     uint64_t gg=tmplW(WT); const char* ok=(gg==w)?"":"  WRONG";

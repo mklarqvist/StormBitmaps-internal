@@ -768,3 +768,39 @@ only true because 89% of pairs are too short to unroll internally, a property of
 the 1/i spectrum rather than of the kernel.
 
 **Running total: 5.49 -> 1.55 ns/pair, 3.5x.**
+
+### Iterations 8-10 — move work per-pair -> per-row, but watch the footprint
+
+**Iteration 8 (improvement, 1.55 -> 1.32).** 42% of rows are singletons and each
+takes part in N-1 pairings, so `v>>6` and `1<<(v&63)` were being recomputed ~4,000
+times per row to yield the same two values. Hoisting them to load time makes the
+probe a bare load-and-test.
+
+**Iteration 9 (NO improvement, 1.50).** Generalizing the hoist to a full
+`(word,mask)` list per row -- which also folds same-word positions at load time,
+i.e. D2 run-collapsing paid once per ROW instead of once per pair -- **loses**.
+Two numbers say why: the collapse ratio is only **1.25** (12,813 positions ->
+10,226 entries), so folding removes almost nothing at this density, and the
+entries cost **12 B against uint16's 2**. Trading a 6x larger working set for a
+1.25x work reduction is a bad deal. D2 fails here for a different reason than it
+failed as a per-pair kernel.
+
+**Iteration 10 (improvement, 1.32 -> 1.15).** Iteration 9 diagnosed this one: if
+footprint is what binds, hoist *less*. The universe is 5,008 bits, so a position
+is 13 bits and fits one `uint16` -- 2 B/row instead of 12. Recomputing the shift
+costs one instruction and wins back more than it costs.
+
+| | ns/pair |
+|---|---:|
+| cross-pair ILP only (iter 7) | 1.55 |
+| + singleton hoist, 12 B/row (iter 8) | 1.32 |
+| + `(word,mask)` for all rows (iter 9) | 1.50 |
+| **+ singleton as packed u16, 2 B/row (iter 10)** | **1.15** |
+
+The chain is the finding: **hoist the invariant, discover the footprint binds,
+then hoist less.** At N^2 pairs anything invariant in a row is recomputed N
+times, so hoisting always reduces work -- but the hoisted table is touched N^2
+times, so its *size* is on the critical path in a way the original computation
+was not.
+
+**Running total: 5.49 -> 1.15 ns/pair, 4.8x.**
