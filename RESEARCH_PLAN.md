@@ -45,26 +45,32 @@ Priority is set by `PROBLEM_STATEMENT.md` §6: the asymmetric cells carry the re
 
 | Cell | Cost | Priority | Status |
 |---|---|---|---|
-| **B × S** | Θ(\|S\|) | **P0** | **scalar only** — correct as of Phase 0, but unvectorized. §4 |
-| **B × R** | Θ(r) with rank index | **P0** | does not exist — §4.5 |
-| **S × R** | Θ(\|S\| + r) or Θ(\|S\| log r) | **P0** | does not exist |
-| **B × W** | Θ(literals + fills) | P1 | does not exist |
-| **S × W** | Θ(\|S\| + fills) | P1 | does not exist |
-| **R × R** | Θ(r_A + r_B) | P1 | exists in CRoaring (scalar-ish) |
-| **R × W**, **W × W** | Θ(r_A + r_B) | P2 | — |
-| **S × S** | Θ(\|A\|+\|B\|) merge / galloping | P1 | exists (Lemire `SIMDCompressionAndIntersection`, Roaring) |
-| **B × B** | Θ(m) — **fixed cost** | P2 | exists (`libalgebra`); register blocking §3 |
-| **Ro × ·** | per-chunk dispatch | P1 | CRoaring covers the 3×3 sub-case |
+All ten non-Roaring cells are **built, differentially tested and closed** as of 2026-08-04
+(`results/OPTLOG.md`): 13 optimization rounds, ~180 variants, every cell 5+ consecutive iterations
+without an improvement above the 5% noise floor, 2.4–2.7 M correctness checks per host.
+
+| Cell | Cost | Priority | Status — winning variant |
+|---|---|---|---|
+| **B × S** | Θ(\|S\|) | **P0** | CLOSED — `ilp8`/`shift`, plain scalar. NEON variants exist and lose |
+| **B × R** | Θ(r) with rank index | **P0** | CLOSED — `hybrid4`/`rank`. **P4 proven** |
+| **S × R** | Θ(\|S\| + r) or Θ(\|S\| log r) | **P0** | CLOSED — `adapt_b6`, three-way cost selection |
+| **B × W** | Θ(literals + fills) | P1 | CLOSED — `occ`/`skip`/`rank` by corpus |
+| **S × W** | Θ(\|S\| + fills) | P1 | CLOSED — `adapt_f1`, gallop past fills |
+| **R × R** | Θ(r_A + r_B) | P1 | CLOSED — `adapt_r6` |
+| **R × W**, **W × W** | Θ(r_A + r_B) | P2 | CLOSED — `skip2`, bulk fill skipping |
+| **S × S** | Θ(\|A\|+\|B\|) merge / galloping | P1 | CLOSED — `adaptive2` → NEON 8×8 block compare or `gallop_sym` |
+| **B × B** | Θ(m) naive; **sub-linear zone-mapped** | P2 | CLOSED — `occ_sel`. **No AVX-512 kernel: loses 5× to CRoaring on x86 dense data** |
+| **Ro × ·** | per-chunk dispatch | P1 | NOT BUILT, deliberately — CRoaring covers the 3×3 sub-case and Ro is a *meta* representation belonging in the selection layer |
 
 **Selection machinery** — not a cell, but the load-bearing component:
 
 | ID | Component | Status |
 |---|---|---|
-| **M1** | Per-row metadata (cardinality, run count, chunk-occupancy mask) | does not exist |
-| **M2** | O(1) pairing decision from metadata | does not exist |
-| **M3** | Tile-level hoisting via density/run-count partitioning | does not exist |
-| **M4** | Calibrated cost model producing the decision thresholds | hardcoded guesses today (`STORM_contig_new()`, `storm.h:46`) |
-| **M5** | Rank/prefix-popcount index (enables Θ(r) run pairings) | does not exist — §4.5 |
+| **M1** | Per-row metadata (cardinality, run count, chunk occupancy) | **DONE** — `RowMeta`, `kernels/storm_repr.h` |
+| **M2** | O(1) pairing decision from metadata | **DONE but feeds a failing model** — `select_pairing()`, `kernels/storm_cost.h` |
+| **M3** | Tile-level hoisting via density/run-count partitioning | **NOT STARTED — and it is now the critical path.** Gate 1 fails and this is the plan's own prescribed remedy |
+| **M4** | Calibrated cost model producing the decision thresholds | **DONE, FAILS GATE 1** — 94.1% regret, 28.3% selection overhead vs a 2% budget. `kernels/storm_cost.cpp`, `bench/bench_select.cpp` |
+| **M5** | Rank/prefix-popcount index | **DONE** — rank9-style, `build_rank()`. Plus a **zone map** (`build_occ()`, 0.195% overhead) that the plan did not anticipate and that outperforms it for B × B |
 
 `B × B` is deliberately **P2**. It is ~1% of pairs on skewed data and the only cell where fixed
 cost is unavoidable; optimizing it first would be optimizing the slice that matters least.
