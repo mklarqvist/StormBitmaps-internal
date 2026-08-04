@@ -548,3 +548,66 @@ recovers part of the sparse-side win *without leaving the bitmap
 representation*. It is still Θ(m/8) — it cannot reach what B×S or B×R reach —
 and quantifying that gap is the direct answer to the "why not just skip zeros?"
 objection to `PROBLEM_STATEMENT.md` §2.
+
+---
+
+## F12 — Real data: the 1/i premise is confirmed, the *scale* premise is not (yet)
+
+`data/chr20.bin`, converted from 1000 Genomes Phase 3 chr20 by `tools/vcf2bin.sh`
+(bcftools → `tools/gt2bin.py`). **1,739,315 biallelic SNVs × 5,008 phased
+haplotypes**, 274,239,192 set bits. This is `RESEARCH_PLAN.md` §7.2's outstanding
+"at minimum one REAL dataset" requirement, finally closed.
+
+### The allele-frequency spectrum is 1/i, measured
+
+Over 1,203,601 scanned variants:
+
+| allele count | variants | share |
+|---:|---:|---:|
+| **1 (singleton)** | 535,101 | **44.6%** |
+| 2–3 | 199,673 | 16.6% |
+| 4–7 | 108,474 | 9.0% |
+| 8–15 | 79,533 | 6.6% |
+| 16–31 | 60,521 | 5.0% |
+| 32–63 | 48,750 | 4.1% |
+
+Each bin is roughly half the previous — the 1/i shape of `PROBLEM_STATEMENT.md`
+§2.2, on real data, with **44.6% singletons**. The premise that motivated this
+entire project is empirically correct, and the synthetic generator was not
+encoding a fiction.
+
+### But the win at this cohort size is only 2.1×
+
+| cell | ns/pair | vs all-bitmap |
+|---|---:|---:|
+| B × B all-bitmap | 11.77 | 1.00× |
+| B × B zone-mapped | 10.48 | 1.12× |
+| **B × S** | **5.49** | **2.15×** |
+| B × R | 6.95 | 1.69× |
+| S × S | 30.21 | 0.39× |
+| R × R | 35.46 | 0.33× |
+
+**2.15×, not the 10²–10⁵× §2 projects.** The reason is scale, and it is worth
+being blunt about: 2,504 samples is **5,008 haplotypes = 79 words = 626 bytes per
+row**. A whole row fits in a fraction of one cache line's worth of L1, so
+bitmap × bitmap costs 11.77 ns and there is very little fixed cost to avoid.
+§2's arithmetic assumes 10⁷ haplotypes — **1.25 MB per row, 2000× larger** — and
+that is where the asymptotics live.
+
+This is the honest reading: **the data shape is real, the scale is not.** The
+1000 Genomes cohort validates the spectrum and refutes nothing, but it cannot
+demonstrate the headline claim, because the claim is asymptotic in universe size
+and this universe is small. Demonstrating it needs a UK-Biobank- or
+gnomAD-scale cohort (10⁵–10⁶ samples), which is exactly the regime Tomahawk
+targets and this repo does not have access to.
+
+Two consequences for the write-up:
+
+1. **Report this number.** A reviewer who runs the only public phased cohort and
+   gets 2.1× when the paper claims 10⁴× will not accept "wrong scale" after the
+   fact. It has to be stated first, by us.
+2. **The synthetic sweep is the evidence for the asymptotic claim**, and real
+   data is the evidence that the *shape* is not invented. They do different jobs
+   and neither substitutes for the other. `results/density.png` already shows the
+   win growing without bound as density falls; chr20 sits at density 0.032,
+   which the sweep puts squarely in the band where B × B is competitive.

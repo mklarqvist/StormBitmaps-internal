@@ -36,5 +36,6 @@ $CXX $CXXFLAGS $KSRC bench/bench_baseline.cpp "$OUT/roaring.o" -o "$OUT/bench_ba
 $CXX $CXXFLAGS $KSRC bench/bench_cells.cpp                     -o "$OUT/bench_cells"
 $CXX $CXXFLAGS $KSRC bench/bench_allpairs.cpp                  -o "$OUT/bench_allpairs"
 $CXX $CXXFLAGS $KSRC bench/bench_occbin.cpp                    -o "$OUT/bench_occbin"
+$CXX $CXXFLAGS $KSRC bench/bench_real.cpp                      -o "$OUT/bench_real"
 $CXX $CXXFLAGS $KSRC tests/test_cells.cpp                      -o "$OUT/test_cells"
 echo "built: $OUT/{bench_baseline,bench_cells,test_cells}"
