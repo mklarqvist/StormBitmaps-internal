@@ -9,8 +9,20 @@ These algorithms and bitmaps are used to compute XX<sup>T</sup> for a _binary_ i
 [POPCNT](https://en.wikipedia.org/wiki/SSE4#POPCNT_and_LZCNT),
 [SSE4.2](https://en.wikipedia.org/wiki/SSE4#SSE4.2),
 [AVX2](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions),
-[AVX512BW](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions),
-[NEON](https://en.wikipedia.org/wiki/ARM_architecture#Advanced_SIMD_.28NEON.29). This is equivalent to computing the all-vs-all set intersection cardinality (|X<sub>i</sub> ∩ X<sup>T</sup><sub>j</sub>|) for pairs of _symmetric_ integer sets. These algorithms are fast in the worst case and _extremely_ fast when the input matrix is sparse. 
+[AVX512BW](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions). This is equivalent to computing the all-vs-all set intersection cardinality (|X<sub>i</sub> ∩ X<sup>T</sup><sub>j</sub>|) for pairs of _symmetric_ integer sets. These algorithms are fast in the worst case and _extremely_ fast when the input matrix is sparse.
+
+> **Status (2026-08):** this repository is being revived. See
+> [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md) for the current research objective and
+> [`LANDSCAPE.md`](LANDSCAPE.md) §8 for the defects fixed in Phase 0.
+>
+> Two corrections to the claims below, both recorded in `LANDSCAPE.md`:
+>
+> * **NEON is not implemented.** The pinned `libalgebra` contains no NEON code path — the word
+>   appears only in a comment. On AArch64 the library builds and is correct, but runs scalar
+>   fallbacks. NEON/SVE2 support is planned, not present.
+> * **The performance figures below are not cycles.** They were produced with a constant-rate
+>   reference counter (x86 RDTSC), not a core cycle counter, and are unverified on current
+>   hardware. Treat them as historical until re-measured with `perf`.
 
 ![screenshot](binary_matrix_multiplication.jpg)
 

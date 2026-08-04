@@ -1,13 +1,25 @@
 #include "storm.h"
 #include <stdlib.h> // EXIT_SUCCESS, EXIT_FAILURE
 
-uint64_t STORM_intersect_vector16_cardinality(const uint16_t* STORM_RESTRICT v1, 
-                                              const uint16_t* STORM_RESTRICT v2, 
-                                              const uint32_t len1, 
-                                              const uint32_t len2) 
+// This translation unit contains one hand-written SSE4.2 kernel
+// (STORM_intersect_vector16_cardinality). It has no runtime dispatch, so it is
+// selected at compile time. GCC/Clang define __SSE4_2__ under -msse4.2 or
+// -march=native; MSVC has no __SSE4_2__ and is built with /arch:AVX, which
+// implies SSE4.2 (see CMakeLists.txt).
+#if defined(__SSE4_2__) || (defined(_MSC_VER) && defined(__AVX__))
+  #define STORM_HAVE_SSE42 1
+#else
+  #define STORM_HAVE_SSE42 0
+#endif
+
+uint64_t STORM_intersect_vector16_cardinality(const uint16_t* STORM_RESTRICT v1,
+                                              const uint16_t* STORM_RESTRICT v2,
+                                              const uint32_t len1,
+                                              const uint32_t len2)
 {
     size_t count = 0;
     size_t i_a = 0, i_b = 0;
+#if STORM_HAVE_SSE42
     const int vectorlength = sizeof(__m128i) / sizeof(uint16_t);
     const size_t st_a = (len1 / vectorlength) * vectorlength;
     const size_t st_b = (len2 / vectorlength) * vectorlength;
@@ -55,7 +67,10 @@ uint64_t STORM_intersect_vector16_cardinality(const uint16_t* STORM_RESTRICT v1,
                 }
             }
     }
-    // intersect the tail using scalar intersection
+#endif // STORM_HAVE_SSE42
+    // Intersect the tail using scalar intersection. When STORM_HAVE_SSE42 is 0
+    // both cursors are still at 0, so this loop performs the whole merge and is
+    // the portable fallback (correct, just slower).
     while (i_a < len1 && i_b < len2) {
         uint16_t a = v1[i_a];
         uint16_t b = v2[i_b];
@@ -112,19 +127,25 @@ uint64_t STORM_intersect_bitmaps_scalar_list(const uint64_t* STORM_RESTRICT b1,
 {
     uint64_t count = 0;
 
-#define MOD(x) (( (x) * 64 ) >> 6)
+// Bit position within the 64-bit word. The previous definition,
+// ((x) * 64) >> 6, is the identity function, not a modulo: it left the shift
+// count unmasked, which is undefined behaviour for values >= 64. It happened
+// to produce correct results on x86-64 only because the hardware shift masks
+// the count to 6 bits. It also used a `1L` literal, which is 32-bit on LLP64
+// (Windows) and so cannot address the upper half of a word.
+#define STORM_BIT_OF(x) ((x) & 63)
     if(n1 < n2) {
-        for(int i = 0; i < n1; ++i) {
-            count += ((b2[l1[i] >> 6] & (1L << MOD(l1[i]))) != 0);
+        for(uint32_t i = 0; i < n1; ++i) {
+            count += ((b2[l1[i] >> 6] & (1ULL << STORM_BIT_OF(l1[i]))) != 0);
             // __builtin_prefetch(&b2[l1[i] >> 6], 0, _MM_HINT_T0);
         }
     } else {
-        for(int i = 0; i < n2; ++i) {
-            count += ((b1[l2[i] >> 6] & (1L << MOD(l2[i]))) != 0);
+        for(uint32_t i = 0; i < n2; ++i) {
+            count += ((b1[l2[i] >> 6] & (1ULL << STORM_BIT_OF(l2[i]))) != 0);
             // __builtin_prefetch(&b1[l2[i] >> 6], 0, _MM_HINT_T0);
         }
     }
-#undef MOD
+#undef STORM_BIT_OF
     return(count);
 }
 //
@@ -431,10 +452,20 @@ void STORM_bitmap_init(STORM_bitmap_t* all) {
 }
 
 
-void STORM_bitmap_free(STORM_bitmap_t* bitmap) {
+// Release a bitmap's owned buffers without freeing the struct itself.
+// Needed because bitmaps are stored inline in arrays inside a container:
+// passing &array[i] to free() would corrupt the heap.
+static void STORM_bitmap_free_members(STORM_bitmap_t* bitmap) {
     if (bitmap == NULL) return;
     if (bitmap->own_data) STORM_aligned_free(bitmap->data);
     if (bitmap->own_scalar) STORM_aligned_free(bitmap->scalar);
+    bitmap->data = NULL;
+    bitmap->scalar = NULL;
+}
+
+void STORM_bitmap_free(STORM_bitmap_t* bitmap) {
+    if (bitmap == NULL) return;
+    STORM_bitmap_free_members(bitmap);
     free(bitmap);
 }
 
@@ -591,7 +622,7 @@ uint64_t STORM_bitmap_intersect_cardinality(STORM_bitmap_t* STORM_RESTRICT bitma
         // bitmap-scalar comparison
         uint64_t count = 0;
         for (uint32_t i = 0; i < bitmap2->n_scalar; ++i) {
-            count += bitmap1->data[bitmap2->scalar[i] / 64] & (1ULL << (bitmap2->scalar[i] % 64)) != 0;
+            count += (bitmap1->data[bitmap2->scalar[i] / 64] & (1ULL << (bitmap2->scalar[i] % 64))) != 0;
         }
         return count;
 
@@ -599,7 +630,7 @@ uint64_t STORM_bitmap_intersect_cardinality(STORM_bitmap_t* STORM_RESTRICT bitma
         // scalar-bitmap comparison
         uint64_t count = 0;
         for (uint32_t i = 0; i < bitmap1->n_scalar; ++i) {
-            count += bitmap2->data[bitmap1->scalar[i] / 64] & (1ULL << (bitmap1->scalar[i] % 64)) != 0;
+            count += (bitmap2->data[bitmap1->scalar[i] / 64] & (1ULL << (bitmap1->scalar[i] % 64))) != 0;
         }
         return count;
 
@@ -633,7 +664,7 @@ uint64_t STORM_bitmap_intersect_cardinality_func(STORM_bitmap_t* STORM_RESTRICT 
         // bitmap-scalar comparison
         uint64_t count = 0;
         for (uint32_t i = 0; i < bitmap2->n_scalar; ++i) {
-            count += bitmap1->data[bitmap2->scalar[i] / 64] & (1ULL << (bitmap2->scalar[i] % 64)) != 0;
+            count += (bitmap1->data[bitmap2->scalar[i] / 64] & (1ULL << (bitmap2->scalar[i] % 64))) != 0;
         }
         return count;
 
@@ -641,7 +672,7 @@ uint64_t STORM_bitmap_intersect_cardinality_func(STORM_bitmap_t* STORM_RESTRICT 
         // scalar-bitmap comparison
         uint64_t count = 0;
         for (uint32_t i = 0; i < bitmap1->n_scalar; ++i) {
-            count += bitmap2->data[bitmap1->scalar[i] / 64] & (1ULL << (bitmap1->scalar[i] % 64)) != 0;
+            count += (bitmap2->data[bitmap1->scalar[i] / 64] & (1ULL << (bitmap1->scalar[i] % 64))) != 0;
         }
         return count;
 
@@ -676,15 +707,26 @@ void STORM_bitmap_cont_init(STORM_bitmap_cont_t* bitmap) {
     bitmap->prev_inserted_value = 0;
 }
 
-void STORM_bitmap_cont_free(STORM_bitmap_cont_t* bitmap) {
+// As STORM_bitmap_free_members, one level up: containers are stored inline in
+// the STORM_t conts array, so the struct itself must not be freed here.
+static void STORM_bitmap_cont_free_members(STORM_bitmap_cont_t* bitmap) {
     if (bitmap == NULL) return;
     if (bitmap->bitmaps != NULL) {
-        // for (uint32_t i = 0; i < bitmap->n_bitmaps; ++i) {
-        //     STORM_bitmap_free(&bitmap->bitmaps[i]);
-        // }
+        for (uint32_t i = 0; i < bitmap->n_bitmaps; ++i) {
+            STORM_bitmap_free_members(&bitmap->bitmaps[i]);
+        }
         free(bitmap->bitmaps);
+        bitmap->bitmaps = NULL;
     }
     free(bitmap->block_ids);
+    bitmap->block_ids = NULL;
+    bitmap->n_bitmaps = 0;
+    bitmap->m_bitmaps = 0;
+}
+
+void STORM_bitmap_cont_free(STORM_bitmap_cont_t* bitmap) {
+    if (bitmap == NULL) return;
+    STORM_bitmap_cont_free_members(bitmap);
     free(bitmap);
 }
 
@@ -835,10 +877,15 @@ STORM_t* STORM_new() {
 
 void STORM_free(STORM_t* bitmap) {
     if (bitmap == NULL) return;
-    // for (uint32_t i = 0; i < bitmap->m_conts; ++i) {
-    //     STORM_bitmap_cont_free(&bitmap->conts[i]);
-    // }
+    if (bitmap->conts != NULL) {
+        // Release each container's own allocations before the array itself.
+        // n_conts, not m_conts: entries past n_conts were only init'd to empty.
+        for (uint32_t i = 0; i < bitmap->n_conts; ++i) {
+            STORM_bitmap_cont_free_members(&bitmap->conts[i]);
+        }
+    }
     free(bitmap->conts);
+    free(bitmap); // STORM_new() allocated this; the caller cannot reach it.
 }
 
 int STORM_add(STORM_t* bitmap, const uint32_t* values, const uint32_t n_values) {
@@ -972,7 +1019,28 @@ uint64_t STORM_serialized_size(const STORM_t* bitmap) {
     return tot;
 }
 
-uint64_t STORM_intersect_cardinality_square(const STORM_t* STORM_RESTRICT bitmap1, const STORM_t* STORM_RESTRICT bitmap2);
+// Declared in storm.h but never defined until now: any translation unit that
+// called it failed to link. All pairs across two sets, not the upper triangle.
+uint64_t STORM_intersect_cardinality_square(const STORM_t* STORM_RESTRICT bitmap1,
+                                            const STORM_t* STORM_RESTRICT bitmap2)
+{
+    if (bitmap1 == NULL) return 0;
+    if (bitmap2 == NULL) return 0;
+
+    uint32_t* out = (uint32_t*)malloc(sizeof(uint32_t)*2*STORM_DEFAULT_SCALAR_THRESHOLD);
+    if (out == NULL) return 0;
+    const STORM_compute_func f = STORM_get_intersect_count_func(ceil(STORM_DEFAULT_BLOCK_SIZE/64.0));
+
+    uint64_t total = 0;
+    for (uint32_t i = 0; i < bitmap1->n_conts; ++i) {
+        for (uint32_t j = 0; j < bitmap2->n_conts; ++j) {
+            total += STORM_bitmap_cont_intersect_cardinality_premade(&bitmap1->conts[i], &bitmap2->conts[j], f, out);
+        }
+    }
+
+    free(out);
+    return total;
+}
 
 // contig
 
@@ -1019,13 +1087,11 @@ STORM_contiguous_t* STORM_contig_new(size_t vector_length) {
 
 void STORM_contig_free(STORM_contiguous_t* bitmap) {
     if (bitmap == NULL) return;
-    // for (uint32_t i = 0; i < bitmap->m_conts; ++i) {
-    //     STORM_bitmap_cont_free(&bitmap->conts[i]);
-    // }
     STORM_aligned_free(bitmap->data);
     free(bitmap->bitmaps);
     STORM_aligned_free(bitmap->scalar);
     STORM_aligned_free(bitmap->n_scalar);
+    free(bitmap); // STORM_contig_new() allocated this; the caller cannot reach it.
 }
 
 int STORM_contig_add(STORM_contiguous_t* bitmap, const uint32_t* values, const uint32_t n_values) {
@@ -1063,12 +1129,14 @@ int STORM_contig_add(STORM_contiguous_t* bitmap, const uint32_t* values, const u
         bitmap->m_scalar += add;
         uint32_t* old = bitmap->scalar;
         bitmap->scalar = (uint32_t*)STORM_aligned_malloc(bitmap->alignment, bitmap->m_scalar*sizeof(uint32_t));
-        memcpy(bitmap->scalar, old, bitmap->tot_scalar);
+        // tot_scalar counts elements, not bytes.
+        memcpy(bitmap->scalar, old, bitmap->tot_scalar*sizeof(uint32_t));
         STORM_aligned_free(old);
-        // Update pointers.
-        for (int i = 0, j = 0; i < bitmap->n_data; ++i) {
+        // Update pointers. n_scalar is indexed by vector, so it must be
+        // subscripted with i; j is a running offset into the scalar buffer.
+        for (uint64_t i = 0, j = 0; i < bitmap->n_data; ++i) {
             bitmap->bitmaps[i].scalar = &bitmap->scalar[j];
-            j += bitmap->n_scalar[j] < bitmap->scalar_cutoff ? bitmap->n_scalar[j] : 0;
+            j += bitmap->n_scalar[i] < bitmap->scalar_cutoff ? bitmap->n_scalar[i] : 0;
         }
     }
 
@@ -1090,12 +1158,19 @@ int STORM_contig_add(STORM_contiguous_t* bitmap, const uint32_t* values, const u
         STORM_aligned_free(old);
         STORM_aligned_free(old_n_scalar);
         bitmap->bitmaps = (STORM_contiguous_bitmap_t*)realloc(bitmap->bitmaps, bitmap->m_data*sizeof(STORM_contiguous_bitmap_t));
-        for (int i = 0, j = 0; i < bitmap->m_data; ++i) {
-            bitmap->bitmaps[i].data     = &bitmap->data[bitmap->n_bitmaps_vector*i];
-            bitmap->bitmaps[i].n_scalar = bitmap->n_scalar[i];
-            bitmap->bitmaps[i].scalar   = &bitmap->scalar[j];
-            // printf("loop %u/%u and %u/%u. scalar=%u\n", i, bitmap->m_data, j, bitmap->m_scalar, bitmap->n_scalar[i]);
-            j += bitmap->n_scalar[j] < bitmap->scalar_cutoff ? bitmap->n_scalar[j] : 0;
+        // Only the first n_data entries of n_scalar are initialised; reading
+        // beyond that is undefined. Populate live entries from n_scalar and
+        // zero-initialise the spare capacity.
+        uint64_t j = 0;
+        for (uint64_t i = 0; i < bitmap->m_data; ++i) {
+            bitmap->bitmaps[i].data = &bitmap->data[bitmap->n_bitmaps_vector*i];
+            bitmap->bitmaps[i].scalar = &bitmap->scalar[j];
+            if (i < bitmap->n_data) {
+                bitmap->bitmaps[i].n_scalar = bitmap->n_scalar[i];
+                j += bitmap->n_scalar[i] < bitmap->scalar_cutoff ? bitmap->n_scalar[i] : 0;
+            } else {
+                bitmap->bitmaps[i].n_scalar = 0;
+            }
         }
     }
 
@@ -1118,13 +1193,18 @@ int STORM_contig_add(STORM_contiguous_t* bitmap, const uint32_t* values, const u
     // the threshold scalar_cutoff.
     if (n_values_used < bitmap->scalar_cutoff) {
         // printf("adding scalar: %u @ %u\n",n_values,bitmap->tot_scalar);
-        bitmap->bitmaps[bitmap->n_data].scalar = &bitmap->scalar[bitmap->tot_scalar];
-        bitmap->bitmaps[bitmap->n_data].scalar[0] = values[0];
-        
-        for (int i = 1; i < n_values; ++i) {
+        uint32_t* dst = &bitmap->scalar[bitmap->tot_scalar];
+        bitmap->bitmaps[bitmap->n_data].scalar = dst;
+        // The destination needs its own cursor: writing at the source index i
+        // while skipping duplicates leaves uninitialised gaps and overruns the
+        // n_values_used elements actually reserved for this vector.
+        uint32_t k = 0;
+        dst[k++] = values[0];
+        for (uint32_t i = 1; i < n_values; ++i) {
             if (values[i] == values[i-1]) continue;
-            bitmap->bitmaps[bitmap->n_data].scalar[i] = values[i];
+            dst[k++] = values[i];
         }
+        assert(k == n_values_used);
         bitmap->tot_scalar += n_values_used;
     }
 

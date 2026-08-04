@@ -1,5 +1,8 @@
-cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
-project(libalgebra C CXX)
+# CMake 4.x removed compatibility with < 3.5, so the previous `2.8` made the
+# project unconfigurable on any current toolchain. 3.15 is the floor imposed by
+# the vendored CRoaring.
+cmake_minimum_required(VERSION 3.15)
+project(StormBitmaps C CXX)
 set (CMAKE_BUILD_TYPE Release)
 set (CMAKE_VERBOSE_MAKEFILE on) # Debug verbosity
 
@@ -16,7 +19,11 @@ macro(use_cxx11)
     endif ()
   else ()
     set (CMAKE_CXX_STANDARD 11)
-    set (CMAKE_C_STANDARD 99)
+    # C11, not C99: CMAKE_C_STANDARD is inherited by add_subdirectory(), and
+    # CRoaring's reference counting needs C11 <stdatomic.h>. Under C99 its
+    # atomic detection falls through to "#error Unknown atomic implementation".
+    # storm.c is plain C99 and builds unchanged as C11.
+    set (CMAKE_C_STANDARD 11)
   endif ()
 endmacro(use_cxx11)
 
@@ -29,7 +36,10 @@ option(STORM_DISABLE_NATIVE "Force disable native compilaton" OFF)
 
 if(STORM_ENABLE_SIMD_AVX512)
 	if((CMAKE_CXX_COMPILER_ID MATCHES "GNU") OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-		add_compile_options(-mavx512)
+		# `-mavx512` is not a valid GCC/Clang flag and failed the build outright.
+		# AVX-512BW is what storm/libalgebra actually require; VPOPCNTDQ is
+		# requested separately because it is a distinct feature bit.
+		add_compile_options(-mavx512f -mavx512bw -mavx512vl -mavx512vpopcntdq)
 	elseif(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 		add_compile_options(/QxAVX512)
 	elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
@@ -81,13 +91,50 @@ if (MSVC)
 add_compile_options(/O2)
 endif()
 
-find_path(LM_ROARING_INCLUDE_DIR NAMES REQUIRED roaring/roaring.h)
-find_library(LM_ROARING_LIBRARY NAMES REQUIRED libroaring roaring)
+# ---------------------------------------------------------------- CRoaring
+#
+# Previously this was `find_path(... NAMES REQUIRED roaring/roaring.h)`, which
+# both mis-uses the NAMES list and made CRoaring a hard requirement for the
+# whole project -- including the library and tests, which do not use it. Only
+# the benchmark needs Roaring, and it needs a *known* version for results to be
+# comparable, so it is vendored as a submodule pinned to a release tag.
+set(STORM_CROARING_DIR "${PROJECT_SOURCE_DIR}/third_party/CRoaring")
 
-message("LM_ROARING include dir = ${LM_ROARING_INCLUDE_DIR}")
-message("LM_ROARING lib = ${LM_ROARING_LIBRARY}")
+if(EXISTS "${STORM_CROARING_DIR}/CMakeLists.txt")
+	set(ENABLE_ROARING_TESTS OFF CACHE BOOL "" FORCE)
+	set(ROARING_BUILD_STATIC ON  CACHE BOOL "" FORCE)
+	set(ROARING_USE_CPM      OFF CACHE BOOL "" FORCE)
+	add_subdirectory("${STORM_CROARING_DIR}" EXCLUDE_FROM_ALL)
+	set(STORM_HAVE_ROARING ON)
+	message(STATUS "STORM: using vendored CRoaring (${STORM_CROARING_DIR})")
+else()
+	# Fall back to a system install if the submodule was not initialised.
+	find_path(LM_ROARING_INCLUDE_DIR NAMES roaring/roaring.h)
+	find_library(LM_ROARING_LIBRARY NAMES roaring libroaring)
+	if(LM_ROARING_INCLUDE_DIR AND LM_ROARING_LIBRARY)
+		set(STORM_HAVE_ROARING ON)
+		message(STATUS "STORM: using system CRoaring (${LM_ROARING_LIBRARY})")
+	else()
+		set(STORM_HAVE_ROARING OFF)
+		message(STATUS "STORM: CRoaring not found -- skipping 'benchmark'. "
+		               "Run: git submodule update --init --recursive")
+	endif()
+endif()
 
-add_executable(benchmark storm.c benchmark.cpp)
-target_link_libraries(benchmark PUBLIC ${LM_ROARING_LIBRARY})
-target_include_directories(benchmark PUBLIC ${LM_ROARING_INCLUDE_DIR} "${PROJECT_SOURCE_DIR}")
-message("target_include_directories = ${LM_ROARING_INCLUDE_DIR} ${PROJECT_SOURCE_DIR}")
+# ---------------------------------------------------------------- targets
+if(STORM_HAVE_ROARING)
+	add_executable(benchmark storm.c benchmark.cpp)
+	target_include_directories(benchmark PUBLIC "${PROJECT_SOURCE_DIR}")
+	if(TARGET roaring)
+		target_link_libraries(benchmark PUBLIC roaring)
+	else()
+		target_link_libraries(benchmark PUBLIC ${LM_ROARING_LIBRARY})
+		target_include_directories(benchmark PUBLIC ${LM_ROARING_INCLUDE_DIR})
+	endif()
+endif()
+
+# Correctness tests. No third-party dependencies: these must always build.
+enable_testing()
+add_executable(test_storm storm.c tests/test_storm.c)
+target_include_directories(test_storm PUBLIC "${PROJECT_SOURCE_DIR}")
+add_test(NAME storm_correctness COMMAND test_storm)

@@ -22,6 +22,20 @@
 // #include "classes.h"
 // #include "experimental.h"
 
+// WARNING -- read before quoting any "cycles per word" figure derived from this.
+//
+// This is NOT a core cycle counter on any supported target:
+//
+//   * x86 RDTSC increments at a fixed reference rate (the "invariant TSC"),
+//     not at the core clock. Ticks equal core cycles only while the core runs
+//     at exactly the TSC's nominal frequency -- not under turbo, not under
+//     AVX-512 downclocking, which is precisely the regime this project cares
+//     about.
+//   * AArch64 CNTVCT_EL0 is a system timer, typically 24 MHz on Apple silicon.
+//     It is off from the core clock by roughly two orders of magnitude.
+//
+// Treat the result as a monotonic reference tick. For real cycle counts use
+// perf (Linux) or Instruments/kperf (macOS) -- see AGENTS.md, evidence ladder.
 #if defined(_MSC_VER)
 inline
 uint64_t get_cpu_cycles() {
@@ -30,12 +44,31 @@ uint64_t get_cpu_cycles() {
     // _mm_lfence();  // optionally block later instructions until rdtsc retires
     return tsc;
 }
-#else
+#elif defined(__x86_64__)
 uint64_t get_cpu_cycles() {
     uint64_t result;
     __asm__ volatile(".byte 15;.byte 49;shlq $32,%%rdx;orq %%rdx,%%rax":"=a"
                      (result)::"%rdx");
     return result;
+};
+#elif defined(__i386__)
+uint64_t get_cpu_cycles() {
+    uint64_t result;
+    __asm__ volatile("rdtsc" : "=A"(result));
+    return result;
+};
+#elif defined(__aarch64__)
+// Virtual count register, readable from EL0 on both Linux and macOS.
+uint64_t get_cpu_cycles() {
+    uint64_t result;
+    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(result));
+    return result;
+};
+#else
+#include <chrono>
+uint64_t get_cpu_cycles() {
+    return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 };
 #endif
 
