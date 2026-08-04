@@ -545,7 +545,7 @@ Ordered by where the value is (`PROBLEM_STATEMENT.md` §6), not by what is easie
 | **3** | Rank index, B×R/B×W (M5) | **DONE — P4 holds**, crossover measured at ~256-bit runs |
 | **4** | Cost model (M4) + density-sorted tiling → **GATE 3 (P1/P5)** | **P5 PASSED** (1.7–19.1× over tuned CRoaring, 4 hosts). **P1 conditional** (55–91× on run data; not mid-band). Regret unmeasured for the probe policy |
 | **5** | B×B dense cell | **DONE** — register blocking refuted; AVX-512 kernel added, 10× |
-| **6** | Threading + triangle load balance | **NOT STARTED** |
+| **6** | ~~Threading + triangle load balance~~ | **MOVED TO TOMAHAWK.** This repo is algorithms and kernels only; threading, I/O scheduling and load balancing are a layer above it |
 | **7** | Cross-ISA + community | **4 ISAs measured** (NEON, SVE, SVE2, AVX-512). Community mechanism (§9.1) not built |
 | **8** | Write-up | **NOT STARTED** — but the evidence base is now sufficient |
 
@@ -925,3 +925,124 @@ recommendation and graph-degree domains — so the premise is not genomics-speci
 5. Threading, using Hall/Kelly/Tian for static balance + COWS for stealing.
 6. Cross-pair blocking (BLIS packed-panel structure) — F11 says the DRAM win is
    here.
+
+
+---
+
+## 13. Swarm survey, 2026-08-04 — next optimization targets by regime
+
+Four-agent survey of literature, repos and practitioner sources, run after the
+1KGP3 small-universe campaign closed. Organized by regime because the answers
+differ completely at the two ends.
+
+**Scope note:** threading, work-stealing and I/O scheduling are **out of scope
+for this repo** — they belong to Tomahawk. Findings below that concern them are
+recorded for that project and explicitly excluded here.
+
+### 13.1 SMALL regime (632 B/row, L1-resident) — the plateau is a PORT limit
+
+The 1KGP3 campaign closed at ~1.9 ns/pair after 20 consecutive failed attempts.
+The survey explains why, and it changes what to try next.
+
+**The 6-pairs-in-flight kernel is almost certainly load-port bound, not
+memory-parallelism bound.** Travis Downs' work on load-buffer occupancy, ROB
+size and load-port throughput makes the distinction: MLP ceilings gate
+outstanding *misses*, and at 632 B/row every probe is an L1/L2 **hit**. Twenty
+failed attempts to widen ILP, prefetch, reorder or reshape is exactly what a
+port ceiling looks like.
+
+> **Action before any 21st iteration: get a port-pressure breakdown**
+> (`llvm-mca` / the `optimize-aarch64-kernel` skill) instead of guessing. MLP is
+> the wrong lever in this regime; it is the right lever only at DRAM scale,
+> where the zone map already avoids most scattered access.
+
+**The one structural idea that could break the plateau: bit-transpose to batch
+singleton queries.** With median sparse-side cardinality 1, 69% of pairs reduce
+to "is bit p set in row j?" for a fixed p over ~1.7 M rows. Transposing blocks so
+column p becomes a contiguous bit-vector turns that scattered load into a
+**linear scan**. This requires reordering the iteration of the whole all-pairs
+loop — grouping pairs by shared sparse index before touching the dense side —
+so it is an algorithm change, not a kernel change. It cannot help pairs where
+neither side is a singleton. Prototype on a 4096-row tile.
+
+**Ruled out, with reasons:**
+
+| candidate | verdict |
+|---|---|
+| **M4RI / M4RM** (Method of Four Russians, GF(2)) | **No.** Computes an XOR-linear product, not `popcount(A AND B)`. No adaptation recovers exact AND-cardinality without doing the popcount anyway. The surface analogy is real; the semantics are not |
+| **chemfp / BitBound** (Swamidass–Baldi) | **No.** Their lever is *skipping* pairs under a Tanimoto threshold. We need every pair's exact count, so there is nothing to prune and the bound degenerates to a no-op. Their inner loop is plain popcount-of-AND — the same conclusion we reached |
+| **SIMD sorted-list intersection** (Schlegel, Inoue, Lemire) | **No.** Targets lists of 16+ elements. At median cardinality 1 there is no merge to vectorize |
+| **PLINK2 KING** (`plink2_matrix_calc.cc`) | Not applicable, but **corroborating**: a mature genomics all-pairs tool converged on nested `PopcountWord(a & b)` with sample-major blocking and a source comment explicitly *rejecting* table-lookup batching. Independent confirmation that hardware popcount is solved |
+
+### 13.2 LARGE regime (1.25 MB/row, DRAM-bound)
+
+**Multi-level zone map — highest-value item still unbuilt.** BitFunnel's higher
+ranks are exactly this: each rank-*i* bit is the OR of 2^i rank-0 bits, scanned
+first because it is shorter and eliminates most candidates. At 10⁷ bits our
+single-level zone map is 2.4 kB/row; a second level at 1 bit per 512 zone-map
+bits is **~9 bytes/row**, turning a 2.4 kB AND into a 9-byte pre-check for
+disjoint pairs. Given the single level already won 20.5×, this is the obvious
+next multiplier at the sparse end.
+
+**Cross-pair panel blocking (BLIS/Goto).** Still the biggest structural gap. The
+survey's refinement is worth noting: at 1.25 MB/row a panel of even *one* row
+saturates L2, so panels should be sized in **zone maps** (2.4 kB each) — pack
+~100–400 summaries per panel and stream full rows only for surviving bins. That
+is a different design from the naive "pack rows" reading of §2.
+
+**Non-temporal hints: mostly not applicable.** AND+popcount reads two operand
+streams and writes a scalar, so there is no output stream to bypass and NT
+*stores* buy nothing. NT *loads* may help for the streamed (non-panel) operand
+once panel blocking exists — worth a differential microbenchmark then, not now.
+
+*(Load balancing and out-of-core scheduling findings from this survey have been
+recorded for Tomahawk and are deliberately not carried here.)*
+
+### 13.3 Sparsity range — two findings that matter
+
+**The mid-band negative result is confirmed by the literature.** Nothing beats
+bitmap-AND-popcount between ~0.4% and ~99.6% density for cardinality-only.
+Roaring's own array↔bitmap threshold (4096 per 2¹⁶ container) sits in the same
+place by independent empirical design, and it has no third container for the
+middle. Partitioned Elias-Fano and bit-sliced layouts target different problems
+(skewed sorted lists; multi-attribute filtering) and degrade toward bitmap cost
+as density rises. **Our negative result stands and is well-supported.**
+
+**The complement/dense-tail strategy appears to be genuinely unclaimed.** No
+library or paper systematically stores or computes on the complement when
+density > 0.5 to accelerate *intersection cardinality*. EWAH represents 0-runs
+and 1-runs symmetrically at the representation level and Roaring exposes `flip`
+for range construction, but neither presents `|A∩B| = |A| + |B| − |A∪B|` or a
+De Morgan re-expression as a cardinality *algorithm*. Our measured 52.7× at the
+dense tail has no prior citation to anchor it — **write it up as a contribution
+rather than expecting one.**
+
+### 13.4 ISA-specific, actionable
+
+- **SVE2 `MATCH` / `HISTCNT` for the S×S cell.** Vardanian's measured 3–5.6× on
+  sorted arrays (Graviton4). Structurally a sorted-array technique — it does not
+  touch bitmaps — so it applies to S×S only. We have SVE2 hardware.
+- **VP2INTERSECT emulation** (Diez-Cañas, arXiv:2112.06342) beats Intel's own
+  microcoded instruction, and the paper notes computing only **one** output mask
+  is cheaper — which is exactly our cardinality-only case. Intel removed the
+  instruction after Tiger Lake; **AMD Zen 5 added it natively**.
+- **`VPCOMPRESS` is a representation-conversion primitive** (B→S), not a kernel
+  speedup. **`VPCONFLICT` has no cardinality use case** — drop it from §4's D3.
+- **Zen 4 landmine:** `_mm_mask_compressstoreu_*` costs ~256 µops on Zen 4 vs ~6
+  on Ice Lake (fixed in Zen 5). Compress to register, then store separately.
+- **CRoaring runtime-gates AVX-512 on microarchitecture, not just the feature
+  bit**, because of historical SIMD frequency throttling. Match that practice.
+- **RVV: no published set-intersection kernel exists.** An open gap; do not cite
+  any RVV throughput number, none exists.
+- **Lemire (2026-06):** AVX2 register widening alone gives a **measured 22%** on
+  pairwise intersection cardinality in Roaring, while `popcnt` vs software
+  popcount is ~43% — a citable x86 baseline for the B×B path.
+
+### 13.5 A sourcing gap that will not close
+
+**No M2/M3/M4 microarchitecture corpus exists anywhere.** Dougall Johnson's
+`applecpu` covers M1 Firestorm/Icestorm only and has not been updated since
+2023-07. Every M4 claim in this project must therefore go **tier-1 → tier-3
+directly**, skipping tier-2 entirely, because there is nothing to source. The
+Firestorm figures we have used as hypotheses are M1 and must stay labelled as
+such.
