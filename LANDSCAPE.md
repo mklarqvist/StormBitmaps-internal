@@ -574,3 +574,95 @@ The framing that survives review is **"batched all-pairs is a different kernel p
 pairwise, and here is the microkernel and selection model it requires"** — not "we made popcount
 faster." Venue: *Software: Practice and Experience*, *The Computer Journal*, or *ACM TOMS* —
 the same journals as the prior art.
+
+
+---
+
+## 9. Prior art added 2026-08-04, after the mechanisms were built
+
+Audited against the literature once the campaign had produced three mechanisms
+worth claiming. Two of the three turned out to be repositionings rather than
+novelties; this section records what must be cited and how the claims should be
+worded.
+
+### 9.1 Zone maps / occupancy summaries — the mechanism is NOT novel
+
+- **Goodwin, Hopcroft, Luu, Clemmer, Curmei, Elnikety, He, "BitFunnel: Revisiting
+  Signatures for Search," SIGIR 2017.** The closest hit and the one that
+  matters. BitFunnel's bit-sliced signature index is hierarchical by rank: a
+  higher-rank row is the OR-reduction of lower-rank bits over fixed blocks, and
+  the query evaluator ANDs rows top-down, discarding any block whose higher-rank
+  bit is zero *before touching the dense bits beneath*. Functionally identical to
+  our `occ_A AND occ_B`, published, in boolean document retrieval.
+- **Sidirourgos & Kersten, "Column Imprints: A Secondary Index Structure,"
+  SIGMOD 2013.** Closest *named* database technique. Distinguish it explicitly:
+  an imprint bit marks "this cacheline contains a value in histogram-bin k of
+  the **value domain**", used to prune a single-column scan. Ours bins **bit
+  position** and is ANDed against a second row. Different axis, different
+  operation — but a reviewer will reach for it, so pre-empt the comparison.
+- **"Accelerating Biclique Counting on GPU," arXiv:2403.07858 (2024).** Uses a
+  "hierarchical truncated bitmap" to accelerate exactly pairwise neighbour-list
+  set intersection. Contemporaneous and convergent; we have no priority claim.
+- Also: Lucene's `SparseFixedBitSet` and WAH/EWAH's own uniform-word fills both
+  skip empty regions via a coarser summary. The idea is old.
+
+**How to word it:** claim the *parameterization* (1 bit per 512, 0.195%
+overhead) and the *application* — a pre-filter for all-pairs intersection
+**cardinality**, where the popcount of the ANDed summary is an exact work count
+rather than a heuristic. Cite BitFunnel in the introduction, not the related
+work. A reviewer who finds it after we have claimed novelty will not be gentle.
+
+### 9.2 Rank/select — a 35-year-old primitive, but the gap is real
+
+- **Jacobson, "Space-efficient Static Trees and Graphs," FOCS 1989** — origin.
+- **Clark, "Compact Pat Trees," 1996**; **Munro, "Tables," FSTTCS 1996**.
+- **Vigna, "Broadword Implementation of Rank/Select Queries," WEA 2008** —
+  rank9, the layout this project uses.
+- **Zhou, Andersen & Kaminsky, "Space-Efficient, High-Performance Rank & Select
+  Structures on Uncompressed Bit Sequences," SEA 2013** (Poppy); **Pibiri &
+  Venturini, "Rank/Select Queries over Mutable Bitmaps," Inf. Systems 2021.**
+
+**The gap, verified in CRoaring `master` (2026-08-04):**
+`run_bitset_container_intersection_cardinality` calls `bitset_lenrange_cardinality`
+(`include/roaring/bitset_util.h`), a scalar word-by-word popcount whose cost is
+proportional to run **length** — precisely what claim P4 removes. Nobody ships
+the rank-indexed version.
+
+**How to word it:** "we apply a mature primitive to a case the compressed-bitmap
+libraries still solve by linear scan, and measure where it pays (crossover
+~256-bit runs) and where it loses (below that, 0.5–0.78×)." Engineering
+contribution, not an algorithm.
+
+### 9.3 Adaptive format selection — a literature §4 was missing entirely
+
+`LANDSCAPE.md` had EmptyHeaded and the chemfp/RISC crossover. It did not have
+the SpGEMM auto-tuning line, which is closer to this project's framing:
+
+- **Niu, Sun, Xie, Yang, Ren, "IA-SpGEMM: An Input-aware Auto-tuning Framework
+  for Parallel SpGEMM," ICS 2019.** Predicts format and algorithm *per
+  multiplication* from the density signature of the inputs — the closest
+  precedent to a calibrated per-pair cost model anywhere.
+- **Vuduc, Demmel & Yelick, "OSKI: A Library of Automatically Tuned Sparse
+  Matrix Kernels," SciDAC 2005**, on **Im & Yelick's SPARSITY** — origin of
+  auto-tuned sparse kernels.
+
+**How to word it:** the novel part is (a) selecting jointly for **both sides of
+a pair** rather than per operand, (b) across five representations including WAH
+fills, and (c) in the **all-pairs N²** setting where the decision cost is itself
+a first-order term — which is what forced tile hoisting and probe-and-commit.
+Not "adaptive format selection."
+
+### 9.4 CRoaring's mixed-container paths — verified scalar
+
+Checked against `master`, 2026-08-04. Discharges the caveat that sat in
+`PROBLEM_STATEMENT.md` §5 unverified since the document was written.
+
+| path | file | status |
+|---|---|---|
+| `bitset_container_and_justcard` | `src/containers/bitset.c` | **SIMD** (AVX2 / AVX-512 / NEON) |
+| `array_bitset_container_intersection_cardinality` | `src/containers/mixed_intersection.c` | **scalar**, per-element loop |
+| `run_bitset_container_intersection_cardinality` | `src/containers/mixed_intersection.c` | **scalar**, per-run linear scan |
+| `array_run_container_intersection_cardinality` | `src/containers/mixed_intersection.c` | **scalar** merge/gallop |
+
+Only the pure dense path is vectorized. This substantiates §9.2's gap and is the
+reason P5 was winnable.
