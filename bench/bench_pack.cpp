@@ -577,6 +577,110 @@ int main(int argc,char**argv){
       sv+=body(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
     printf("   + span skip on singletons: %7.3f ns/pair%s\n",(double)b/pr.size(),ok); }
 
+  /* Iterations 18-20, three cheap structural variants on the winning form. */
+  {
+    constexpr int W=6;
+    // 18: singleton positions gathered into a dense side-array indexed by the
+    //     pair list, so the singleton loop reads sg_pos sequentially instead of
+    //     randomly through p_one[].second.
+    std::vector<uint16_t> one_pos(p_one.size()); std::vector<uint32_t> one_d(p_one.size());
+    for(size_t i=0;i<p_one.size();++i){ one_pos[i]=sg_pos[p_one[i].second]; one_d[i]=p_one[i].first; }
+    // 19: dense side batched -- group the singleton stream by dense row so its
+    //     bitmap pointer is loop-invariant across each run.
+    std::vector<std::pair<uint32_t,uint32_t>> one_by_d=p_one;
+    std::stable_sort(one_by_d.begin(),one_by_d.end(),
+      [](const std::pair<uint32_t,uint32_t>&a,const std::pair<uint32_t,uint32_t>&b){return a.first<b.first;});
+    // 20: precompute the WORD index too (u8 suffices for 79 words) alongside the
+    //     bit index, trading 1 extra byte/row against one shift in the loop.
+    std::vector<uint8_t> sg_w(rows.size(),0), sg_b(rows.size(),0);
+    for(size_t i=0;i<rows.size();++i) if(sg_pos[i]!=0xFFFF){ sg_w[i]=(uint8_t)(sg_pos[i]>>6); sg_b[i]=(uint8_t)(sg_pos[i]&63); }
+
+    auto tail=[&](uint64_t c)->uint64_t{
+      uint64_t m[W]={}; size_t k=0;
+      for(;k+W<=p_many.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t d=p_many[k+u].first,s=p_many[k+u].second;
+          m[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+      for(int u=0;u<W;++u) c+=m[u];
+      for(;k<p_many.size();++k){ const uint32_t d=p_many[k].first,s=p_many[k].second;
+        c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+      for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+        for(uint32_t kk=0;kk<RV[s].n;++kk)
+          for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+      for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+      return c; };
+
+    auto v18=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint16_t p=one_pos[k+u];
+          a[u]+=(BV[one_d[k+u]].w[p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos.size();++k){ const uint16_t p=one_pos[k];
+        c+=(BV[one_d[k]].w[p>>6]>>(p&63))&1u; }
+      return tail(c); };
+
+    auto v19=[&]()->uint64_t{ uint64_t c=0; size_t k=0;
+      while(k<one_by_d.size()){ const uint32_t d=one_by_d[k].first;
+        const uint64_t* bw=BV[d].w; size_t e=k; while(e<one_by_d.size()&&one_by_d[e].first==d) ++e;
+        uint64_t a[W]={}; size_t x=k;
+        for(;x+W<=e;x+=W){
+#pragma unroll
+          for(int u=0;u<W;++u){ const uint16_t p=sg_pos[one_by_d[x+u].second];
+            a[u]+=(bw[p>>6]>>(p&63))&1u; } }
+        for(int u=0;u<W;++u) c+=a[u];
+        for(;x<e;++x){ const uint16_t p=sg_pos[one_by_d[x].second]; c+=(bw[p>>6]>>(p&63))&1u; }
+        k=e; }
+      return tail(c); };
+
+    auto v20=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=p_one.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t s=p_one[k+u].second;
+          a[u]+=(BV[p_one[k+u].first].w[sg_w[s]]>>sg_b[s])&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<p_one.size();++k){ const uint32_t s=p_one[k].second;
+        c+=(BV[p_one[k].first].w[sg_w[s]]>>sg_b[s])&1u; }
+      return tail(c); };
+
+    auto run=[&](const char* lbl,auto fn){ uint64_t gg=fn(); const char* ok=(gg==w)?"":" WRONG";
+      uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+        sv+=fn(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+      printf("   %-32s %7.3f ns/pair%s\n",lbl,(double)b/pr.size(),ok); };
+    /* 21-23 attack the scattered load itself, which 18-20 established is what
+     * remains. 21 prefetches the dense word W iterations ahead. 22 transposes
+     * the singleton stream so a whole dense row's partners are answered from one
+     * cache line where possible. 23 replaces load+shift+mask with a bit-test
+     * against a precomputed mask, removing the variable shift from the chain. */
+    std::vector<uint64_t> one_mask(p_one.size());
+    for(size_t i=0;i<p_one.size();++i){ const uint16_t p=sg_pos[p_one[i].second];
+      one_mask[i]=1ull<<(p&63); }
+    auto v21=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos.size();k+=W){
+        if(k+64<one_pos.size()) __builtin_prefetch(&BV[one_d[k+64]].w[one_pos[k+64]>>6],0,0);
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint16_t p=one_pos[k+u];
+          a[u]+=(BV[one_d[k+u]].w[p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos.size();++k){ const uint16_t p=one_pos[k];
+        c+=(BV[one_d[k]].w[p>>6]>>(p&63))&1u; }
+      return tail(c); };
+    auto v23=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u)
+          a[u]+=(BV[one_d[k+u]].w[one_pos[k+u]>>6]&one_mask[k+u])!=0; }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos.size();++k)
+        c+=(BV[one_d[k]].w[one_pos[k]>>6]&one_mask[k])!=0;
+      return tail(c); };
+    run("21 prefetch dense word +64",v21);
+    run("23 bit-test vs precomputed mask",v23);
+    run("18 gathered singleton arrays",v18);
+    run("19 singleton grouped by dense row",v19);
+    run("20 precomputed word+bit (u8,u8)",v20);
+  }
+
   printf("   + split singleton/multi pair streams:\n");
   auto runSp=[&](auto WT){ constexpr int W=decltype(WT)::value;
     uint64_t gg=tmplSplit(WT); const char* ok=(gg==w)?"":"  WRONG";

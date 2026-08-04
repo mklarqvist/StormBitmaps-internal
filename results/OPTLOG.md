@@ -934,3 +934,40 @@ cheap as a predicate.** The two results together bracket where summary
 structures pay.
 
 **Counter: 5 consecutive non-improving iterations. Best remains ~1.95 ns/pair.**
+
+### Iterations 18-24 — seven consecutive null results
+
+All seven attack the same remaining cost and none moves it. Best stays ~1.95 ns/pair.
+
+| # | attempt | ns/pair |
+|---|---|---:|
+| 18 | singleton positions gathered into a dense side-array | 1.95-2.00 |
+| 19 | singleton stream grouped by dense row (invariant bitmap ptr) | 2.05-2.10 |
+| 20 | precomputed word+bit as (u8,u8) | 1.95-2.05 |
+| 21 | prefetch the dense word 64 iterations ahead | 2.00-2.05 |
+| 23 | bit-test against a precomputed mask (no variable shift) | 1.95-2.05 |
+
+18/19/20 attack indirection and address arithmetic; 21/23 attack the load and the
+shift. **The kernel is now one scattered L2-resident load plus a shift-and-mask
+with six pairs in flight, and everything except that load is free.** Iteration 19
+being *worse* despite strictly better locality is the clearest evidence: the
+bitmap pointer was never the constraint. Iteration 21 failing confirms there is
+no miss to hide -- the dense corpus is 2.5 MB and sits in L2.
+
+**Iteration 24 -- cross-ISA validation.** The small-universe optimizations are
+not M4-specific:
+
+| host | all-bitmap | packed + optimized | speedup |
+|---|---:|---:|---:|
+| Apple M4 | 13.1 ns | **1.95** | 6.7x |
+| Neoverse SVE2 | 36.7 | **6.00** | 6.1x |
+| Sapphire Rapids | 153.2 | **29.4** | 5.2x |
+
+The *ratios* hold everywhere (5.2-6.7x), which is the claim that matters. The
+**absolute remote figures should not be quoted**: Sapphire at 29.4 ns is 15x
+slower than M4 on identical L2-resident code, which is not credible for that
+part. Both remote machines are 1-2 vCPU burstable AWS instances and are almost
+certainly frequency-throttled. Ratios within a host are comparable; times across
+hosts are not.
+
+**Counter: 11 consecutive non-improving iterations.**
