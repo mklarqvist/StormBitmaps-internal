@@ -94,6 +94,41 @@ data") before the second run contradicted it. Fixed by round-robin interleaving:
 every repeat times every variant once. Any result in this log predating that fix
 that rests on a <20% margin should be treated as unconfirmed.
 
+**F7 — The density sweep: the win is asymptotic, and the curve is U-shaped.**
+`bench/density_sweep.sh` + `bench/plot_density.py` → `results/density.{png,svg}`.
+Twenty density points from one bit set to every bit set, both sides at the same
+density, universe pinned at 65,536 bits so cache residency does not drift along
+the x axis (standing rule 5).
+
+| density | best cell | ns/pair | fixed-cost B×B | speedup |
+|---:|---|---:|---:|---:|
+| 1.5e-5 (**1 bit**) | S×R `merge_bl` | 1.6 | 114.9 | **70.1×** |
+| 3.1e-5 | B×S `ilp2` | 2.1 | 123.6 | 59.8× |
+| 1.2e-4 | B×S `scalar` | 3.9 | 131.5 | 33.3× |
+| 4.9e-4 | B×S `ilp8` | 8.9 | 117.3 | 13.2× |
+| 1e-3 | B×S `ilp8x` | 16.9 | 149.4 | 8.8× |
+| 3e-3 | B×S `ilp8x` | 48.7 | 132.7 | 2.7× |
+| **1e-2 … 0.9** | — nothing beats B×B — | | | 0.1–0.9× |
+| 0.9995 | B×R `rank` | 50.3 | 116.1 | 2.3× |
+| 1 − 1.5e-5 | R×R `merge_bl` | 4.5 | 123.5 | 27.6× |
+| **1.0 (all bits)** | R×R `merge_bl` | 2.2 | 117.5 | **52.7×** |
+
+Three things this settles:
+
+1. **The fixed-cost claim is visible, not argued.** The pure-SIMD B×B kernel
+   measures 115–150 ns/pair across five orders of magnitude of density. That
+   flat line *is* `PROBLEM_STATEMENT.md` §2's Θ(m)-regardless-of-density claim.
+2. **The crossover is at ~0.4% density**, and below it the advantage grows
+   without bound — 70× at one bit set, and still climbing as the universe grows.
+   This is the asymptotic-not-constant-factor claim, measured.
+3. **The curve is U-shaped, which the plan did not anticipate.** At density → 1
+   the *complement* is sparse, so the data is one long run and R×R wins 52.7×.
+   Compressed pairing wins at both extremes and loses across the whole middle
+   band. Sparsity was never the operative variable — **distance from ½ is.**
+
+The practical consequence: the selection layer (M2) needs a two-sided test, not
+a sparsity threshold. Panel 3 of the figure is the map it has to reproduce.
+
 **F4 — Two of the plan's four B×S designs do not exist on this ISA.**
 `RESEARCH_PLAN.md` §4 proposes D1 (gather) and D3 (`VPCONFLICTD`); NEON has
 neither. The portable designs are the ones that exploit *data structure* (D2 run

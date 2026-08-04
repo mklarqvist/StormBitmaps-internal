@@ -289,6 +289,43 @@ uint64_t sw_collapse(const ListView& s, const EwahView& w) {
     return c;
 }
 
+// A zero fill contributes nothing, so every list element inside it can be
+// skipped WHOLESALE rather than tested one at a time. sw_merge already does no
+// arithmetic for those elements, but it still walks them; this variant advances
+// the list index past the fill in one step.
+//
+// The work-reduction counterpart to sw_collapse, which reduces the LITERAL-side
+// cost. Under a skewed spectrum the dense side is mostly zero fills, so this is
+// where the elements actually go.
+uint64_t sw_skip(const ListView& s, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0;                 // word offset of the current segment start
+    uint32_t i = 0;
+    while (i < s.n && !cw.done()) {
+        const uint32_t wi = s.v[i] >> 6;
+        if (wi >= pos + cw.seg()) {   // element is past this segment
+            pos += cw.seg();
+            cw.consume(cw.seg());
+            continue;
+        }
+        if (cw.in_fill() && !cw.fill_val) {
+            // Skip every element that lands inside this zero fill.
+            const uint64_t limit = (uint64_t)(pos + cw.seg()) * 64;
+            while (i < s.n && s.v[i] < limit) ++i;
+            continue;
+        }
+        if (cw.in_fill()) {           // one-fill: every element inside counts
+            const uint64_t limit = (uint64_t)(pos + cw.seg()) * 64;
+            while (i < s.n && s.v[i] < limit) { ++c; ++i; }
+            continue;
+        }
+        c += (cw.lit()[wi - pos] >> (s.v[i] & 63)) & 1u;
+        ++i;
+    }
+    return c;
+}
+
 // ===========================================================================
 // R x W
 // ===========================================================================
@@ -353,6 +390,7 @@ const Variant<fn_bw> kBW[] = {
 const Variant<fn_sw> kSW[] = {
     {"merge",    sw_merge,    "reference: list against the segment stream"},
     {"collapse", sw_collapse, "same-word list elements folded into one mask"},
+    {"skip",     sw_skip,     "a fill settles every list element inside it in one step"},
 };
 
 const Variant<fn_rw> kRW[] = {

@@ -81,6 +81,40 @@ of all pairs. Asymmetric kernels are therefore the highest-value engineering in 
 
 ---
 
+### 2.5 Measured (2026-08-04, Apple M4) — the claim of §2, tested
+
+`results/density.{png,svg}`, regenerated from `results/density.jsonl` by
+`bench/plot_density.py`. Twenty density points, one bit set through every bit
+set, both sides at the same density, universe pinned so cache residency is
+constant along the axis.
+
+- **Bitmap × bitmap is flat at 115–150 ns/pair across five orders of magnitude
+  of density.** The fixed-cost premise of §2 is now a measurement, not an
+  argument.
+- **At one bit set in 65,536, the best pairing costs 1.6 ns against that
+  kernel's 114.9 — 70×**, and the ratio grows with the universe.
+- **The crossover is at ~0.4% density.** Above it nothing beats bitmap × bitmap;
+  below it the advantage compounds.
+- **The curve is U-shaped.** Near density 1 the complement is sparse, the data
+  is one long run, and R × R wins 52.7×. Compressed pairing wins at *both*
+  extremes.
+
+The last point corrects this document. §2 is written as though sparsity is the
+operative variable; it is not. **Distance from density ½ is.** A row that is
+99.99% ones is exactly as compressible as one that is 0.01% ones, and the
+pairing matrix serves both. The selection model (M2) therefore needs a two-sided
+test rather than a sparsity threshold, and the motivating haplotype case is one
+tail of a symmetric phenomenon rather than the whole of it.
+
+A second measured result, from the same campaign: across all five *asymmetric*
+cells at all five corpus shapes — 25 measurement points — **a SIMD-throughput
+kernel wins none of them.** The winners are scalar loops, rank lookups and
+search-strategy selection. SIMD wins where the work is irreducible, which is
+bitmap × bitmap and nowhere else. Faster popcount is a constant factor on the
+one cell that cannot avoid the work; representation pairing is an asymptotic
+factor on the other nine. Full record in `results/OPTLOG.md`.
+
+
 ## 3. The pairing matrix
 
 Representations under consideration:

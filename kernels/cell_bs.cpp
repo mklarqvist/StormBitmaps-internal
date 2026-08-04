@@ -292,6 +292,49 @@ uint64_t bs_neon_idx(const BitmapView& b, const ListView& s) {
 }
 #endif
 
+// --- V12: rank-gated block skipping ------------------------------------------
+// The work-reduction form of B x S, and the one the campaign's F5 finding says
+// should be tried before any more vectorization.
+//
+// The list is sorted, so its elements arrive grouped by 512-bit rank block. If
+// the dense side's block is entirely zero -- one O(1) comparison of two rank
+// counters, no bitmap touch -- then EVERY list element in that block
+// contributes nothing and the whole group is skipped without a single probe.
+//
+// This is the same mechanism as bb_neon_rankskip and br_rank: pay O(1) to prove
+// a region is empty instead of O(region) to confirm it. Under a 1/i spectrum
+// the dense side is usually far from full, so the fraction of blocks that are
+// empty is exactly the fraction of probes avoided.
+//
+// The cost when it does not fire is one extra rank load per block boundary,
+// amortized over the elements in that block -- so the risk is concentrated on
+// unclustered lists, where consecutive elements rarely share a block.
+uint64_t bs_rankskip(const BitmapView& b, const ListView& s) {
+    if (b.rank == nullptr) return bs_ilp8x(b, s);
+    const uint32_t nblk = (b.nw + BitmapView::RANK_STRIDE - 1) / BitmapView::RANK_STRIDE;
+    uint64_t c = 0;
+    uint32_t i = 0;
+    while (i < s.n) {
+        const uint32_t blk = s.v[i] >> 9;              // 512 bits per rank block
+        // Span of the list that falls in this block.
+        uint32_t j = i;
+        while (j < s.n && (s.v[j] >> 9) == blk) ++j;
+        if (blk < nblk && !rank_block_empty(b, blk)) {
+            uint64_t a0 = 0, a1 = 0;
+            uint32_t k = i;
+            for (; k + 2 <= j; k += 2) {
+                const uint32_t v0 = s.v[k], v1 = s.v[k + 1];
+                a0 += (b.w[v0 >> 6] >> (v0 & 63)) & 1u;
+                a1 += (b.w[v1 >> 6] >> (v1 & 63)) & 1u;
+            }
+            c += a0 + a1;
+            for (; k < j; ++k) c += (b.w[s.v[k] >> 6] >> (s.v[k] & 63)) & 1u;
+        }
+        i = j;
+    }
+    return c;
+}
+
 // --- V11: length-adaptive ----------------------------------------------------
 // No single B x S variant wins everywhere, and the split is systematic rather
 // than noise. On the dense corpus (|S| ~ 23,000, bitmap resident in L1) the
@@ -343,6 +386,7 @@ const Variant<fn_bs> kBS[] = {
     {"pack2",          bs_pack2,         "two positions per 64-bit list load, 4 chains"},
     {"split2",         bs_split2,        "two independent cursors over halves of the list"},
     {"adaptive",       bs_adaptive,      "shift when the bitmap is L1-resident, ilp8x when not"},
+    {"rankskip",       bs_rankskip,      "skip list groups whose dense-side rank block is empty", true},
     {"collapse",       bs_collapse,      "D2: fold same-word groups into one mask"},
     {"collapse_peel",  bs_collapse_peel, "D2 with the group-of-one case peeled out"},
     {"prefetch16",     bs_prefetch<16>,  "D4: software pipelined, prefetch distance 16"},

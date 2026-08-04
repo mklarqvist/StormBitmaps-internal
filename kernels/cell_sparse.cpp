@@ -121,6 +121,24 @@ uint64_t ss_neon(const ListView& a, const ListView& b) {
 }
 #endif
 
+// Symmetric galloping: after each match or mismatch, gallop the side that is
+// BEHIND rather than always driving from the shorter list. ss_gallop fixes the
+// driving side up front, which is right when the length ratio is extreme and
+// wasteful when the lists are similar in length but occupy different parts of
+// the universe -- exactly what a 1/i spectrum produces, where two rows may have
+// comparable cardinality and almost no overlap.
+uint64_t ss_gallop_sym(const ListView& a, const ListView& b) {
+    uint64_t c = 0;
+    uint32_t i = 0, j = 0;
+    while (i < a.n && j < b.n) {
+        const uint32_t va = a.v[i], vb = b.v[j];
+        if (va == vb) { ++c; ++i; ++j; }
+        else if (va < vb) i = gallop(a.v, a.n, i, vb);
+        else              j = gallop(b.v, b.n, j, va);
+    }
+    return c;
+}
+
 // Size-adaptive: merge when the sides are comparable, gallop when they are not.
 // The ratio is the same kind of threshold M4 is supposed to own; it is named
 // here rather than buried as a literal.
@@ -297,6 +315,7 @@ const Variant<fn_ss> kSS[] = {
     {"merge",     ss_merge,     "reference: branchy sorted merge"},
     {"merge_bl",  ss_merge_bl,  "branchless merge"},
     {"gallop",    ss_gallop,    "exponential + binary search from the shorter side"},
+    {"gallop_sym",ss_gallop_sym,"gallop whichever side is behind, both directions"},
     {"adaptive",  ss_adaptive,  "merge or gallop on the length ratio"},
 #if STORM_CELL_NEON
     {"neon",      ss_neon,      "4x4 block compare via vextq rotation"},
