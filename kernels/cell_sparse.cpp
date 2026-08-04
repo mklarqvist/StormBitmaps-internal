@@ -567,17 +567,8 @@ const Variant<fn_ss> kSS[] = {
 #if STORM_CELL_NEON
     {"neon8",     ss_neon8,     "8x8 block compare -- 64 candidate pairs per step"},
     {"clip",      ss_clip,      "clip both lists to their overlapping span first"},
-    {"neon16",    ss_neon16,    "16x16 block compare -- does the block-width series continue?"},
-    {"adapt_r4",  ss_adaptive_t<4>,  "gallop ratio 4"},
-    {"adapt_r10", ss_adaptive_t<10>, "gallop ratio 10"},
-    {"adapt_r16", ss_adaptive_t<16>, "gallop ratio 16"},
-    {"adapt_r32", ss_adaptive_t<32>, "gallop ratio 32"},
-    {"adapt_r64", ss_adaptive_t<64>, "gallop ratio 64"},
-    {"adapt_r2",  ss_adaptive_t<2>,  "adaptive2 with the gallop ratio at 2"},
     {"adapt_r6",  ss_adaptive_t<6>,  "adaptive2 with the gallop ratio at 6"},
-    {"adapt_r48", ss_adaptive_t<48>, "adaptive2 with the gallop ratio at 48"},
     {"adapt_r3",  ss_adaptive_t<3>,  "adaptive2 with the gallop ratio at 3"},
-    {"adapt_r24", ss_adaptive_t<24>, "adaptive2 with the gallop ratio at 24"},
     {"adaptive2", ss_adaptive2, "disjoint -> 0, lopsided -> gallop_sym, else neon8"},
 #endif
     {"adaptive",  ss_adaptive,  "merge or gallop on the length ratio"},
@@ -599,19 +590,7 @@ const Variant<fn_sr> kSR[] = {
 #endif
     {"adaptive",  sr_adaptive,  "three-way cost comparison from the two sizes"},
     {"adaptive2", sr_adaptive2, "three-way cost comparison plus a disjoint-span early out"},
-    {"adapt_b5",  sr_adaptive_t<5>,  "merge bias 5x"},
-    {"adapt_b7",  sr_adaptive_t<7>,  "merge bias 7x"},
-    {"adapt_b10", sr_adaptive_t<10>, "merge bias 10x"},
-    {"adapt_b24", sr_adaptive_t<24>, "merge bias 24x"},
-    {"adapt_b48", sr_adaptive_t<48>, "merge bias 48x"},
-    {"adapt_b3",  sr_adaptive_t<3>,  "merge bias 3x"},
     {"adapt_b6",  sr_adaptive_t<6>,  "merge bias 6x"},
-    {"adapt_b12", sr_adaptive_t<12>, "merge bias 12x"},
-    {"adapt_b32", sr_adaptive_t<32>, "merge bias 32x"},
-    {"adapt_b1",  sr_adaptive_t<1>,  "cost comparison unbiased"},
-    {"adapt_b4",  sr_adaptive_t<4>,  "cost comparison biased 4x toward the merge"},
-    {"adapt_b16", sr_adaptive_t<16>, "cost comparison biased 16x toward the merge"},
-    {"adapt_b2",  sr_adaptive_t<2>,  "cost comparison biased 2x toward the merge"},
     {"adapt_b8",  sr_adaptive_t<8>,  "cost comparison biased 8x toward the merge"},
 };
 
@@ -623,16 +602,8 @@ const Variant<fn_rr> kRR[] = {
     {"clip",      rr_clip,      "disjoint-span early out, then clip both sides"},
     {"adaptive2", rr_adaptive2, "disjoint-span early out in front of the ratio choice"},
     {"gallop_sym",rr_gallop_sym,"gallop whichever run array is behind"},
-    {"adapt_r1",  rr_adaptive_t<1>,  "always gallop"},
-    {"adapt_r4",  rr_adaptive_t<4>,  "gallop ratio 4"},
-    {"adapt_r10", rr_adaptive_t<10>, "gallop ratio 10"},
-    {"adapt_r16", rr_adaptive_t<16>, "gallop ratio 16"},
-    {"adapt_r32", rr_adaptive_t<32>, "gallop ratio 32"},
-    {"adapt_r2",  rr_adaptive_t<2>,  "adaptive2 with the gallop ratio at 2"},
     {"adapt_r6",  rr_adaptive_t<6>,  "adaptive2 with the gallop ratio at 6"},
-    {"adapt_r48", rr_adaptive_t<48>, "adaptive2 with the gallop ratio at 48"},
     {"adapt_r3",  rr_adaptive_t<3>,  "adaptive2 with the gallop ratio at 3"},
-    {"adapt_r24", rr_adaptive_t<24>, "adaptive2 with the gallop ratio at 24"},
 };
 
 } // namespace

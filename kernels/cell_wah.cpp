@@ -579,11 +579,6 @@ const Variant<fn_bw> kBW[] = {
     {"hybrid",   bw_hybrid,   "rank for fills >= 4 words, direct below",  true},
     {"skip",     bw_skip,     "zero fills retire outright, one-fills via rank", true},
     {"occ",      bw_occ,      "zone map skips literal bins empty on the bitmap side", true},
-    {"hybrid1",  bw_hybrid_t<1>,  "rank for every one-fill",    true},
-    {"hybrid8",  bw_hybrid_t<8>,  "rank for fills >= 8 words",  true},
-    {"hybrid64", bw_hybrid_t<64>, "rank for fills >= 64 words", true},
-    {"hybrid2",  bw_hybrid_t<2>,  "rank for fills >= 2 words",  true},
-    {"hybrid16", bw_hybrid_t<16>, "rank for fills >= 16 words", true},
 };
 
 /* Binary-search the list past each segment instead of walking it.
@@ -696,15 +691,7 @@ const Variant<fn_sw> kSW[] = {
     {"skip",     sw_skip,     "a fill settles every list element inside it in one step"},
     {"search",   sw_search,   "gallop the list past a fill instead of walking it"},
     {"adaptive", sw_adaptive, "gallop past long fills, walk short ones"},
-    {"adapt_f4", sw_adaptive_t<4>,   "gallop past fills >= 4 words"},
-    {"adapt_f8", sw_adaptive_t<8>,   "gallop past fills >= 8 words"},
-    {"adapt_f32",sw_adaptive_t<32>,  "gallop past fills >= 32 words"},
-    {"adapt_f128",sw_adaptive_t<128>,"gallop past fills >= 128 words"},
-    {"adapt_f512",sw_adaptive_t<512>,"gallop past fills >= 512 words"},
     {"adapt_f1", sw_adaptive_t<1>,   "gallop past every fill"},
-    {"adapt_f16",sw_adaptive_t<16>,  "gallop past fills of 16 words or more"},
-    {"adapt_f256",sw_adaptive_t<256>,"gallop only past fills of 256 words or more"},
-    {"adapt_f2", sw_adaptive_t<2>,  "gallop past fills of 2 words or more"},
     {"adapt_f64",sw_adaptive_t<64>, "gallop only past fills of 64 words or more"},
 };
 
@@ -810,12 +797,6 @@ const Variant<fn_rw> kRW[] = {
     {"merge2",   rw_merge2,   "single-pass two-cursor merge, no segment re-walking"},
     {"skip",     rw_skip,     "a zero fill retires every run inside it in one step"},
     {"adaptive", rw_adaptive, "skip form, with an empty-run-array early out"},
-    {"merge_bl", rw_merge_bl, "branchless advance in the two-cursor merge"},
-    {"skip_f1",  rw_skip_t<1>,   "bulk skip at any fill length"},
-    {"skip_f4",  rw_skip_t<4>,   "bulk skip above 4 words of fill"},
-    {"skip_f16", rw_skip_t<16>,  "bulk skip above 16 words"},
-    {"skip_f64", rw_skip_t<64>,  "bulk skip above 64 words"},
-    {"skip_f256",rw_skip_t<256>, "bulk skip above 256 words"},
     {"skip2",    rw_skip2,    "zero fills retire runs; one-fills absorb them by add"},
 };
 
@@ -917,16 +898,7 @@ const Variant<fn_ww> kWW[] = {
     {"skip",     ww_skip,     "a zero fill swallows the other side's segments whole"},
     {"skip2",    ww_skip2,    "bulk skip plus a literal-vs-literal fast path"},
     {"bl",       ww_bl,       "branchless segment classification, no bulk skip"},
-    {"skip_f2",  ww_skip_t<2>,   "bulk skip above 2 words of fill"},
-    {"skip_f8",  ww_skip_t<8>,   "bulk skip above 8 words"},
-    {"skip_f32", ww_skip_t<32>,  "bulk skip above 32 words"},
-    {"skip_f128",ww_skip_t<128>, "bulk skip above 128 words"},
     {"skip_f512",ww_skip_t<512>, "bulk skip above 512 words"},
-    {"skip_f1",  ww_skip_t<1>,   "bulk skip at any fill length"},
-    {"skip_f4",  ww_skip_t<4>,   "bulk skip above 4 words of fill"},
-    {"skip_f16", ww_skip_t<16>,  "bulk skip above 16 words"},
-    {"skip_f64", ww_skip_t<64>,  "bulk skip above 64 words"},
-    {"skip_f256",ww_skip_t<256>, "bulk skip above 256 words"},
 };
 
 } // namespace
