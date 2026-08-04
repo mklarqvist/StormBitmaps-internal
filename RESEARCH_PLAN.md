@@ -537,15 +537,17 @@ Ordered by where the value is (`PROBLEM_STATEMENT.md` §6), not by what is easie
 
 | Phase | Work | Est. | Exit |
 |---|---|---|---|
-| **0** | Foundation + representation layer + skewed data generators | 1.5 wk | builds, tests, CI green |
-| **1** | Pairing-matrix skeleton + selection machinery (M1–M3) | 1 wk | **GATE 1 — P2** |
-| **2** | Asymmetric cells vectorized: B×S, S×R (§4) | 2 wk | **GATE 2 — P3** |
-| **3** | Rank index + B×R, B×W (M5, §4.5) | 1 wk | P4 measured |
-| **4** | Cost model (M4) + density-sorted tiling | 1.5 wk | **GATE 3 — P1/P5** |
-| **5** | B×B register blocking (§3) — the dense cell | 3–5 d | ceiling probed |
-| **6** | Threading + triangle load balance | 1 wk | scaling measured |
-| **7** | Cross-ISA + community | 2–3 wk (rolling) | ≥4 ISAs reported |
-| **8** | Write-up | 2–3 wk | submission |
+| Phase | Work | Status (2026-08-04) |
+|---|---|---|
+| **0** | Foundation, representation layer, skewed generators | **DONE** |
+| **1** | Selection machinery M1–M3 → **GATE 1 (P2)** | **DONE — GATE PASSED** at 0.10–0.48% via tile hoisting + probe |
+| **2** | Asymmetric cells → **GATE 2 (P3)** | **DONE**, answered *negatively*: SIMD wins 0 of 25 points. The plan's "scalar wins everywhere" branch |
+| **3** | Rank index, B×R/B×W (M5) | **DONE — P4 holds**, crossover measured at ~256-bit runs |
+| **4** | Cost model (M4) + density-sorted tiling → **GATE 3 (P1/P5)** | **P5 PASSED** (1.7–19.1× over tuned CRoaring, 4 hosts). **P1 conditional** (55–91× on run data; not mid-band). Regret unmeasured for the probe policy |
+| **5** | B×B dense cell | **DONE** — register blocking refuted; AVX-512 kernel added, 10× |
+| **6** | Threading + triangle load balance | **NOT STARTED** |
+| **7** | Cross-ISA + community | **4 ISAs measured** (NEON, SVE, SVE2, AVX-512). Community mechanism (§9.1) not built |
+| **8** | Write-up | **NOT STARTED** — but the evidence base is now sufficient |
 
 ### Phase 0 — Foundation — **substantially COMPLETE (2026-08-04)**
 
@@ -593,7 +595,34 @@ converters, and per-row metadata M1) and the **skewed data generators** of §7.2
 spectrum and linkage-like clustering. Without those generators every later measurement is
 meaningless, because uniform-density data makes this entire contribution invisible.
 
-### Phase 1 — Selection machinery → **GATE 1 (P2)**
+### Phase 1 — Selection machinery → **GATE 1 (P2) — PASSED 2026-08-04**
+
+Per-pair selection measured **28–48% of runtime** across three hosts — a clear
+fail. §8's own remedy (tile hoisting) applied, plus one thing this plan did not
+anticipate:
+
+| host | per-pair | **per-tile** | **probe-and-commit** |
+|---|---:|---:|---:|
+| apple-m4 | 34.9% FAIL | 0.19% PASS | 0.30% PASS |
+| neoverse-sve2 | 27.7% FAIL | 0.10% PASS | 0.48% PASS |
+| sapphire | 48.4% FAIL | 0.29% PASS | 0.31% PASS |
+
+**P2 holds in its tile-hoisted form.** Decisions drop 130,816 → 36.
+
+The unanticipated part: hoisting fixed the *cost* of selection and exposed a
+*quality* problem it had been masking — the model's tile choice measured 0.66×
+on neoverse-sve2, worse than no selection at all. The fix is **probe-and-commit**
+(`kernels/storm_allpairs.cpp`): time the candidates on three of a tile's ~4,000
+pairs and commit the winner, ~0.2% of the tile. B×B is always a candidate, which
+bounds the downside. That recovers 0.66× → 1.09× and improves the other hosts.
+
+**The consequence for §5.1 is significant: the calibrated cost model does not
+have to be right.** It only has to nominate a candidate worth timing, because
+the timing amortizes over thousands of pairs. That substantially weakens this
+project's dependence on per-ISA constant fitting, which §5.1 treats as the hard
+part.
+
+### Phase 1 — original text
 
 Build M1–M3 and a correct-but-unoptimized version of every pairing cell (scalar reference
 implementations are fine here). Measure what fraction of runtime the *decision* consumes at N²
