@@ -162,6 +162,29 @@ uint64_t bw_rank(const BitmapView& b, const EwahView& w) {
 // words. Same threshold, same reason.
 constexpr uint32_t kBwRankMinWords = 4;
 
+template <uint32_t MINW>
+uint64_t bw_hybrid_t(const BitmapView& b, const EwahView& w) {
+    if (b.rank == nullptr) return bw_neon(b, w);
+    uint64_t c = 0;
+    uint32_t pos = 0;
+    Cursor cw(w);
+    while (!cw.done() && pos < b.nw) {
+        uint32_t k = cw.seg();
+        if (pos + k > b.nw) k = b.nw - pos;
+        if (cw.in_fill()) {
+            if (cw.fill_val) {
+                if (k >= MINW) c += rank_at(b, (pos + k) * 64) - rank_at(b, pos * 64);
+                else           c += popcnt_words(b.w + pos, k);
+            }
+        } else {
+            c += and_popcnt_words(b.w + pos, cw.lit(), k);
+        }
+        pos += k;
+        cw.consume(k);
+    }
+    return c;
+}
+
 uint64_t bw_hybrid(const BitmapView& b, const EwahView& w) {
     if (b.rank == nullptr) return bw_neon(b, w);
     uint64_t c = 0;
@@ -550,6 +573,8 @@ const Variant<fn_bw> kBW[] = {
     {"hybrid",   bw_hybrid,   "rank for fills >= 4 words, direct below",  true},
     {"skip",     bw_skip,     "zero fills retire outright, one-fills via rank", true},
     {"occ",      bw_occ,      "zone map skips literal bins empty on the bitmap side", true},
+    {"hybrid2",  bw_hybrid_t<2>,  "rank for fills >= 2 words",  true},
+    {"hybrid16", bw_hybrid_t<16>, "rank for fills >= 16 words", true},
 };
 
 /* Binary-search the list past each segment instead of walking it.
@@ -593,6 +618,38 @@ uint64_t sw_search(const ListView& s, const EwahView& w) {
  * which is what the cursor knows without touching the list. */
 constexpr uint32_t kSwSearchMinFill = 8;
 
+template <uint32_t MINFILL>
+uint64_t sw_adaptive_t(const ListView& s, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < s.n && !cw.done()) {
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if ((uint64_t)s.v[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+        if (cw.in_fill()) {
+            const uint32_t key = (shi > UINT32_MAX) ? UINT32_MAX : (uint32_t)shi;
+            uint32_t j = i;
+            if (cw.seg() >= MINFILL) {
+                uint32_t step = 1;
+                while (j + step < s.n && s.v[j + step] < key) { j += step; step <<= 1; }
+                uint32_t hi = std::min<uint32_t>(j + step, s.n);
+                while (j < hi) {
+                    const uint32_t mid = j + ((hi - j) >> 1);
+                    if (s.v[mid] < key) j = mid + 1; else hi = mid;
+                }
+            } else {
+                while (j < s.n && s.v[j] < key) ++j;
+            }
+            if (cw.fill_val) c += j - i;
+            i = j;
+            continue;
+        }
+        c += (cw.lit()[(s.v[i] >> 6) - pos] >> (s.v[i] & 63)) & 1u;
+        ++i;
+    }
+    return c;
+}
+
 uint64_t sw_adaptive(const ListView& s, const EwahView& w) {
     uint64_t c = 0;
     Cursor cw(w);
@@ -630,6 +687,8 @@ const Variant<fn_sw> kSW[] = {
     {"skip",     sw_skip,     "a fill settles every list element inside it in one step"},
     {"search",   sw_search,   "gallop the list past a fill instead of walking it"},
     {"adaptive", sw_adaptive, "gallop past long fills, walk short ones"},
+    {"adapt_f2", sw_adaptive_t<2>,  "gallop past fills of 2 words or more"},
+    {"adapt_f64",sw_adaptive_t<64>, "gallop only past fills of 64 words or more"},
 };
 
 /* rw_merge2 and rw_skip traded wins across the corpora with margins under 10%,
@@ -643,11 +702,70 @@ uint64_t rw_adaptive(const RunView& r, const EwahView& w) {
     return rw_skip(r, w);
 }
 
+/* Branchless advance in the two-cursor merge. Every step of rw_merge2 ends in a
+ * data-dependent branch choosing which side to retire; on interleaved runs and
+ * segments that mispredicts about half the time. */
+uint64_t rw_merge_bl(const RunView& r, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < r.n && !cw.done()) {
+        const uint64_t slo = (uint64_t)pos * 64;
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if (r.end[i] <= slo) { ++i; continue; }
+        if (r.start[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+        const uint32_t a = (uint32_t)std::max<uint64_t>(r.start[i], slo);
+        const uint32_t b = (uint32_t)std::min<uint64_t>(r.end[i],   shi);
+        const bool fill = cw.in_fill();
+        c += fill ? (cw.fill_val ? (uint64_t)(b - a) : 0)
+                  : range_in_words(cw.lit(), pos, a, b);
+        const bool run_first = (uint64_t)r.end[i] <= shi;
+        i += run_first;
+        if (!run_first) { pos += cw.seg(); cw.consume(cw.seg()); }
+    }
+    return c;
+}
+
+/* Both-sided bulk skip: a zero fill retires runs wholesale (as rw_skip does)
+ * AND a one-fill absorbs whole runs with a single add rather than a range
+ * count, since every bit of the run is set on the W side. */
+uint64_t rw_skip2(const RunView& r, const EwahView& w) {
+    uint64_t c = 0;
+    Cursor cw(w);
+    uint32_t pos = 0, i = 0;
+    while (i < r.n && !cw.done()) {
+        const uint64_t slo = (uint64_t)pos * 64;
+        const uint64_t shi = (uint64_t)(pos + cw.seg()) * 64;
+        if (r.end[i] <= slo) { ++i; continue; }
+        if (r.start[i] >= shi) { pos += cw.seg(); cw.consume(cw.seg()); continue; }
+        if (cw.in_fill()) {
+            const bool one = cw.fill_val;
+            while (i < r.n && (uint64_t)r.end[i] <= shi) {
+                if (one) c += r.end[i] - (uint32_t)std::max<uint64_t>(r.start[i], slo);
+                ++i;
+            }
+            if (i < r.n && (uint64_t)r.start[i] < shi && one)
+                c += (uint32_t)(shi - std::max<uint64_t>(r.start[i], slo));
+            pos += cw.seg();
+            cw.consume(cw.seg());
+            continue;
+        }
+        const uint32_t a = (uint32_t)std::max<uint64_t>(r.start[i], slo);
+        const uint32_t b = (uint32_t)std::min<uint64_t>(r.end[i],   shi);
+        c += range_in_words(cw.lit(), pos, a, b);
+        if ((uint64_t)r.end[i] <= shi) ++i;
+        else { pos += cw.seg(); cw.consume(cw.seg()); }
+    }
+    return c;
+}
+
 const Variant<fn_rw> kRW[] = {
     {"merge",    rw_merge,    "reference: runs against the segment stream"},
     {"merge2",   rw_merge2,   "single-pass two-cursor merge, no segment re-walking"},
     {"skip",     rw_skip,     "a zero fill retires every run inside it in one step"},
     {"adaptive", rw_adaptive, "skip form, with an empty-run-array early out"},
+    {"merge_bl", rw_merge_bl, "branchless advance in the two-cursor merge"},
+    {"skip2",    rw_skip2,    "zero fills retire runs; one-fills absorb them by add"},
 };
 
 /* ww_skip wins on 4 of 5 corpora but loses to ww_neon on dense data, where the
@@ -688,11 +806,34 @@ uint64_t ww_skip2(const EwahView& a, const EwahView& b) {
     return c;
 }
 
+/* Branchless segment classification. ww_skip2 has a four-way branch per step on
+ * (a is fill, b is fill); this collapses the two fill-vs-literal cases into one
+ * path by treating a one-fill as an implicit all-ones literal source. */
+uint64_t ww_bl(const EwahView& a, const EwahView& b) {
+    uint64_t c = 0;
+    Cursor ca(a), cb(b);
+    while (!ca.done() && !cb.done()) {
+        const uint32_t k = std::min(ca.seg(), cb.seg());
+        const bool fa = ca.in_fill(), fb = cb.in_fill();
+        const bool za = fa && !ca.fill_val, zb = fb && !cb.fill_val;
+        if (!za && !zb) {
+            if (fa && fb)        c += uint64_t(k) * 64;
+            else if (fa)         c += popcnt_words(cb.lit(), k);
+            else if (fb)         c += popcnt_words(ca.lit(), k);
+            else                 c += and_popcnt_words(ca.lit(), cb.lit(), k);
+        }
+        ca.consume(k);
+        cb.consume(k);
+    }
+    return c;
+}
+
 const Variant<fn_ww> kWW[] = {
     {"scalar",   ww_scalar,   "reference: segment merge, word at a time"},
     {"neon",     ww_neon,     "NEON literal bodies"},
     {"skip",     ww_skip,     "a zero fill swallows the other side's segments whole"},
     {"skip2",    ww_skip2,    "bulk skip plus a literal-vs-literal fast path"},
+    {"bl",       ww_bl,       "branchless segment classification, no bulk skip"},
 };
 
 } // namespace

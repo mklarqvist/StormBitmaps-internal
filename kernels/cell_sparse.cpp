@@ -183,6 +183,22 @@ uint64_t ss_neon16(const ListView& a, const ListView& b) {
 // here rather than buried as a literal.
 constexpr uint32_t kGallopRatio = 8;
 
+// The ratio at which galloping overtakes a merge is a calibration constant, not
+// a law. RESEARCH_PLAN.md 5.1 puts thresholds like this in the cost model (M4);
+// until M4 exists they are at least sampled rather than assumed.
+template <uint32_t RATIO>
+uint64_t ss_adaptive_t(const ListView& a, const ListView& b) {
+    if (a.n == 0 || b.n == 0) return 0;
+    if (a.v[a.n - 1] < b.v[0] || b.v[b.n - 1] < a.v[0]) return 0;
+    const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
+    if (hi / lo >= RATIO) return ss_gallop_sym(a, b);
+#if STORM_CELL_NEON
+    return ss_neon8(a, b);
+#else
+    return ss_merge_bl(a, b);
+#endif
+}
+
 uint64_t ss_adaptive(const ListView& a, const ListView& b) {
     const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
     if (lo == 0) return 0;
@@ -360,6 +376,22 @@ uint64_t sr_adaptive2(const ListView& s, const RunView& r) {
     return sr_merge(s, r);
 }
 
+/* The three-way comparison treats a merge step and a search step as equal cost.
+ * They are not: a merge step is one compare and two conditional increments; a
+ * search step is a dependent load. BIAS scales the merge's modelled cost down
+ * to reflect that, and the right value is an empirical question. */
+template <uint32_t BIAS>
+uint64_t sr_adaptive_t(const ListView& s, const RunView& r) {
+    if (s.n == 0 || r.n == 0) return 0;
+    if (s.v[s.n - 1] < r.start[0] || r.end[r.n - 1] <= s.v[0]) return 0;
+    const uint64_t c_merge  = ((uint64_t)s.n + r.n) / BIAS;
+    const uint64_t c_search = (uint64_t)s.n * ilog2_up(r.n);
+    const uint64_t c_runs   = (uint64_t)r.n * ilog2_up(s.n);
+    if (c_runs <= c_search && c_runs <= c_merge)   return sr_search_runs(s, r);
+    if (c_search < c_merge)                        return sr_search(s, r);
+    return sr_merge(s, r);
+}
+
 uint64_t sr_adaptive(const ListView& s, const RunView& r) {
     if (s.n == 0 || r.n == 0) return 0;
     const uint64_t c_merge  = (uint64_t)s.n + r.n;
@@ -503,6 +535,14 @@ uint64_t rr_gallop_sym(const RunView& a, const RunView& b) {
 
 constexpr uint32_t kRrGallopRatio = 8;
 
+template <uint32_t RATIO>
+uint64_t rr_adaptive_t(const RunView& a, const RunView& b) {
+    if (a.n == 0 || b.n == 0) return 0;
+    if (a.end[a.n - 1] <= b.start[0] || b.end[b.n - 1] <= a.start[0]) return 0;
+    const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
+    return (hi / lo >= RATIO) ? rr_gallop(a, b) : rr_merge_bl(a, b);
+}
+
 uint64_t rr_adaptive(const RunView& a, const RunView& b) {
     const uint32_t lo = std::min(a.n, b.n), hi = std::max(a.n, b.n);
     if (lo == 0) return 0;
@@ -528,6 +568,8 @@ const Variant<fn_ss> kSS[] = {
     {"neon8",     ss_neon8,     "8x8 block compare -- 64 candidate pairs per step"},
     {"clip",      ss_clip,      "clip both lists to their overlapping span first"},
     {"neon16",    ss_neon16,    "16x16 block compare -- does the block-width series continue?"},
+    {"adapt_r3",  ss_adaptive_t<3>,  "adaptive2 with the gallop ratio at 3"},
+    {"adapt_r24", ss_adaptive_t<24>, "adaptive2 with the gallop ratio at 24"},
     {"adaptive2", ss_adaptive2, "disjoint -> 0, lopsided -> gallop_sym, else neon8"},
 #endif
     {"adaptive",  ss_adaptive,  "merge or gallop on the length ratio"},
@@ -549,6 +591,8 @@ const Variant<fn_sr> kSR[] = {
 #endif
     {"adaptive",  sr_adaptive,  "three-way cost comparison from the two sizes"},
     {"adaptive2", sr_adaptive2, "three-way cost comparison plus a disjoint-span early out"},
+    {"adapt_b2",  sr_adaptive_t<2>,  "cost comparison biased 2x toward the merge"},
+    {"adapt_b8",  sr_adaptive_t<8>,  "cost comparison biased 8x toward the merge"},
 };
 
 const Variant<fn_rr> kRR[] = {
@@ -559,6 +603,8 @@ const Variant<fn_rr> kRR[] = {
     {"clip",      rr_clip,      "disjoint-span early out, then clip both sides"},
     {"adaptive2", rr_adaptive2, "disjoint-span early out in front of the ratio choice"},
     {"gallop_sym",rr_gallop_sym,"gallop whichever run array is behind"},
+    {"adapt_r3",  rr_adaptive_t<3>,  "adaptive2 with the gallop ratio at 3"},
+    {"adapt_r24", rr_adaptive_t<24>, "adaptive2 with the gallop ratio at 24"},
 };
 
 } // namespace

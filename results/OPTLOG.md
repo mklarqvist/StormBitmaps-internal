@@ -32,16 +32,38 @@ a batch containing any win resets that cell's counter to 0.
 
 | cell | consecutive non-improving | best variant now | last positive finding |
 |---|---:|---|---|
-| **B × S** | **3** | `ilp8` / `shift` / `ilp8x` (within ~5%) | r6 `ilp16x` |
+| **B × S** | **5 — CONVERGED** | `ilp8` / `shift` (within ~5%) | r6 `ilp16x` |
+| **B × W** | **2** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
 | **B × R** | **1** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
-| **B × B** | **0** | `occ_sel` (zone-map planned) | r8 `occ_sel`, `occ` |
-| **B × W** | **0** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
-| **S × R** | **0** | `adaptive2` | r7 `adaptive2` |
-| **S × W** | **0** | `search` / `adaptive` | r7 `adaptive` |
-| **S × S** | **1** | `adaptive2` / `gallop_sym` | r7 `adaptive2` |
-| **R × R** | **1** | `adaptive2` / `merge_bl` / `clip` | r7 `adaptive2` |
-| **R × W** | **0** | `merge2` / `skip` / `adaptive` | r7 `adaptive` |
-| **W × W** | **0** | `skip2` / `skip` | r7 `skip2` |
+| **B × B** | 0 | `occ_sel60` / `occ` / `neon_u6` | r10 `neon_u6`, `occ_sel60` |
+| **S × R** | 0 | `adapt_b8` / `merge_bl` | r10 `adapt_b8` |
+| **S × W** | 0 | `adapt_f64` | r10 `adapt_f64` |
+| **S × S** | 0 | `adapt_r3` / `adapt_r24` | r10 `adapt_r3` |
+| **R × R** | 0 | `adapt_r3` / `merge_bl` | r10 `adapt_r3` |
+| **R × W** | 0 | `skip2` / `merge2` | r10 `skip2` |
+| **W × W** | 0 | `skip2` / `skip` | r10 `skip2` |
+
+**B × S is closed** at 5 consecutive non-improving iterations: `ilp12` and
+`prefetch64` joined `ilp_cache`, `prefetch_deep` and `occ` in failing. The cell
+sits at ~0.80–1.23 cycles per list element against a 0.67 load-port floor, its
+top three variants are within ~5% of each other on every corpus, and eleven
+distinct hypotheses have failed to move it. The residual gap is the scattered
+bitmap load, which no restructuring of the loop can remove.
+
+**F10 — every hardcoded threshold in the project was mistuned.** Round 10 did
+nothing but sample the constants — gallop ratios, rank crossovers, fill lengths,
+zone-map selectivity — and won in **seven of ten cells**. Not by large margins
+(1.0–1.3×), but systematically, and in cells whose kernels had already been
+iterated on for several rounds.
+
+That is a result about the project rather than about any cell. `RESEARCH_PLAN.md`
+§5.1 argues that thresholds belong in a calibrated cost model (M4) rather than
+in source, and §5.1's case has until now been an argument. It is now a
+measurement: hand-picked constants lose to sampled ones essentially everywhere,
+and the sampled optimum differs by corpus, so no single constant is right. The
+honest conclusion is that further hand-tuning of these numbers is not worth
+doing — **M4 should be built instead**, and the per-cell loop is hitting
+diminishing returns for exactly the reason the plan predicted.
 
 Round 9 added two hypotheses and both failed, which is what a converging search
 looks like: `ss_neon16` (16×16 block compare) never wins, so the block-width

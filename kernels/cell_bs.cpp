@@ -513,6 +513,8 @@ const Variant<fn_bs> kBS[] = {
     {"ilp2",           bs_ilp<2>,        "2 independent accumulator chains"},
     {"ilp4",           bs_ilp<4>,        "4 chains"},
     {"ilp8",           bs_ilp<8>,        "8 chains"},
+    {"ilp12",          bs_ilp<12>,       "12 chains -- between the tested 8 and 16"},
+    {"prefetch64",     bs_prefetch<64>,  "D4: prefetch distance 64"},
     {"ilp4x",          bs_ilp4x,         "4 chains, named accumulators (no array)"},
     {"ilp8x",          bs_ilp8x,         "8 chains, named accumulators"},
     {"pack2",          bs_pack2,         "two positions per 64-bit list load, 4 chains"},

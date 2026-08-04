@@ -351,6 +351,8 @@ const Variant<fn_br> kBR[] = {
     {"hybrid12",    br_hybrid<kBrRankMinWords>,"rank above 12 words of run, direct below", true},
     {"hybrid4",     br_hybrid<4>,             "crossover probe: rank above 4 words",       true},
     {"hybrid32",    br_hybrid<32>,            "crossover probe: rank above 32 words",      true},
+    {"hybrid2",     br_hybrid<2>,             "crossover probe: rank above 2 words",       true},
+    {"hybrid8",     br_hybrid<8>,             "crossover probe: rank above 8 words",       true},
     {"occ",         br_occ,                   "zone map settles runs in empty bins",       true},
     {"rank_2pass",  br_rank_2pass,            "ends and starts in separate monotonic passes", true},
     {"hybrid_pair", br_hybrid_pair,           "choose rank vs direct ONCE per pair, not per run", true},

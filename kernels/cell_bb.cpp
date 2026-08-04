@@ -527,6 +527,18 @@ uint64_t bb_occ_plan(const BitmapView& a, const BitmapView& b) {
  */
 constexpr double kOccPlanSelectivity = 0.33;
 
+template <int PCT>
+uint64_t bb_occ_sel_t(const BitmapView& a, const BitmapView& b) {
+    if (a.occ == nullptr || b.occ == nullptr) return bb_neon_unroll<8>(a, b);
+    const uint32_t n_occ = std::min(a.n_occ, b.n_occ);
+    const uint32_t bins  = (a.nw + BitmapView::OCC_BIN_WORDS - 1) / BitmapView::OCC_BIN_WORDS;
+    uint64_t live = 0;
+    for (uint32_t i = 0; i < n_occ; ++i) live += STORM_POPCOUNT(a.occ[i] & b.occ[i]);
+    if (live == 0) return 0;
+    if (bins && live * 100 < (uint64_t)PCT * bins) return bb_occ(a, b);
+    return bb_neon_unroll<8>(a, b);
+}
+
 uint64_t bb_occ_sel(const BitmapView& a, const BitmapView& b) {
     if (a.occ == nullptr || b.occ == nullptr) return bb_neon_unroll<8>(a, b);
 
@@ -550,6 +562,8 @@ const Variant<fn_bb> kBB[] = {
     {"neon_u4",      bb_neon_unroll<4>,     "4 accumulators -- predicted first to cover UADALP lat 3"},
     {"neon_u8",      bb_neon_unroll<8>,     "8 accumulators"},
     {"neon_u16",     bb_neon_unroll<16>,    "16 accumulators -- has the series saturated?"},
+    {"neon_u6",      bb_neon_unroll<6>,     "6 accumulators -- between the tested 4 and 8"},
+    {"neon_u12",     bb_neon_unroll<12>,    "12 accumulators -- between the tested 8 and 16"},
     {"neon_u8acc4",  bb_neon_u8acc<4>,      "u8 accumulate, widen every 31 -- shorter recurrence"},
     {"neon_u8acc8",  bb_neon_u8acc<8>,      "u8 accumulate, 8 accumulators"},
     {"neon_ld2",     bb_neon_ld2,           "vld1q_u8_x2 paired loads -- issue-bound probe"},
@@ -557,6 +571,8 @@ const Variant<fn_bb> kBB[] = {
     {"neon_hs",      bb_neon_harley_seal,   "Harley-Seal CSA -- labelled negative control"},
     {"neon_rankskip",bb_neon_rankskip,      "skip all-zero 512b blocks via rank index", true},
     {"occ",          bb_occ,                "zone map: visit only bins live on BOTH sides", true},
+    {"occ_sel15",    bb_occ_sel_t<15>,      "zone-map plan, switch below 15% of bins live", true},
+    {"occ_sel60",    bb_occ_sel_t<60>,      "zone-map plan, switch below 60% of bins live", true},
     {"occ_sel",      bb_occ_sel,            "PLAN from the zone map, then pick the kernel", true},
     {"occ_plan",     bb_occ_plan,           "zone map + explicit disjoint-pair early out", true},
     {"neon_rskip1",  bb_neon_rankskip1,     "gate on the sparser side only -- half the index traffic", true},
