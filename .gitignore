@@ -54,3 +54,6 @@ CMakeFiles/
 # uv virtualenv for the plotting scripts (bench/plot_density.py).
 # Recreate with: uv venv .venv && uv pip install --python .venv matplotlib numpy
 .venv/
+
+data/
+*.pack

@@ -493,6 +493,50 @@ uint64_t bs_occ(const BitmapView& b, const ListView& s) {
     return c;
 }
 
+// --- V18: peel the tiny-list cases ------------------------------------------
+// On real 1000 Genomes data 75% of pairs have a sparse side of exactly ONE
+// element and 89% have four or fewer -- a direct consequence of the 1/i spectrum
+// (44.6% of variants are singletons). The synthetic corpora never made this
+// visible because their spectra, even the 1/i one, are drawn over a *mean*
+// cardinality rather than reproducing the singleton mass.
+//
+// At n = 1 the entire answer is one bit test, and everything around it -- loop
+// setup, the 8-accumulator prologue and epilogue, the tail loop -- is overhead.
+// Measured 0.92 ns per probe at mean n = 3, which is ~3.5 cycles for an
+// L1-resident load-and-test: almost all of it is the loop, not the probe.
+uint64_t bs_small(const BitmapView& b, const ListView& s) {
+    switch (s.n) {
+        case 0: return 0;
+        case 1: { const uint32_t v = s.v[0];
+                  return (b.w[v >> 6] >> (v & 63)) & 1u; }
+        case 2: { const uint32_t v0 = s.v[0], v1 = s.v[1];
+                  return ((b.w[v0 >> 6] >> (v0 & 63)) & 1u)
+                       + ((b.w[v1 >> 6] >> (v1 & 63)) & 1u); }
+        case 3: { const uint32_t v0 = s.v[0], v1 = s.v[1], v2 = s.v[2];
+                  return ((b.w[v0 >> 6] >> (v0 & 63)) & 1u)
+                       + ((b.w[v1 >> 6] >> (v1 & 63)) & 1u)
+                       + ((b.w[v2 >> 6] >> (v2 & 63)) & 1u); }
+        case 4: { const uint32_t v0 = s.v[0], v1 = s.v[1], v2 = s.v[2], v3 = s.v[3];
+                  return ((b.w[v0 >> 6] >> (v0 & 63)) & 1u)
+                       + ((b.w[v1 >> 6] >> (v1 & 63)) & 1u)
+                       + ((b.w[v2 >> 6] >> (v2 & 63)) & 1u)
+                       + ((b.w[v3 >> 6] >> (v3 & 63)) & 1u); }
+        default: break;
+    }
+    uint64_t a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+    uint32_t i = 0;
+    for (; i + 4 <= s.n; i += 4) {
+        const uint32_t v0 = s.v[i], v1 = s.v[i+1], v2 = s.v[i+2], v3 = s.v[i+3];
+        a0 += (b.w[v0 >> 6] >> (v0 & 63)) & 1u;
+        a1 += (b.w[v1 >> 6] >> (v1 & 63)) & 1u;
+        a2 += (b.w[v2 >> 6] >> (v2 & 63)) & 1u;
+        a3 += (b.w[v3 >> 6] >> (v3 & 63)) & 1u;
+    }
+    uint64_t c = (a0 + a1) + (a2 + a3);
+    for (; i < s.n; ++i) c += (b.w[s.v[i] >> 6] >> (s.v[i] & 63)) & 1u;
+    return c;
+}
+
 // --- V7: the inflate-to-bitmap fallback, as a LABELLED baseline ------------
 // AGENTS.md standing rule 3: never inflate a sparse side to a bitmap to reuse
 // the B x B kernel -- it recovers zero of the available saving. It appears here
@@ -528,6 +572,7 @@ const Variant<fn_bs> kBS[] = {
     {"ilp4x",          bs_ilp4x,         "4 chains, named accumulators (no array)"},
     {"ilp8x",          bs_ilp8x,         "8 chains, named accumulators"},
     {"adaptive",       bs_adaptive,      "shift when the bitmap is L1-resident, ilp8x when not"},
+    {"small",          bs_small,         "peel |S| <= 4 -- 89% of real 1KGP3 pairs"},
     {"occ",            bs_occ,           "zone map gates each 512-bit bin -- 1 bit per bin", true},
     {"rankskip",       bs_rankskip,      "skip list groups whose dense-side rank block is empty", true},
     {"collapse",       bs_collapse,      "D2: fold same-word groups into one mask"},

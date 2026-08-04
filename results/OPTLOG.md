@@ -611,3 +611,87 @@ Two consequences for the write-up:
    and neither substitutes for the other. `results/density.png` already shows the
    win growing without bound as density falls; chr20 sits at density 0.032,
    which the sweep puts squarely in the band where B × B is competitive.
+
+
+---
+
+## 1KGP3 throughput campaign (universe 5,008 bits, 79 words/row)
+
+Target: real 1000 Genomes chr20. Everything is L1-resident at 632 B/row, so this
+is the *opposite* regime from F11's DRAM measurements and the conclusions differ.
+
+**Baseline: 5.49 ns/pair** (`bench_real`, B x S, best cell).
+
+### Where the time actually goes
+
+Profiled before optimizing, which changed the plan:
+
+| | |
+|---|---|
+| sparse-side cardinality, **median** | **1** |
+| mean | 3.0 |
+| pairs with \|S\| <= 1 | **75.0%** |
+| pairs with \|S\| <= 4 | 89.1% |
+| view construction | **23% of runtime** |
+| kernel work | 0.92 ns/probe = ~3.5 cycles |
+
+Three things fall out, none of which the synthetic corpora showed:
+
+1. **75% of pairs need exactly one bit test.** The 1/i spectrum's singleton mass
+   (44.6% of real variants) dominates, and the generator never reproduced it
+   because it draws around a *mean* cardinality rather than the spectrum's shape.
+2. **`BitmapView` grew to 6 fields / 32 bytes** as features were added, and it is
+   reconstructed per pair. That is 23% of the total at this scale -- invisible at
+   the universe sizes everything else was tuned on.
+3. 3.5 cycles for an L1-resident probe is loop overhead, not the probe.
+
+### Iteration 1
+
+| change | ns/pair |
+|---|---:|
+| baseline (`bench_real`, B x S) | 5.49 |
+| hoist view construction out of the pair loop | 3.95 |
+| `bs_small` -- peel \|S\| <= 4 | 3.80 |
+| **preprocess to a packed per-row representation** | **2.10** |
+
+**2.10 ns/pair, 5.1-5.7x over all-bitmap on real data — a 2.6x improvement on
+the goal metric.**
+
+The packed format (`tools/pack.cpp`, `bench/bench_pack.cpp`) is
+`PROBLEM_STATEMENT.md` §3.2's storage/compute separation made real: each row's
+representation is chosen **once at ingest** and written to disk, and query time
+is mmap + dispatch on the stored tag pair. No per-pair view construction, no
+five-representations-per-row.
+
+Selection is by **throughput, not size** -- storage is explicitly not an
+objective here, since this feeds an N x M exact-LD computation where pairing
+speed is the whole point.
+
+### The crossover threshold is not the lever
+
+Sweeping the cardinality at which a row is stored as an array rather than a
+bitmap:
+
+| threshold | %array | %bitmap | ns/pair |
+|---:|---:|---:|---:|
+| 0 (all bitmap) | 0% | 99.7% | 11.05 |
+| 8 | 71.1% | 28.6% | **2.10** |
+| 32 | 81.7% | 18.0% | **2.10** |
+| 128 | 88.6% | 11.1% | **2.10** |
+| 5008 (all sparse) | 98.8% | 0% | **2.10** |
+
+Flat above 8. The reason is the same singleton mass: pairs are oriented so the
+*sparser* side drives the kernel, and that side is already an array in almost
+every pair regardless of where the threshold sits. Only the degenerate
+all-bitmap policy is different, and it is 5x worse.
+
+So the storage decision that matters is binary -- "keep sparse rows sparse" --
+not the precise crossover. That is worth knowing because the crossover is
+exactly the kind of constant the cost model would otherwise spend effort fitting.
+
+**A bug this exposed:** the first packed measurement reported `correct=NO`. Row
+lengths were being derived from consecutive offsets, which included up to 7
+bytes of 8-byte alignment padding, so `len/2` over-counted array elements and
+read past the end. Fixed by storing exact lengths alongside the aligned starts.
+The broken version reported 3.87x; the correct one reports 4.77-5.67x -- the bug
+was *understating* the result, which is the direction that gets shipped.
