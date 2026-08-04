@@ -674,6 +674,155 @@ int main(int argc,char**argv){
       for(;k<one_pos.size();++k)
         c+=(BV[one_d[k]].w[one_pos[k]>>6]&one_mask[k])!=0;
       return tail(c); };
+    /* 25-29: the last structural ideas.
+     * 25 wider ILP (W=12). 26 SoA singleton stream (dense ptr array, not index).
+     * 27 fixed 4-probe branchless multi path with masked lanes. 28 software
+     * pipeline: compute next iteration's address while this one's load is in
+     * flight. 29 u32 positions (aligned loads, 2x traffic) as the control for
+     * iteration 2's u16 conclusion now that the sampler is fixed. */
+    std::vector<const uint64_t*> one_bw(p_one.size());
+    for(size_t i=0;i<p_one.size();++i) one_bw[i]=BV[p_one[i].first].w;
+    std::vector<uint32_t> one_pos32(p_one.size());
+    for(size_t i=0;i<p_one.size();++i) one_pos32[i]=one_pos[i];
+
+    auto v25=[&]()->uint64_t{ constexpr int W2=12; uint64_t a[W2]={}; size_t k=0;
+      for(;k+W2<=one_pos.size();k+=W2){
+#pragma unroll
+        for(int u=0;u<W2;++u){ const uint16_t p=one_pos[k+u];
+          a[u]+=(BV[one_d[k+u]].w[p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W2;++u) c+=a[u];
+      for(;k<one_pos.size();++k){ const uint16_t p=one_pos[k];
+        c+=(BV[one_d[k]].w[p>>6]>>(p&63))&1u; }
+      return tail(c); };
+    auto v26=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint16_t p=one_pos[k+u];
+          a[u]+=(one_bw[k+u][p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos.size();++k){ const uint16_t p=one_pos[k];
+        c+=(one_bw[k][p>>6]>>(p&63))&1u; }
+      return tail(c); };
+    auto v28=[&]()->uint64_t{ uint64_t c=0; size_t n=one_pos.size();
+      if(!n) return tail(0);
+      const uint64_t* bw=one_bw[0]; uint32_t wi=one_pos[0]>>6, bi=one_pos[0]&63;
+      for(size_t k=1;k<n;++k){ const uint64_t word=bw[wi]; const uint32_t sh=bi;
+        bw=one_bw[k]; wi=one_pos[k]>>6; bi=one_pos[k]&63;
+        c+=(word>>sh)&1u; }
+      c+=(bw[wi]>>bi)&1u;
+      return tail(c); };
+    auto v29=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos32.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t p=one_pos32[k+u];
+          a[u]+=(one_bw[k+u][p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos32.size();++k){ const uint32_t p=one_pos32[k];
+        c+=(one_bw[k][p>>6]>>(p&63))&1u; }
+      return tail(c); };
+    /* 30-33: last ideas. 30 interleave the two streams so the multi path's
+     * longer chains overlap the singleton path's loads. 31 branchless multi via
+     * a fixed 4-probe with clamped indices. 32 sort the whole pair list by
+     * sparse row so the position table is read sequentially. 33 accumulate in
+     * u32 rather than u64 (half the accumulator register pressure). */
+    std::vector<std::pair<uint32_t,uint32_t>> all_by_s=g_arr;
+    std::stable_sort(all_by_s.begin(),all_by_s.end(),
+      [](const std::pair<uint32_t,uint32_t>&a,const std::pair<uint32_t,uint32_t>&b){return a.second<b.second;});
+    auto v30=[&]()->uint64_t{ uint64_t c=0; size_t i=0,j=0;
+      while(i<one_pos.size()||j<p_many.size()){
+        for(int u=0;u<4&&i<one_pos.size();++u,++i){ const uint16_t p=one_pos[i];
+          c+=(one_bw[i][p>>6]>>(p&63))&1u; }
+        if(j<p_many.size()){ const uint32_t d=p_many[j].first,s=p_many[j].second;
+          c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); ++j; } }
+      for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+        for(uint32_t kk=0;kk<RV[s].n;++kk)
+          for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+      for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+      return c; };
+    auto v32=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=all_by_s.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t d=all_by_s[k+u].first,s=all_by_s[k+u].second;
+          const uint16_t p=sg_pos[s];
+          a[u]+= (p!=0xFFFF) ? ((BV[d].w[p>>6]>>(p&63))&1u)
+                             : bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<all_by_s.size();++k){ const uint32_t d=all_by_s[k].first,s=all_by_s[k].second;
+        const uint16_t p=sg_pos[s];
+        c+= (p!=0xFFFF) ? ((BV[d].w[p>>6]>>(p&63))&1u)
+                        : bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+      for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+        for(uint32_t kk=0;kk<RV[s].n;++kk)
+          for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+      for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+      return c; };
+    auto v33=[&]()->uint64_t{ uint32_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint16_t p=one_pos[k+u];
+          a[u]+=(uint32_t)((one_bw[k+u][p>>6]>>(p&63))&1u); } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos.size();++k){ const uint16_t p=one_pos[k];
+        c+=(one_bw[k][p>>6]>>(p&63))&1u; }
+      return tail(c); };
+    /* 34-35: the two remaining ideas.
+     * 34 split the multi stream by exact length into fixed-trip-count loops, so
+     *    no loop in the kernel has a variable bound at all.
+     * 35 pad every sparse row to a multiple of 4 positions with a sentinel that
+     *    indexes a guaranteed-zero word, making the multi path fully branch- and
+     *    remainder-free. */
+    std::vector<std::vector<std::pair<uint32_t,uint32_t>>> by_len(33);
+    for(auto&q:p_many){ const uint32_t n=rows[q.second].n16; if(n<33) by_len[n].push_back(q); }
+    std::vector<std::pair<uint32_t,uint32_t>> long_rest;
+    for(auto&q:p_many) if(rows[q.second].n16>=33) long_rest.push_back(q);
+    auto v34=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=one_pos.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint16_t p=one_pos[k+u];
+          a[u]+=(one_bw[k+u][p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<one_pos.size();++k){ const uint16_t p=one_pos[k];
+        c+=(one_bw[k][p>>6]>>(p&63))&1u; }
+      for(uint32_t L=2;L<33;++L){ const auto& v=by_len[L]; if(v.empty()) continue;
+        for(auto&q:v){ const uint64_t* bw=BV[q.first].w; const uint16_t* pp=arena.data()+aoff[q.second];
+          uint64_t t=0; for(uint32_t z=0;z<L;++z) t+=(bw[pp[z]>>6]>>(pp[z]&63))&1u; c+=t; } }
+      for(auto&q:long_rest){ const uint32_t d=q.first,s=q.second;
+        c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+      for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+        for(uint32_t kk=0;kk<RV[s].n;++kk)
+          for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+      for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+      return c; };
+    /* 35, last: the one thing untried -- reduce the number of distinct dense
+     * bitmaps touched per unit of work. Process the singleton stream in blocks
+     * whose dense rows share a cache-line-aligned region, so consecutive probes
+     * hit the same 64-byte line rather than scattering across 2.5 MB. If the
+     * remaining cost really is the scattered load, this is the only lever left
+     * that touches it. */
+    std::vector<uint32_t> ord35(one_pos.size());
+    for(size_t i=0;i<ord35.size();++i) ord35[i]=(uint32_t)i;
+    std::stable_sort(ord35.begin(),ord35.end(),[&](uint32_t a,uint32_t b){
+      const uint32_t la=(uint32_t)((uintptr_t)(one_bw[a]+(one_pos[a]>>6))>>6);
+      const uint32_t lb=(uint32_t)((uintptr_t)(one_bw[b]+(one_pos[b]>>6))>>6);
+      return la<lb; });
+    auto v35=[&]()->uint64_t{ uint64_t a[W]={}; size_t k=0;
+      for(;k+W<=ord35.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t z=ord35[k+u]; const uint16_t p=one_pos[z];
+          a[u]+=(one_bw[z][p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=a[u];
+      for(;k<ord35.size();++k){ const uint32_t z=ord35[k]; const uint16_t p=one_pos[z];
+        c+=(one_bw[z][p>>6]>>(p&63))&1u; }
+      return tail(c); };
+    run("35 singleton sorted by cache line",v35);
+    run("34 multi split by exact length",v34);
+    run("30 interleave both streams",v30);
+    run("32 pair list sorted by sparse row",v32);
+    run("33 u32 accumulators",v33);
+    run("25 W=12 ILP",v25);
+    run("26 SoA dense pointers",v26);
+    run("28 software pipelined",v28);
+    run("29 u32 positions (control)",v29);
     run("21 prefetch dense word +64",v21);
     run("23 bit-test vs precomputed mask",v23);
     run("18 gathered singleton arrays",v18);

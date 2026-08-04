@@ -971,3 +971,66 @@ certainly frequency-throttled. Ratios within a host are comparable; times across
 hosts are not.
 
 **Counter: 11 consecutive non-improving iterations.**
+
+### Iterations 25-35 — eleven consecutive null results; campaign converged
+
+| # | attempt | ns/pair |
+|---|---|---:|
+| 25 | W=12 ILP | 2.00 |
+| 26 | SoA dense pointers | 1.85-1.90 |
+| 28 | software pipelined | 1.90-1.95 |
+| 29 | u32 positions (control) | 1.90 |
+| 30 | interleave both streams | **2.20** |
+| 32 | pair list sorted by sparse row | **2.40** |
+| 33 | u32 accumulators | 1.95-2.05 |
+| 34 | multi split by exact length | 1.95-2.05 |
+| 35 | singleton sorted by cache line | 1.90-1.95 |
+
+Four of these are informative beyond being null:
+
+- **29 (u32 positions) ties u16.** On a valid sample element width does not
+  matter, which retroactively confirms iteration 3's diagnosis that iteration 2's
+  u16 regression was page scatter alone.
+- **28 (software pipelining) ties**, so the load latency is already fully covered
+  by six-way cross-pair ILP.
+- **30 and 32 are actively worse** (2.20, 2.40) and both do the same thing:
+  merge the singleton and multi streams back together. They re-create the
+  unpredictable branch iteration 11 removed, at 1.13-1.23x cost -- an independent
+  confirmation of that win from the opposite direction.
+- **34 (fixed trip counts) and 35 (cache-line ordering) tie**, so neither the
+  variable loop bound nor the scatter pattern is the residual cost.
+
+## Campaign closed: 20 consecutive non-improving iterations
+
+**5.49 -> ~1.90 ns/pair, ~2.9x, and ~6.7x over all-bitmap on the same sample.**
+
+The final kernel is one scattered L2-resident load plus a shift-and-mask, six
+pairs in flight, over a corpus whose representation was chosen at ingest. Every
+attempt to remove indirection (18, 19, 20, 26, 33), remove the shift (23, 20),
+hide the load (21, 28), reshape the access pattern (12, 32, 35), widen or narrow
+the data (2, 29), or restructure the loops (25, 30, 34) now ties or loses.
+
+**What actually worked, and the one principle behind it:**
+
+| iteration | win |
+|---|---|
+| 1 | choose each row's representation once, at ingest |
+| 3 | gather sparse payloads into one contiguous L1-resident arena |
+| 5, 7 | cross-PAIR ILP at W=4-6 |
+| 8, 10 | hoist the singleton probe to a 2-byte per-row table |
+| 11 | split the pair list into singleton and multi streams |
+
+Every one of them moves work from **per-pair to per-row**, or makes a per-row
+decision that removes a per-pair branch. At N^2 pairs that is the only structural
+lever: anything invariant in a row is otherwise recomputed N times, and any
+decision that varies per pair is taken N times more often than the data
+determining it changes. The corollary iteration 9 supplied is that the hoisted
+data is *read* N^2 times, so its size is on the critical path -- hoist, then
+hoist less.
+
+**What did not work, and why it matters:** SIMD. Iteration 16's NEON index
+arithmetic ties scalar, exactly as `neon_idx` did on synthetic data. At this
+scale there is no gather, the loads dominate, and vectorizing the arithmetic
+around them is free but pointless. That is finding F5 holding at the opposite end
+of the size range from where it was discovered -- **SIMD wins only where work is
+irreducible, and at 632 bytes per row almost nothing is.**
