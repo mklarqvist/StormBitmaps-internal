@@ -8,6 +8,9 @@
 #include <vector>
 #include <algorithm>
 #include <type_traits>
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 #include <time.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -466,6 +469,113 @@ int main(int argc,char**argv){
       sv+=splitOrd(WT,one); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
     printf("     %-14s W=6 %7.3f ns/pair%s\n",lbl,(double)b/pr.size(),ok); };
   runO("unsorted",p_one); runO("by dense row",p_one_d); runO("by (dense,pos)",p_one_dp);
+
+  /* Iteration 16: NEON for the multi stream.
+   *
+   * With a valid sample the multi stream finally has length variation (|S| 2..32,
+   * mean 6), so there is something to vectorize. NEON has no gather, so the
+   * bitmap loads stay scalar -- but the INDEX arithmetic does not have to be:
+   * eight u16 positions load as one vector, and >>6 and &63 become one shift and
+   * one AND for all eight. Only the eight scalar loads and the accumulate remain.
+   * That is the same D1-substitute reasoning as cell_bs.cpp's neon_idx, which
+   * lost on synthetic data at |S| ~ 1; here |S| averages 6 in this stream. */
+#if defined(__ARM_NEON)
+  auto bs_neon16=[&](const BitmapView& b,const uint16_t* v,uint32_t n)->uint64_t{
+    uint64_t c=0; uint32_t i=0;
+    uint16_t wi[8], bi[8];
+    for(;i+8<=n;i+=8){
+      const uint16x8_t p=vld1q_u16(v+i);
+      vst1q_u16(wi,vshrq_n_u16(p,6));
+      vst1q_u16(bi,vandq_u16(p,vdupq_n_u16(63)));
+      uint64_t a0=0,a1=0,a2=0,a3=0;
+      a0+=(b.w[wi[0]]>>bi[0])&1u; a1+=(b.w[wi[1]]>>bi[1])&1u;
+      a2+=(b.w[wi[2]]>>bi[2])&1u; a3+=(b.w[wi[3]]>>bi[3])&1u;
+      a0+=(b.w[wi[4]]>>bi[4])&1u; a1+=(b.w[wi[5]]>>bi[5])&1u;
+      a2+=(b.w[wi[6]]>>bi[6])&1u; a3+=(b.w[wi[7]]>>bi[7])&1u;
+      c+=(a0+a1)+(a2+a3);
+    }
+    for(;i<n;++i) c+=(b.w[v[i]>>6]>>(v[i]&63))&1u;
+    return c; };
+  {
+    constexpr int W=6;
+    auto body=[&]()->uint64_t{
+      uint64_t acc[W]={}; size_t k=0;
+      for(;k+W<=p_one.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t d=p_one[k+u].first; const uint16_t p=sg_pos[p_one[k+u].second];
+          acc[u]+=(BV[d].w[p>>6]>>(p&63))&1u; } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+      for(;k<p_one.size();++k){ const uint32_t d=p_one[k].first; const uint16_t p=sg_pos[p_one[k].second];
+        c+=(BV[d].w[p>>6]>>(p&63))&1u; }
+      uint64_t m[W]={}; k=0;
+      for(;k+W<=p_many.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t d=p_many[k+u].first,s=p_many[k+u].second;
+          m[u]+=bs_neon16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+      for(int u=0;u<W;++u) c+=m[u];
+      for(;k<p_many.size();++k){ const uint32_t d=p_many[k].first,s=p_many[k].second;
+        c+=bs_neon16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+      for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+        for(uint32_t kk=0;kk<RV[s].n;++kk)
+          for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+      for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+      return c; };
+    uint64_t gg=body(); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=body(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("   + NEON index arithmetic on multi stream: %7.3f ns/pair%s\n",
+           (double)b/pr.size(),ok); }
+#endif
+
+  /* Iteration 17: provable-zero skip from row spans.
+   *
+   * A row's [first_set, last_set] is row metadata. If a singleton's position
+   * falls outside the dense side's span the answer is 0 without touching the
+   * bitmap at all -- one compare instead of a scattered load. This is the
+   * cheapest possible form of the zone-map idea, using two integers already
+   * available rather than a summary structure, and it should pay exactly when
+   * the corpus has locality: chr20 variants cluster, so many pairs are disjoint
+   * in span. */
+  std::vector<uint32_t> lo(rows.size(),0), hi(rows.size(),0);
+  for(size_t i=0;i<rows.size();++i){
+    uint32_t mn=~0u,mx=0;
+    if(rows[i].t==T_ARRAY16){ const uint16_t* v=arena.data()+aoff[i];
+      if(rows[i].n16){ mn=v[0]; mx=v[rows[i].n16-1]; } }
+    else { for(uint32_t k=0;k<nw;++k) if(BV[i].w[k]){ if(mn==~0u) mn=k*64;
+             mx=k*64+63-__builtin_clzll(BV[i].w[k]); } }
+    lo[i]=(mn==~0u?0:mn); hi[i]=mx; }
+  { uint32_t nskip=0; for(auto&q:p_one){ const uint16_t p=sg_pos[q.second];
+      if(p<lo[q.first]||p>hi[q.first]) ++nskip; }
+    printf("   span-skippable singleton pairs: %u of %zu (%.1f%%)\n",
+           nskip,p_one.size(),100.0*nskip/p_one.size()); }
+  {
+    constexpr int W=6;
+    auto body=[&]()->uint64_t{
+      uint64_t acc[W]={}; size_t k=0;
+      for(;k+W<=p_one.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t d=p_one[k+u].first; const uint16_t p=sg_pos[p_one[k+u].second];
+          acc[u]+= (p<lo[d]||p>hi[d]) ? 0u : ((BV[d].w[p>>6]>>(p&63))&1u); } }
+      uint64_t c=0; for(int u=0;u<W;++u) c+=acc[u];
+      for(;k<p_one.size();++k){ const uint32_t d=p_one[k].first; const uint16_t p=sg_pos[p_one[k].second];
+        c+= (p<lo[d]||p>hi[d]) ? 0u : ((BV[d].w[p>>6]>>(p&63))&1u); }
+      uint64_t m[W]={}; k=0;
+      for(;k+W<=p_many.size();k+=W){
+#pragma unroll
+        for(int u=0;u<W;++u){ const uint32_t d=p_many[k+u].first,s=p_many[k+u].second;
+          m[u]+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); } }
+      for(int u=0;u<W;++u) c+=m[u];
+      for(;k<p_many.size();++k){ const uint32_t d=p_many[k].first,s=p_many[k].second;
+        c+=bs_u16(BV[d],arena.data()+aoff[s],rows[s].n16); }
+      for(auto&q:g_rle){ const uint32_t d=q.first,s=q.second;
+        for(uint32_t kk=0;kk<RV[s].n;++kk)
+          for(uint32_t x=RV[s].start[kk];x<RV[s].end[kk];++x) c+=(BV[d].w[x>>6]>>(x&63))&1u; }
+      for(auto&q:g_bm) c+=bb(BV[q.first],BV[q.second]);
+      return c; };
+    uint64_t gg=body(); const char* ok=(gg==w)?"":"  WRONG";
+    uint64_t b=~0ull; for(int r=0;r<9;++r){volatile uint64_t sv=0;uint64_t t0=nsn();
+      sv+=body(); uint64_t d=nsn()-t0;(void)sv; if(d<b)b=d;}
+    printf("   + span skip on singletons: %7.3f ns/pair%s\n",(double)b/pr.size(),ok); }
 
   printf("   + split singleton/multi pair streams:\n");
   auto runSp=[&](auto WT){ constexpr int W=decltype(WT)::value;

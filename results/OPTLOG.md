@@ -902,3 +902,35 @@ matter; the earlier flatness was measurement error.
 Worth noting what this says about the cost model: this is exactly the constant
 M4 exists to fit, the fit is host- and corpus-dependent, and a wrong value costs
 nearly 2x. The iteration-1 conclusion would have told M4 not to bother.
+
+### Iterations 16-17 — two clean negative results
+
+**Iteration 16 (no improvement).** NEON index arithmetic on the multi stream --
+eight u16 positions per vector, `>>6` and `&63` for all eight in two
+instructions -- ties the scalar path at 2.00 vs 1.95-2.00. Same outcome as
+`neon_idx` in the original campaign and the same cause: NEON has no gather, so
+the eight bitmap loads stay scalar and only the cheap arithmetic vectorizes. At
+mean \|S\| = 6 in this stream the 8-wide body rarely even runs; most rows fall
+straight to the scalar tail.
+
+**Iteration 17 (no improvement).** Skipping singleton pairs whose position lies
+outside the dense row's `[first_set, last_set]` span: **53.9% of singleton pairs
+are provably zero this way**, and the test still makes it *slower* (2.25-2.60 vs
+2.00). Two reasons:
+
+1. The test is two compares plus two metadata loads, to avoid **one** L1 load.
+   At this universe size the work avoided is cheaper than the avoidance.
+2. 53.9% is a near-maximally unpredictable branch -- the same effect iteration 11
+   exploited, here working against us.
+
+And unlike iterations 8/10/11, this one **cannot be hoisted to per-row**:
+skippability is a property of the PAIR, so the decision is intrinsically taken
+N^2 times.
+
+This is the zone-map mechanism -- worth 20.5x at DRAM residency (F11) --
+failing at 632 B/row, and the reason is exact: **a filter must be cheaper than
+the work it removes, and at L1 residency one scattered load is already about as
+cheap as a predicate.** The two results together bracket where summary
+structures pay.
+
+**Counter: 5 consecutive non-improving iterations. Best remains ~1.95 ns/pair.**
