@@ -465,7 +465,7 @@ uint64_t bb_neon_rankskip1(const BitmapView& a, const BitmapView& b) {
  */
 uint64_t bb_occ(const BitmapView& a, const BitmapView& b) {
     if (a.occ == nullptr || b.occ == nullptr) return bb_dense(a, b);
-    const uint32_t BW = BitmapView::OCC_BIN_WORDS;
+    const uint32_t BW = a.occ_bin ? a.occ_bin : BitmapView::OCC_BIN_WORDS_DEFAULT;
     const uint32_t full_bins = a.nw / BW;              // bins backed by whole words
     const uint32_t n_occ = std::min(a.n_occ, b.n_occ);
 
@@ -525,7 +525,8 @@ template <int PCT>
 uint64_t bb_occ_sel_t(const BitmapView& a, const BitmapView& b) {
     if (a.occ == nullptr || b.occ == nullptr) return bb_dense(a, b);
     const uint32_t n_occ = std::min(a.n_occ, b.n_occ);
-    const uint32_t bins  = (a.nw + BitmapView::OCC_BIN_WORDS - 1) / BitmapView::OCC_BIN_WORDS;
+    const uint32_t bw    = a.occ_bin ? a.occ_bin : BitmapView::OCC_BIN_WORDS_DEFAULT;
+    const uint32_t bins  = (a.nw + bw - 1) / bw;
     uint64_t live = 0;
     for (uint32_t i = 0; i < n_occ; ++i) live += STORM_POPCOUNT(a.occ[i] & b.occ[i]);
     if (live == 0) return 0;
@@ -537,7 +538,8 @@ uint64_t bb_occ_sel(const BitmapView& a, const BitmapView& b) {
     if (a.occ == nullptr || b.occ == nullptr) return bb_dense(a, b);
 
     const uint32_t n_occ = std::min(a.n_occ, b.n_occ);
-    const uint32_t bins  = (a.nw + BitmapView::OCC_BIN_WORDS - 1) / BitmapView::OCC_BIN_WORDS;
+    const uint32_t bw    = a.occ_bin ? a.occ_bin : BitmapView::OCC_BIN_WORDS_DEFAULT;
+    const uint32_t bins  = (a.nw + bw - 1) / bw;
     uint64_t live = 0;
     for (uint32_t i = 0; i < n_occ; ++i) live += STORM_POPCOUNT(a.occ[i] & b.occ[i]);
 

@@ -44,12 +44,14 @@ void build_rank(const uint64_t* words, uint32_t nw, avec<uint64_t>& out) {
     out[2 * nblk] = acc;   // sentinel: total
 }
 
-void build_occ(const uint64_t* words, uint32_t nw, avec<uint64_t>& out) {
-    const uint32_t bins = (nw + BitmapView::OCC_BIN_WORDS - 1) / BitmapView::OCC_BIN_WORDS;
+void build_occ(const uint64_t* words, uint32_t nw, avec<uint64_t>& out,
+               uint32_t bin_words) {
+    if (bin_words == 0) bin_words = BitmapView::OCC_BIN_WORDS_DEFAULT;
+    const uint32_t bins = (nw + bin_words - 1) / bin_words;
     out.assign((bins + 63) / 64, 0);
     for (uint32_t b = 0; b < bins; ++b) {
-        const uint32_t lo = b * BitmapView::OCC_BIN_WORDS;
-        const uint32_t hi = std::min(lo + BitmapView::OCC_BIN_WORDS, nw);
+        const uint32_t lo = b * bin_words;
+        const uint32_t hi = std::min(lo + bin_words, nw);
         uint64_t any = 0;
         for (uint32_t k = lo; k < hi; ++k) any |= words[k];
         if (any) out[b >> 6] |= uint64_t(1) << (b & 63);
@@ -126,7 +128,7 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe)
     out.ewah_nw = nw;
 
     build_rank(out.bitmap.data(), nw, out.rank);
-    build_occ(out.bitmap.data(), nw, out.occ);
+    build_occ(out.bitmap.data(), nw, out.occ, out.occ_bin);
 
     uint32_t nnz = 0;
     for (uint32_t k = 0; k < nw; ++k) nnz += (out.bitmap[k] != 0);

@@ -115,9 +115,14 @@ struct BitmapView {
     const uint64_t* rank  = nullptr;   // may be null
     const uint64_t* occ   = nullptr;   // may be null
     uint32_t        n_occ = 0;         // words in occ
+    // Words per zone-map bin. Runtime, not constexpr: it was hardcoded at 8 from
+    // the day the mechanism was invented, so every published figure for it
+    // described one unswept parameterization. bench/bench_occbin.cpp sweeps it.
+    uint32_t        occ_bin = OCC_BIN_WORDS_DEFAULT;
 
     static constexpr uint32_t RANK_STRIDE   = 8;   // words per rank block (512 bits)
-    static constexpr uint32_t OCC_BIN_WORDS = 8;   // words per zone-map bin
+    static constexpr uint32_t OCC_BIN_WORDS_DEFAULT = 8;  // 512-bit bins
+    static constexpr uint32_t OCC_BIN_WORDS = 8;          // legacy alias
 };
 
 // Number of set bits strictly below bit position x. Requires b.rank != null.
@@ -187,7 +192,8 @@ struct RowMeta {
 struct Row {
     avec<uint64_t> bitmap;
     avec<uint64_t> rank;      // prefix popcount, stride BitmapView::RANK_STRIDE
-    avec<uint64_t> occ;       // zone map, 1 bit per OCC_BIN_WORDS words
+    avec<uint64_t> occ;       // zone map, 1 bit per occ_bin words
+    uint32_t       occ_bin = BitmapView::OCC_BIN_WORDS_DEFAULT;
     avec<uint32_t> list;
     avec<uint32_t> run_start;
     avec<uint32_t> run_end;
@@ -199,12 +205,13 @@ struct Row {
         return BitmapView{bitmap.data(), meta.n_words,
                           rank.empty() ? nullptr : rank.data(),
                           occ.empty()  ? nullptr : occ.data(),
-                          (uint32_t)occ.size()};
+                          (uint32_t)occ.size(), occ_bin};
     }
     // No auxiliary indexes at all: the fallback path every index-consuming
     // kernel must still be correct on.
     BitmapView B_norank() const {
-        return BitmapView{bitmap.data(), meta.n_words, nullptr, nullptr, 0};
+        return BitmapView{bitmap.data(), meta.n_words, nullptr, nullptr, 0,
+                          BitmapView::OCC_BIN_WORDS_DEFAULT};
     }
     ListView   S() const { return ListView{list.data(), (uint32_t)list.size()}; }
     RunView    R() const { return RunView{run_start.data(), run_end.data(),
@@ -226,7 +233,8 @@ void build_rank(const uint64_t* words, uint32_t nw, avec<uint64_t>& out);
 
 // Build the zone map. Separate from build_row for the same reason as
 // build_rank: its construction cost is a reportable quantity.
-void build_occ(const uint64_t* words, uint32_t nw, avec<uint64_t>& out);
+void build_occ(const uint64_t* words, uint32_t nw, avec<uint64_t>& out,
+               uint32_t bin_words = BitmapView::OCC_BIN_WORDS_DEFAULT);
 
 // Number of 512-bit bins in which BOTH rows have content. Zero proves the rows
 // are disjoint. Costs one pass over m/512 bits.

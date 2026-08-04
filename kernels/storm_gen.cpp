@@ -207,6 +207,7 @@ void generate(Corpus& out, const CorpusSpec& spec) {
                 break;
         }
 
+        out.rows[i].occ_bin = spec.occ_bin;
         build_row(out.rows[i], pos.data(), pos.size(), spec.universe);
 
         const RowMeta& m = out.rows[i].meta;

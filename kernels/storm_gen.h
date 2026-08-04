@@ -51,6 +51,7 @@ struct CorpusSpec {
     double    clustering = 0.9;    // Structure::Clustered: P(next bit continues a run)
     uint32_t  mean_run  = 32;      // Structure::Runs: mean run length in bits
     uint64_t  seed      = 0x5eed1234u;
+    uint32_t  occ_bin   = 8;   // zone-map bin width in words; swept by bench_occbin
 };
 
 struct Corpus {

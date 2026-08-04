@@ -22,6 +22,7 @@
  */
 #include "kernels/storm_cells.h"
 #include "kernels/storm_gen.h"
+#include "kernels/storm_allpairs.h"
 
 #include <algorithm>
 #include <cinttypes>
@@ -212,8 +213,66 @@ static void edge_cases(uint32_t universe) {
     run_all(rows, ctx);
 }
 
+// The batched drivers must agree with the per-pair oracle, and the two API forms
+// must agree with each other. allpairs_tiles shipped with ZERO callers -- it
+// compiled and was listed as delivered without ever being run, which an audit
+// caught. This is that gap closed: every policy, both forms, checked against the
+// same independent oracle the cell kernels are checked against.
+static void check_allpairs() {
+    for (uint32_t u : {1024u, 4033u, 16384u})
+        for (Structure st : {Structure::Uniform, Structure::Clustered, Structure::Runs})
+            for (Spectrum sp : {Spectrum::Uniform, Spectrum::Inverse}) {
+                CorpusSpec spec;
+                spec.n_rows = 40; spec.universe = u; spec.density = 0.02;
+                spec.structure = st; spec.spectrum = sp; spec.seed = 0x9911u + u;
+                Corpus c; generate(c, spec);
+
+                uint64_t want = 0;
+                for (size_t i = 0; i < c.rows.size(); ++i)
+                    for (size_t j = i + 1; j < c.rows.size(); ++j)
+                        want += oracle_intersect(c.rows[i], c.rows[j]);
+
+                CostModel m; default_model(m);
+                char ctx[96];
+                std::snprintf(ctx, sizeof ctx, "allpairs/%s/%s/u=%u",
+                              name_of(st), name_of(sp), u);
+
+                for (Policy pol : {Policy::AllBitmap, Policy::PerPair,
+                                   Policy::PerTile, Policy::Probe}) {
+                    for (uint32_t tile : {8u, 16u, 64u}) {
+                        AllPairsStats s1 = allpairs_sum(c.rows, m, pol, tile);
+                        ++g_checks;
+                        if (s1.sum != want) fail("allpairs", name_of(pol), ctx, s1.sum, want);
+                        ++g_checks;
+                        if (s1.pairs != (uint64_t)c.rows.size() * (c.rows.size() - 1) / 2)
+                            fail("allpairs", "paircount", ctx, s1.pairs, 0);
+
+                        // Form 2 must agree with form 1, and the callback's tile
+                        // counts must sum to the same total.
+                        uint64_t cb_sum = 0;
+                        auto cb = [](uint32_t, uint32_t, uint32_t nr, uint32_t nc,
+                                     const uint32_t* cnt, void* vp) {
+                            uint64_t* acc = (uint64_t*)vp;
+                            // The callback buffer is tile x tile; only nr x nc is live.
+                            for (uint32_t a = 0; a < nr; ++a)
+                                for (uint32_t b = 0; b < nc; ++b)
+                                    *acc += cnt[(size_t)a * 64 + b];
+                        };
+                        if (tile == 64) {   // cb indexes with the fixed stride 64
+                            AllPairsStats s2 = allpairs_tiles(c.rows, m, pol, cb, &cb_sum, tile);
+                            ++g_checks;
+                            if (s2.sum != want) fail("allpairs_tiles", name_of(pol), ctx, s2.sum, want);
+                            ++g_checks;
+                            if (cb_sum != want) fail("allpairs_tiles", "callback", ctx, cb_sum, want);
+                        }
+                    }
+                }
+            }
+}
+
 int main() {
     std::printf("storm kernel-layer differential test\n");
+    check_allpairs();
 
     // Universes chosen to break alignment assumptions: 64 | 4096, and 4033 is
     // not a multiple of 64 (so the last word is partial), 5000 is a multiple of
