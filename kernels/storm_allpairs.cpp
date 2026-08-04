@@ -16,6 +16,7 @@ const char* name_of(Policy p) {
         case Policy::PerPair:   return "per-pair";
         case Policy::PerTile:   return "per-tile";
         case Policy::Oracle:    return "oracle";
+        case Policy::Probe:     return "probe";
     }
     return "?";
 }
@@ -111,6 +112,62 @@ std::vector<uint32_t> density_order(const std::vector<Row>& rows) {
     return o;
 }
 
+/* Probe-and-commit: turn a PREDICTED decision into a MEASURED one.
+ *
+ * Tile hoisting made selection cost 0.19% of runtime, which passed Gate 1 but
+ * revealed that the model's decisions are not always good -- on neoverse-sve2
+ * the tile choice measured 0.66x, worse than doing no selection at all. A
+ * cheaper decision is a coarser decision, and cost-model error is now the
+ * binding problem rather than cost-model expense.
+ *
+ * At tile granularity there is a remedy per-pair selection could never afford:
+ * actually TIME the candidates on a handful of the tile's pairs and commit the
+ * winner for the remaining thousands. A 64x64 tile is ~4,096 pairs; probing 3
+ * pairs against 3 candidates is 9 kernel calls, ~0.2% of the tile, and it
+ * replaces model error with measurement.
+ *
+ * Candidates are the model's top pick plus B x B, always. Including B x B
+ * unconditionally is what makes this safe: the policy can never do worse than
+ * all-bitmap by more than the probe cost, which bounds the downside that the
+ * pure-model policy did not.
+ */
+Pairing probe_tile(const Kernels& K, const CostModel& model,
+                   const std::vector<Row>& rows, const std::vector<uint32_t>& ord,
+                   uint32_t i0, uint32_t i1, uint32_t j0, uint32_t j1,
+                   const RowMeta& ta, const RowMeta& tb)
+{
+    const Pairing predicted = select_pairing(model, ta, tb);
+    if (predicted == Pairing::BB || predicted == Pairing::Empty) return Pairing::BB;
+
+    // Up to 3 representative pairs from the tile.
+    uint32_t pi[3], pj[3];
+    uint32_t np = 0;
+    for (uint32_t k = 0; k < 3 && np < 3; ++k) {
+        const uint32_t i = i0 + (uint32_t)((uint64_t)(i1 - i0) * k / 3);
+        const uint32_t j = (j0 == i0) ? i + 1 + k : j0 + (uint32_t)((uint64_t)(j1 - j0) * k / 3);
+        if (i < i1 && j < j1 && i != j) { pi[np] = i; pj[np] = j; ++np; }
+    }
+    if (np == 0) return predicted;
+
+    const Pairing cand[2] = {predicted, Pairing::BB};
+    double best_t = 1e300;
+    Pairing best = Pairing::BB;
+    for (Pairing p : cand) {
+        const uint64_t t0 = now_ns();
+        volatile uint64_t sink = 0;
+        for (uint32_t k = 0; k < np; ++k) {
+            const Row& a = rows[ord[pi[k]]];
+            const Row& b = rows[ord[pj[k]]];
+            const bool ad = a.meta.cardinality >= b.meta.cardinality;
+            sink += run(K, p, ad ? a : b, ad ? b : a);
+        }
+        const double t = (double)(now_ns() - t0);
+        (void)sink;
+        if (t < best_t) { best_t = t; best = p; }
+    }
+    return best;
+}
+
 } // namespace
 
 AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
@@ -125,7 +182,7 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
     // (RESEARCH_PLAN.md 5.2: "costs to account for honestly: the sort itself").
     const uint64_t t0 = now_ns();
     const std::vector<uint32_t> ord =
-        (policy == Policy::PerTile) ? density_order(rows) : [&]{
+        (policy == Policy::PerTile || policy == Policy::Probe) ? density_order(rows) : [&]{
             std::vector<uint32_t> o(n); std::iota(o.begin(), o.end(), 0u); return o; }();
 
     double sel_ns = 0;
@@ -137,11 +194,13 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
             const uint32_t j1 = std::min(j0 + tile, n);
 
             Pairing tp = Pairing::BB;
-            if (policy == Policy::PerTile) {
+            if (policy == Policy::PerTile || policy == Policy::Probe) {
                 const uint64_t s0 = now_ns();
                 const RowMeta a = tile_meta(rows, ord, i0, i1);
                 const RowMeta b = tile_meta(rows, ord, j0, j1);
-                tp = select_pairing(model, a, b);
+                tp = (policy == Policy::Probe)
+                   ? probe_tile(K, model, rows, ord, i0, i1, j0, j1, a, b)
+                   : select_pairing(model, a, b);
                 if (tp == Pairing::Empty) tp = Pairing::BB;   // never skip a whole tile
                 sel_ns += (double)(now_ns() - s0);
                 ++decisions;

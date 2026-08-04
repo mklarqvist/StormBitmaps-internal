@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
 
     AllPairsStats ref;
     double base = 0;
-    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile}) {
+    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe}) {
         AllPairsStats s = allpairs_sum(c.rows, m, p, tile);
         const double nsp = s.ns_total / (double)s.pairs;
         const double sel = s.ns_selection / (double)s.pairs;
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
                         "", "", "", "", "", base / nsp);
     }
     std::printf("\nGATE 1 (P2: selection <= 2%% of runtime)\n");
-    for (Policy p : {Policy::PerPair, Policy::PerTile}) {
+    for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe}) {
         AllPairsStats s = allpairs_sum(c.rows, m, p, tile);
         const double pct = 100.0 * s.ns_selection / s.ns_total;
         std::printf("  %-10s %6.2f%%  %s\n", name_of(p), pct, pct <= 2.0 ? "PASS" : "FAIL");

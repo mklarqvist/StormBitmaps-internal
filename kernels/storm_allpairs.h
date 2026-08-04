@@ -44,6 +44,8 @@ enum class Policy : uint8_t {
     PerPair,      // M2/M4 per-pair selection: correct, and measured too slow
     PerTile,      // M3: one decision per tile, from tile-aggregate metadata
     Oracle,       // best cell per pair, unattainable; the regret denominator
+    Probe,        // M3 + measured commit: time the candidates on a few pairs of
+                  // the tile, then commit for the rest. See storm_allpairs.cpp.
 };
 
 const char* name_of(Policy p);

@@ -112,6 +112,27 @@ Two things follow, and neither is what the plan expected:
    is no fixed answer; granularity is another thing the cost model should choose,
    and currently does not.
 
+### Iteration 5 — probe-and-commit removes the model error
+
+At tile granularity there is a remedy per-pair selection could never afford:
+**time the candidates on three of the tile's pairs and commit the winner for the
+remaining ~4,000.** Nine kernel calls, ~0.2% of the tile, and it replaces model
+*prediction* with *measurement*. B×B is always one of the candidates, which
+bounds the downside — the policy cannot lose to all-bitmap by more than the
+probe cost, which is exactly what the pure-model policy failed to guarantee.
+
+| host | all-bitmap | per-tile (model) | **probe** | selection % |
+|---|---:|---:|---:|---:|
+| apple-m4 | 1.00× | 1.35× | **1.38×** | 0.30% |
+| neoverse-sve2 | 1.00× | **0.66×** | **1.09×** | 0.48% |
+| sapphire | 1.00× | 1.33× | **1.35×** | 0.31% |
+
+The neoverse-sve2 regression is gone (0.66× → 1.09×) and the other two improve
+slightly. Gate 1 still passes everywhere. This is the answer to the quality
+problem hoisting exposed: at N² scale you can afford to *measure* the decision
+once per tile, so the calibrated cost model does not have to be right — it only
+has to nominate a candidate worth timing.
+
 So Gate 1 is passed on the criterion P2 actually states (selection ≤2% of
 runtime), and the live problem has moved from *decision cost* to *decision
 quality* — which is the regret number, still 94.1% per-pair and unmeasured
