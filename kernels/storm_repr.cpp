@@ -127,6 +127,29 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe)
     build_ewah(out.bitmap.data(), nw, out.ewah);
     out.ewah_nw = nw;
 
+    /* Complement, built only when it pays: a row of density > 1/2 has a
+     * smaller complement, and every pairing against it costs
+     * Theta(|complement|) instead of Theta(m). Below half density this is dead
+     * weight, so it is simply not built -- the decision is one comparison on
+     * data already computed. */
+    out.comp_list.clear(); out.comp_start.clear(); out.comp_end.clear();
+    if ((uint64_t)n * 2 > (uint64_t)universe) {
+        uint32_t prev = 0;
+        for (size_t i = 0; i < n; ++i) {
+            for (uint32_t p = prev; p < positions[i]; ++p) out.comp_list.push_back(p);
+            prev = positions[i] + 1;
+        }
+        for (uint32_t p = prev; p < universe; ++p) out.comp_list.push_back(p);
+        for (size_t i = 0; i < out.comp_list.size(); ) {
+            size_t j = i;
+            while (j + 1 < out.comp_list.size() &&
+                   out.comp_list[j + 1] == out.comp_list[j] + 1) ++j;
+            out.comp_start.push_back(out.comp_list[i]);
+            out.comp_end.push_back(out.comp_list[j] + 1);
+            i = j + 1;
+        }
+    }
+
     build_rank(out.bitmap.data(), nw, out.rank);
     build_occ(out.bitmap.data(), nw, out.occ, out.occ_bin);
 

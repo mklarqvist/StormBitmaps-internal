@@ -157,6 +157,40 @@ struct RunView {
     uint32_t        n     = 0;        // number of runs
 };
 
+/* C — COMPLEMENT.
+ *
+ * A row of density d > 1/2 has a complement of density 1-d, and the complement
+ * is representable in every form the row itself is. This is the dense-tail
+ * mirror of the sparse tail, and the density sweep measures it: at density 1.0
+ * the complement is empty and R x R costs 2.2 ns against bitmap x bitmap's 117.
+ *
+ * Until now that win arrived by accident -- R x R happened to be cheap on rows
+ * whose runs were few because they were nearly full. Making the complement a
+ * first-class representation turns it into a deliberate strategy, and gives the
+ * identity a clean statement. For A stored complemented (A = ~A'):
+ *
+ *     |A n B|  = |B| - |A' n B|
+ *     |A n B|  = |U| - |A'| - |B'| + |A' n B'|      (both complemented)
+ *
+ * So a complemented pairing reduces to an ordinary pairing on the complements
+ * plus O(1) arithmetic on cardinalities that are already in RowMeta. Nothing
+ * new is needed in the kernels: C x B is B x S/R/W on the complement, and the
+ * cost is Theta(|complement|) rather than Theta(m).
+ *
+ * The prior-art survey (RESEARCH_PLAN.md 13.3) found no library or paper that
+ * does this systematically for intersection CARDINALITY. EWAH represents 0-runs
+ * and 1-runs symmetrically at the representation level and Roaring exposes flip
+ * for range construction, but neither presents the identity above as a
+ * cardinality algorithm. */
+struct ComplementView {
+    // The complement's own representation. Exactly one is populated.
+    ListView  s;          // complement as sorted positions
+    RunView   r;          // complement as runs
+    uint32_t  universe = 0;
+    uint32_t  card     = 0;   // |A|, the ORIGINAL row's cardinality
+    bool      valid    = false;
+};
+
 /* W — EWAH-64. */
 struct EwahView {
     const uint64_t* buf = nullptr;
@@ -199,6 +233,8 @@ struct Row {
     avec<uint32_t> run_end;
     avec<uint64_t> ewah;
     uint32_t       ewah_nw = 0;
+    // Complement, built only when it is smaller than the row (density > 1/2).
+    avec<uint32_t> comp_list, comp_start, comp_end;
     RowMeta        meta;
 
     BitmapView B() const {
@@ -217,6 +253,15 @@ struct Row {
     RunView    R() const { return RunView{run_start.data(), run_end.data(),
                                           (uint32_t)run_start.size()}; }
     EwahView   W() const { return EwahView{ewah.data(), (uint32_t)ewah.size(), ewah_nw}; }
+    ComplementView C() const {
+        ComplementView c;
+        c.universe = meta.n_words * 64;
+        c.card     = meta.cardinality;
+        c.valid    = !comp_list.empty() || !comp_start.empty();
+        c.s = ListView{comp_list.data(), (uint32_t)comp_list.size()};
+        c.r = RunView{comp_start.data(), comp_end.data(), (uint32_t)comp_start.size()};
+        return c;
+    }
 };
 
 // Build every representation of a row from a sorted, distinct position list.

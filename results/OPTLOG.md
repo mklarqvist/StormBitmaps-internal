@@ -1034,3 +1034,50 @@ scale there is no gather, the loads dominate, and vectorizing the arithmetic
 around them is free but pointless. That is finding F5 holding at the opposite end
 of the size range from where it was discovered -- **SIMD wins only where work is
 irreducible, and at 632 bytes per row almost nothing is.**
+
+
+---
+
+## F13 — The complement cell (C x B): measured, and more modest than the accident
+
+`kernels/cell_comp.cpp`. Claim C4 of the paper spec, and the strongest
+*unclaimed* mechanism in the project (RESEARCH_PLAN.md 13.3 found no library or
+paper doing this systematically for intersection cardinality).
+
+For A stored as its complement A': `|A n B| = |B| - |A' n B|`, with `|B|` free
+from the rank sentinel. Cost is Theta(|A'|) — proportional to distance from
+FULL, exactly as B x S is Theta(|A|), proportional to distance from empty.
+
+Uniform corpus, 65,536-bit universe, 96 rows, ns/pair:
+
+| density | mean \|A'\| | B x B | R x R | C x B list | C x B runs | best vs B x B |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.5 | 0 | 114.7 | 58277 | — | — | — |
+| 0.7 | 19661 | 138.3 | 55593 | 5606 | 25552 | 0.03x |
+| 0.9 | 6554 | 116.3 | 24654 | 1714 | 9981 | 0.07x |
+| 0.99 | 655 | 136.7 | 2774 | 204 | 992 | 0.67x |
+| 0.999 | 66 | 115.7 | 286 | **42.3** | 118 | **2.7x** |
+| 0.99998 | 1 | 124.0 | 4.0 | **3.3** | 4.7 | **37.2x** |
+
+**The result is symmetry, not a large new speedup.** The complement has its own
+crossover — it wins once \|A'\| falls below roughly 100-600 elements, i.e. a
+complement density of ~0.1-1% — and that mirrors the sparse side's ~0.4%
+crossover almost exactly. Claim **C3 ("the operative variable is distance from
+1/2, not sparsity") now rests on a mechanism rather than a coincidence**, which
+is what it needed.
+
+**Honest scale of the win.** Against the incumbent it is small: at density
+0.99998 the deliberate complement gives 3.3 ns against R x R's accidental 4.0.
+The 52.7x headline in the density sweep was R x R getting lucky on near-full
+rows, and a deliberate complement is only ~20% better than that luck. What
+changes is that the strategy is now **selectable from O(1) metadata** rather than
+emergent, and statable as an identity.
+
+**Also confirms the mid-band from the other side:** between density 0.7 and 0.99
+nothing beats bitmap x bitmap — the complement is still 655-19,661 elements
+there, and probing that many loses to a 1024-word AND+popcount. The U-curve's
+flat middle is real from both directions.
+
+**Build cost, stated plainly:** the complement is materialized only when
+`2|A| > U`, one comparison on data already computed, and it is dead weight below
+half density where it is simply not built.

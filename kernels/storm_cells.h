@@ -37,6 +37,8 @@ using fn_sw = uint64_t (*)(const ListView&,   const EwahView&);
 using fn_rr = uint64_t (*)(const RunView&,    const RunView&);
 using fn_rw = uint64_t (*)(const RunView&,    const EwahView&);
 using fn_ww = uint64_t (*)(const EwahView&,   const EwahView&);
+// C x B -- the complemented pairing. `a` is stored complemented; `b` is dense.
+using fn_cb = uint64_t (*)(const ComplementView&, const BitmapView&);
 
 // --- Variant descriptor ----------------------------------------------------
 template <typename F>
@@ -72,6 +74,7 @@ VariantList<fn_sw> cell_sw();
 VariantList<fn_rr> cell_rr();
 VariantList<fn_rw> cell_rw();
 VariantList<fn_ww> cell_ww();
+VariantList<fn_cb> cell_cb();
 
 // --- Oracle ----------------------------------------------------------------
 // Deliberately the dumbest possible implementation: decode both sides to dense

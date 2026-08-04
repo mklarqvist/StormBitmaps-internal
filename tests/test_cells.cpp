@@ -163,6 +163,11 @@ static void run_all(const std::vector<Row>& rows, const char* ctx) {
         [](fn_ww f, const Row& a, const Row& b) { return f(a.W(), b.W()); });
     check_cell("B x B", cell_bb(), rows, ctx,
         [](fn_bb f, const Row& a, const Row& b) { return f(a.B(), b.B()); });
+    // C x B is only defined when the complement was built (density > 1/2);
+    // below that the cell is not selectable and must not be invoked.
+    check_cell("C x B", cell_cb(), rows, ctx,
+        [](fn_cb f, const Row& a, const Row& b) {
+            return a.C().valid ? f(a.C(), b.B()) : oracle_intersect(a, b); });
 
     // The rank-consuming variants must ALSO be correct when handed a bitmap
     // with no index -- they advertise a fallback and the fallback is a code
