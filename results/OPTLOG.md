@@ -38,10 +38,17 @@ a batch containing any win resets that cell's counter to 0.
 | **B × W** | **0** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
 | **S × R** | **0** | `adaptive2` | r7 `adaptive2` |
 | **S × W** | **0** | `search` / `adaptive` | r7 `adaptive` |
-| **S × S** | **0** | `adaptive2` / `gallop_sym` | r7 `adaptive2` |
-| **R × R** | **0** | `adaptive2` / `merge_bl` | r7 `adaptive2` |
+| **S × S** | **1** | `adaptive2` / `gallop_sym` | r7 `adaptive2` |
+| **R × R** | **1** | `adaptive2` / `merge_bl` / `clip` | r7 `adaptive2` |
 | **R × W** | **0** | `merge2` / `skip` / `adaptive` | r7 `adaptive` |
 | **W × W** | **0** | `skip2` / `skip` | r7 `skip2` |
+
+Round 9 added two hypotheses and both failed, which is what a converging search
+looks like: `ss_neon16` (16×16 block compare) never wins, so the block-width
+series saturates at 8 — past that the `vextq` rotations grow faster than the
+comparisons saved. `rr_gallop_sym` never wins either: symmetric galloping was
+the largest S×S win but does not transfer to runs, because run arrays are
+already short enough that the merge's linear scan beats a search.
 
 **The loop has not converged.** Only B×S is close to the stopping rule; the zone
 map (round 7–8) reset most of the others by winning. That is the rule working

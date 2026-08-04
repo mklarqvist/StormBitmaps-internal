@@ -145,6 +145,39 @@ uint64_t ss_gallop_sym(const ListView& a, const ListView& b) {
     return c;
 }
 
+#if STORM_CELL_NEON
+// 16x16: four vectors per side. neon8 beat neon4 on balanced pairs, so the
+// question is whether the series continues or whether the rotation count
+// (which grows linearly in block width) overtakes the comparisons saved.
+uint64_t ss_neon16(const ListView& a, const ListView& b) {
+    uint64_t c = 0;
+    uint32_t i = 0, j = 0;
+    while (i + 16 <= a.n && j + 16 <= b.n) {
+        uint32x4_t acc = vdupq_n_u32(0);
+        for (int ai = 0; ai < 16; ai += 4) {
+            const uint32x4_t va = vld1q_u32(a.v + i + ai);
+            for (int bi = 0; bi < 16; bi += 4) {
+                uint32x4_t vb = vld1q_u32(b.v + j + bi);
+                uint32x4_t m = vceqq_u32(va, vb);
+                vb = vextq_u32(vb, vb, 1); m = vorrq_u32(m, vceqq_u32(va, vb));
+                vb = vextq_u32(vb, vb, 1); m = vorrq_u32(m, vceqq_u32(va, vb));
+                vb = vextq_u32(vb, vb, 1); m = vorrq_u32(m, vceqq_u32(va, vb));
+                acc = vaddq_u32(acc, vshrq_n_u32(m, 31));
+            }
+        }
+        c += vaddvq_u32(acc);
+        const uint32_t amax = a.v[i + 15], bmax = b.v[j + 15];
+        i += (amax <= bmax) ? 16 : 0;
+        j += (bmax <= amax) ? 16 : 0;
+    }
+    while (i < a.n && j < b.n) {
+        const uint32_t va = a.v[i], vb = b.v[j];
+        c += (va == vb); i += (va <= vb); j += (vb <= va);
+    }
+    return c;
+}
+#endif
+
 // Size-adaptive: merge when the sides are comparable, gallop when they are not.
 // The ratio is the same kind of threshold M4 is supposed to own; it is named
 // here rather than buried as a literal.
@@ -452,6 +485,22 @@ uint64_t rr_clip(const RunView& a, const RunView& b) {
  * merge-shaped cell (S x S escapes it only because the all-pairs block compare
  * sidesteps the advance question entirely). */
 
+// Symmetric galloping over runs: skip forward on whichever side is behind,
+// rather than fixing the driving side by length as rr_gallop does. Same
+// motivation as ss_gallop_sym, which was the largest S x S win.
+uint64_t rr_gallop_sym(const RunView& a, const RunView& b) {
+    uint64_t c = 0;
+    uint32_t i = 0, j = 0;
+    while (i < a.n && j < b.n) {
+        const uint32_t lo = std::max(a.start[i], b.start[j]);
+        const uint32_t hi = std::min(a.end[i],   b.end[j]);
+        if (hi > lo) { c += hi - lo; if (a.end[i] < b.end[j]) ++i; else ++j; continue; }
+        if (a.end[i] <= b.start[j])      i = gallop(a.end, a.n, i, b.start[j] + 1);
+        else                             j = gallop(b.end, b.n, j, a.start[i] + 1);
+    }
+    return c;
+}
+
 constexpr uint32_t kRrGallopRatio = 8;
 
 uint64_t rr_adaptive(const RunView& a, const RunView& b) {
@@ -478,6 +527,7 @@ const Variant<fn_ss> kSS[] = {
 #if STORM_CELL_NEON
     {"neon8",     ss_neon8,     "8x8 block compare -- 64 candidate pairs per step"},
     {"clip",      ss_clip,      "clip both lists to their overlapping span first"},
+    {"neon16",    ss_neon16,    "16x16 block compare -- does the block-width series continue?"},
     {"adaptive2", ss_adaptive2, "disjoint -> 0, lopsided -> gallop_sym, else neon8"},
 #endif
     {"adaptive",  ss_adaptive,  "merge or gallop on the length ratio"},
@@ -508,6 +558,7 @@ const Variant<fn_rr> kRR[] = {
     {"adaptive",  rr_adaptive,  "merge or gallop on the run-count ratio"},
     {"clip",      rr_clip,      "disjoint-span early out, then clip both sides"},
     {"adaptive2", rr_adaptive2, "disjoint-span early out in front of the ratio choice"},
+    {"gallop_sym",rr_gallop_sym,"gallop whichever run array is behind"},
 };
 
 } // namespace
