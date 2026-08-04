@@ -289,6 +289,40 @@ uint64_t br_hybrid_pair(const BitmapView& b, const RunView& r) {
     return c;
 }
 
+// --- V10: zone-map planning for B x R ----------------------------------------
+// The zone map bought 25x in B x B by proving which bins need visiting. B x R
+// already visits only the runs, so the question is different: can the summary
+// settle whole RUNS without a rank probe?
+//
+// It can. A run confined to bins that are all empty on the dense side
+// contributes nothing, and the zone map answers that from one bit per bin --
+// 128x less index traffic than the rank-gated form (br_skip), which needed two
+// 64-bit counters per block.
+//
+// Prediction, from F9: this should help LESS than it did for B x B, because
+// B x R is already work-proportional-to-runs rather than to m. The zone map
+// pays where a dense representation is being scanned; here it can only remove
+// probes, not scans. Worth measuring precisely because the prediction is that
+// the big lever does not transfer.
+uint64_t br_occ(const BitmapView& b, const RunView& r) {
+    if (b.occ == nullptr) return br_scalar(b, r);
+    const uint32_t BW = BitmapView::OCC_BIN_WORDS;
+    uint64_t c = 0;
+    for (uint32_t i = 0; i < r.n; ++i) {
+        const uint32_t lo = r.start[i], hi = r.end[i];
+        const uint32_t b0 = (lo >> 6) / BW, b1 = ((hi - 1) >> 6) / BW;
+        if (b0 == b1) {                                  // run inside one bin
+            const uint32_t ow = b0 >> 6;
+            if (ow >= b.n_occ || !((b.occ[ow] >> (b0 & 63)) & 1u)) continue;
+        }
+        if (b.rank && (hi - lo) >= kBrRankMinWords * 64u)
+            c += rank_at(b, hi) - rank_at(b, lo);
+        else
+            c += count_range(b, lo, hi);
+    }
+    return c;
+}
+
 // --- V5: the inflate-to-bitmap fallback, LABELLED baseline -----------------
 // Standing rule 3. Present so P3/P4 have something to beat.
 thread_local std::vector<uint64_t> g_inflate_r;
@@ -317,6 +351,7 @@ const Variant<fn_br> kBR[] = {
     {"hybrid12",    br_hybrid<kBrRankMinWords>,"rank above 12 words of run, direct below", true},
     {"hybrid4",     br_hybrid<4>,             "crossover probe: rank above 4 words",       true},
     {"hybrid32",    br_hybrid<32>,            "crossover probe: rank above 32 words",      true},
+    {"occ",         br_occ,                   "zone map settles runs in empty bins",       true},
     {"rank_2pass",  br_rank_2pass,            "ends and starts in separate monotonic passes", true},
     {"hybrid_pair", br_hybrid_pair,           "choose rank vs direct ONCE per pair, not per run", true},
     {"skip",        br_skip,                  "skip runs inside an all-zero rank block",   true},

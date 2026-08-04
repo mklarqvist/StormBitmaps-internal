@@ -25,6 +25,40 @@ S1 to be reported together — the gap between them is the result.
 
 ---
 
+## Iteration status (stopping rule: 5 consecutive non-improving)
+
+Counted as of round 8. An *iteration* is one hypothesis tested by measurement;
+a batch containing any win resets that cell's counter to 0.
+
+| cell | consecutive non-improving | best variant now | last positive finding |
+|---|---:|---|---|
+| **B × S** | **3** | `ilp8` / `shift` / `ilp8x` (within ~5%) | r6 `ilp16x` |
+| **B × R** | **1** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
+| **B × B** | **0** | `occ_sel` (zone-map planned) | r8 `occ_sel`, `occ` |
+| **B × W** | **0** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
+| **S × R** | **0** | `adaptive2` | r7 `adaptive2` |
+| **S × W** | **0** | `search` / `adaptive` | r7 `adaptive` |
+| **S × S** | **0** | `adaptive2` / `gallop_sym` | r7 `adaptive2` |
+| **R × R** | **0** | `adaptive2` / `merge_bl` | r7 `adaptive2` |
+| **R × W** | **0** | `merge2` / `skip` / `adaptive` | r7 `adaptive` |
+| **W × W** | **0** | `skip2` / `skip` | r7 `skip2` |
+
+**The loop has not converged.** Only B×S is close to the stopping rule; the zone
+map (round 7–8) reset most of the others by winning. That is the rule working
+as intended — a productive idea should restart the search — but it means several
+more rounds are needed before any cell but B×S can be declared done.
+
+**Where the remaining headroom looks like it is.** The zone map transferred to
+B×B (25×) and B×W (1.02× on long fills) but NOT to B×R (never wins) or B×S
+(0.23–0.59×), which is F9's prediction holding: summaries pay where a dense
+representation is scanned, not where a sparse one is walked. The untested
+direction is a *second level* of summary (a zone map over the zone map) for
+universes large enough that m/512 is itself expensive — irrelevant at the
+65,536-bit universes benchmarked here, potentially decisive at the 10⁷ bits
+`PROBLEM_STATEMENT.md` §2 motivates.
+
+---
+
 ## Cross-cutting findings
 
 These came out of the campaign but are not specific to one cell.

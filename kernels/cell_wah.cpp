@@ -218,6 +218,46 @@ uint64_t bw_skip(const BitmapView& b, const EwahView& w) {
     return c;
 }
 
+// Zone-map planning for B x W. A literal segment whose bins are empty on the
+// bitmap side needs no AND at all; the summary settles it from one bit per bin.
+// Same prediction as br_occ: the fill path is already O(1) via rank, so the
+// zone map can only remove work from the LITERAL path, which bounds the win by
+// the literal fraction of the stream.
+uint64_t bw_occ(const BitmapView& b, const EwahView& w) {
+    if (b.occ == nullptr) return bw_skip(b, w);
+    const uint32_t BW = BitmapView::OCC_BIN_WORDS;
+    uint64_t c = 0;
+    uint32_t pos = 0;
+    Cursor cw(w);
+    const bool have_rank = (b.rank != nullptr);
+    while (!cw.done() && pos < b.nw) {
+        uint32_t k = cw.seg();
+        if (pos + k > b.nw) k = b.nw - pos;
+        if (cw.in_fill()) {
+            if (!cw.fill_val) { pos += k; cw.consume(cw.seg()); continue; }
+            if (have_rank && k >= kBwRankMinWords)
+                c += rank_at(b, (pos + k) * 64) - rank_at(b, pos * 64);
+            else
+                c += popcnt_words(b.w + pos, k);
+        } else {
+            // Literals: process bin by bin, skipping bins the summary says are
+            // empty on the bitmap side.
+            uint32_t t = 0;
+            while (t < k) {
+                const uint32_t bin  = (pos + t) / BW;
+                const uint32_t stop = std::min(k, (bin + 1) * BW - pos);
+                const uint32_t ow   = bin >> 6;
+                if (ow < b.n_occ && ((b.occ[ow] >> (bin & 63)) & 1u))
+                    c += and_popcnt_words(b.w + pos + t, cw.lit() + t, stop - t);
+                t = stop;
+            }
+        }
+        pos += k;
+        cw.consume(k);
+    }
+    return c;
+}
+
 // ===========================================================================
 // W x W
 // ===========================================================================
@@ -509,6 +549,7 @@ const Variant<fn_bw> kBW[] = {
     {"rank",     bw_rank,     "one-fills collapse to a rank difference", true},
     {"hybrid",   bw_hybrid,   "rank for fills >= 4 words, direct below",  true},
     {"skip",     bw_skip,     "zero fills retire outright, one-fills via rank", true},
+    {"occ",      bw_occ,      "zone map skips literal bins empty on the bitmap side", true},
 };
 
 /* Binary-search the list past each segment instead of walking it.
