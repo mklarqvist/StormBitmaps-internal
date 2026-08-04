@@ -1046,3 +1046,84 @@ rather than expecting one.**
 directly**, skipping tier-2 entirely, because there is nothing to source. The
 Firestorm figures we have used as hypotheses are M1 and must stay labelled as
 such.
+
+
+---
+
+## 14. The paper — specification, and what each claim still needs
+
+Written 2026-08-04 to drive the remaining work. Every item below is either
+**MEASURED** (evidence exists in `results/`), **PARTIAL**, or **MISSING**. The
+plan from here is to close the MISSING rows in priority order, not to keep
+optimizing.
+
+### 14.1 What the paper is
+
+**Not** "a faster library for all-pairs set intersection." The individual
+mechanisms mostly have prior art (§12): zone maps are BitFunnel, rank/select is
+Jacobson, probe-and-commit is Micro Adaptivity, adaptive format selection is
+EmptyHeaded/IA-SpGEMM. Claiming those would be found out.
+
+**The paper is an empirical study**, and its contribution is the *map*:
+
+> **When is work worth avoiding rather than accelerating, in all-pairs boolean
+> intersection?** A systematic measurement of ten representation pairings across
+> the full density range, three orders of universe size, and four
+> microarchitectures — with the finding that vectorization wins in exactly one of
+> the ten cells, and that the two strategies scale in opposite directions with
+> the memory hierarchy.
+
+Target: arXiv preprint → *Software: Practice and Experience*. Same venue family
+as Roaring (SPE) and the popcount papers.
+
+### 14.2 Claims, and their evidence status
+
+| # | Claim | Status | Gap |
+|---|---|---|---|
+| **C1** | Across ten representation pairings and five corpus shapes, a SIMD-throughput kernel wins **0 of 25** asymmetric measurement points | **MEASURED** | — |
+| **C2** | Work avoidance and work acceleration scale in **opposite directions** with the memory hierarchy: 8.8→20.5× vs 1.52→1.17× from L2 to DRAM | **MEASURED** (1 host) | Repeat on ≥1 more ISA |
+| **C3** | The cost curve is **U-shaped in density**; the operative variable is distance from ½, not sparsity | **MEASURED** | Dense tail measured only via R×R incidentally — see C4 |
+| **C4** | Computing on the **complement** above density ½ is a systematic strategy for intersection cardinality, and is unclaimed in the literature | **PARTIAL** | **No first-class complement representation exists.** 52.7× is R×R on near-full rows by accident, not a deliberate technique. **Highest-value gap** |
+| **C5** | A rank index makes B×R cost Θ(runs), independent of run length | **MEASURED** | 1 host; crossover ~256 bits |
+| **C6** | Adaptive pairing beats a `run_optimize`-tuned CRoaring by 1.7–19.1× | **MEASURED**, 4 ISAs | — |
+| **C7** | Per-pair selection costs 28–48% of runtime; tile hoisting brings it to 0.10–0.29% | **MEASURED**, 3 hosts | Add Neoverse V1; **no regret number for the passing policy** |
+| **C8** | The asymptotic win requires large universes; at 1000 Genomes scale (5,008 haplotypes) it is only 2.15× | **MEASURED** | **The 10⁷-bit claim is extrapolated, never measured.** Second-highest gap |
+| **C9** | Negative results: Harley-Seal (0.38–0.72×), D2 run-collapsing (0.25–0.51×), register blocking (refuted at L2 *and* DRAM), prefetch, NEON index arithmetic | **MEASURED** | — |
+| **C10** | At small universes the binding constraint is per-pair overhead, not kernel work; moving decisions per-pair→per-row gives 2.9× | **MEASURED** | Port-pressure trace would make the "port-bound" explanation tier-3 rather than inferred |
+
+### 14.3 Figures, and whether they exist
+
+| fig | content | status |
+|---|---|---|
+| **F1** | Density sweep, all ten cells, log-log, with the fixed-cost B×B line | **EXISTS** — `results/density.png` |
+| **F2** | Speedup vs density, showing both tails and the mid-band where B×B wins | **EXISTS** — same figure, panel 2 |
+| **F3** | Winning variant per cell per density (the selection map M2 must reproduce) | **EXISTS** — same figure, panel 3 |
+| **F4** | **C2**: SIMD vs work-avoidance advantage as a function of working-set size | **MISSING** — data exists in OPTLOG F11, no plot |
+| **F5** | **C6**: Storm vs CRoaring across density, one line per microarchitecture | **MISSING** — data exists in `results/hosts/`, no plot |
+| **F6** | **C5**: B×R cost vs run *length* at fixed run *count* | **MISSING** — data exists from `p4_runlength.sh`, no plot |
+| **F7** | **C8**: speedup vs universe size, from 5 kbit (real) to 10⁷ (target) | **MISSING** — and the data does not exist either |
+| **F8** | Real-data anchor: 1000 Genomes allele-frequency spectrum vs the generator's | **PARTIAL** — spectrum measured, not plotted, generator not overlaid |
+
+### 14.4 Ordered plan to close the gaps
+
+1. **C4 — build the complement representation.** A first-class `C` (complement)
+   representation with its own pairing rules, so the dense tail is a *deliberate
+   strategy* rather than R×R getting lucky. This is the paper's strongest
+   novelty claim and it currently rests on an accident. Also gives `|A∩B|` via
+   De Morgan a clean formulation to state.
+2. **C8 / F7 — measure the large-universe regime on real data.** Concatenate
+   several 1000 Genomes chromosomes to reach 10⁶–10⁷ bit universes, or use the
+   variant axis as the universe. Without this the headline claim is extrapolated
+   and a reviewer running chr20 gets 2.15×.
+3. **F4, F5, F6 — plot data that already exists.** Cheap; three figures from
+   `results/` with no new measurement.
+4. **C7 — regret for the probe-and-commit policy**, the metric §5.1 itself calls
+   "the one that makes this a contribution", currently unmeasured for the only
+   policy that passes Gate 1.
+5. **C10 — port-pressure trace** on the small-universe kernel, to make the
+   port-bound explanation measured rather than inferred.
+6. **C2 — repeat the residency sweep on Neoverse and Sapphire**, so the
+   opposite-scaling finding is not single-host.
+
+Items 1 and 2 are what change the paper's standing. Items 3–6 are what stop a
+reviewer from rejecting it on rigor.
