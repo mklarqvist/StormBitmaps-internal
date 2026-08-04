@@ -137,7 +137,12 @@ uint64_t bs_prefetch(const BitmapView& b, const ListView& s) {
     uint64_t acc0 = 0, acc1 = 0;
     uint32_t i = 0;
     for (; i + 2 <= s.n; i += 2) {
-        if (i + DIST < s.n) {
+        // Guard BOTH lookahead reads. `i + DIST < s.n` admits
+        // i + DIST == s.n - 1, and the second prefetch then reads s.v[s.n] --
+        // a heap-buffer-overflow that ASan caught and 2.6 M correctness checks
+        // did not, because the value is only used to compute a prefetch address
+        // and never changes a result.
+        if (i + DIST + 1 < s.n) {
             __builtin_prefetch(&b.w[s.v[i + DIST] >> 6], 0, 1);
             __builtin_prefetch(&b.w[s.v[i + DIST + 1] >> 6], 0, 1);
         }
