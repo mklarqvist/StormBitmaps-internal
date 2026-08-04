@@ -92,9 +92,10 @@ Consult them **before** searching the web for anything they cover.
    above that machine's DRAM bandwidth — with the `N < 256,000` qualifier buried in prose. Do not
    reproduce that framing.
 
-6. **Every kernel is differential-tested against the scalar oracle**, on every ISA, at every
-   blocking factor, in CI. There is currently no test suite at all; building one is Phase 0 work
-   and blocks everything else.
+6. **Every kernel is differential-tested against the scalar oracle**, on every ISA you can reach,
+   at every blocking factor. `tests/test_storm.c` is the harness; run it via `ctest`. A test that
+   cannot fail is worthless — when you fix a bug, revert the fix and confirm the suite goes red
+   before you trust it.
 
 7. **Selection must be near-free.** At N² pairs an expensive per-pair decision eats the saving it
    exists to unlock. Decisions come from O(1) precomputed metadata or are hoisted to tile
@@ -142,7 +143,6 @@ record, including how each fix was verified. What remains:
   never compiled. The fix lives in the submodule working tree only — the pin is still upstream
   `bff182e`, so **a fresh clone does not build on arm64**. Needs pushing to
   `mklarqvist/libalgebra` (or a private fork) and a pin bump. See `LANDSCAPE.md` §8.2.
-- `.travis.yml` / `appveyor.yml` target defunct services; replace with GitHub Actions.
 
 ## Conventions
 
@@ -162,7 +162,7 @@ record, including how each fix was verified. What remains:
 - [ ] **Every intrinsic used was looked up** (`lookup-intel-intrinsics` / `lookup-neon-intrinsics`)
       — prototype, CPUID/architecture gate, and instruction mapping confirmed
 - [ ] **Every performance number carries its tier** — recalled (not allowed), sourced, or measured
-- [ ] Differential test against the scalar oracle passes on every CI ISA
+- [ ] Differential test against the scalar oracle passes on every ISA you can reach
 - [ ] Fuzz target run over `{n_vec, n_words, density, clustering, alignment}`
 - [ ] Benchmark results attached for both uniform and 1/i spectra
 - [ ] Cache residency stated for every throughput figure

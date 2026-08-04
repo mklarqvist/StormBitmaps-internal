@@ -476,8 +476,6 @@ Done:
 
 Outstanding:
 
-- ⬜ Replace dead Travis/AppVeyor with a GitHub Actions matrix (x86-64 + ARM runners; SDE for
-  AVX-512 if no hardware).
 - ⬜ Push the `libalgebra` arm64 portability fix upstream and bump the pin — it currently lives
   only in the submodule working tree, so **a fresh clone still fails on arm64**.
 - ⬜ Representation layer (B/S/R/W/Ro constructors, converters, metadata M1) and the skewed data
@@ -625,8 +623,8 @@ Each of these is a well-scoped, independently mergeable unit — good issue mate
 
 - C99, header + implementation, Apache-2.0 (already correct)
 - No mandatory dependencies beyond `libalgebra`; baselines optional at build time
-- CI matrix must be green on every ISA before merge; SDE covers what runners cannot
-- Every kernel differential-tested against the scalar oracle in CI
+- Every kernel differential-tested against the scalar oracle before merge; Intel SDE covers
+  ISAs without hardware
 - `CONTRIBUTING.md` stating the benchmark protocol, so submitted numbers are comparable
 - Raw data and scripts public — reproducibility is the whole point and it is cheap here
 

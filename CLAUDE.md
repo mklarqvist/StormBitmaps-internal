@@ -89,4 +89,4 @@ All 13 Phase 0 defects are fixed, each verified by reverting it and confirming t
 in `LANDSCAPE.md` §8.
 
 Still outstanding: the `libalgebra` arm64 fix lives only in the submodule working tree (pin
-unchanged), so **a fresh clone does not build on arm64**; and CI is still dead Travis/AppVeyor.
+unchanged) — see `libalgebra/VENDORED.md`.

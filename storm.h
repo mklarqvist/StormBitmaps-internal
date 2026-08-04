@@ -177,27 +177,16 @@ struct STORM_s {
     uint32_t n_conts, m_conts;
 };
 
-// Contiguous memory bitmaps
-struct STORM_contiguous_bitmap_s {
-    uint64_t* data; // not owner of this data
-    uint32_t* scalar; // not owner of this data
-    // width of data is described outside
-    uint32_t n_scalar; // copy from outside
-};
-
-struct STORM_contiguous_s {
-    uint64_t* data; // bitmaps (aligned)
-    uint32_t* scalar; // scalar values (aligned)
-    uint32_t* n_scalar; // scalar values per bitmap (aligned)
-    STORM_contiguous_bitmap_t* bitmaps; // interpret of data
-    uint64_t n_data, m_data; // m_data is reported per _VECTOR_ not per machine word
-    uint64_t tot_scalar, m_scalar;
-    uint64_t vector_length;
-    uint32_t n_bitmaps_vector; // _MUST_ be divisible by largest alignment!
-    STORM_compute_func intsec_func; // determined during ctor
-    uint32_t alignment; // determined during ctor
-    uint32_t scalar_cutoff; // cutoff for storing scalars
-};
+// Contiguous memory bitmaps.
+//
+// STORM_contiguous_t is OPAQUE. Its definition lives in storm.cpp, where it is
+// built from std::vector with an aligned allocator and locates per-vector
+// scalar lists by offset rather than by cached pointer. Keeping the layout out
+// of this header serves two purposes: the header stays valid C, and the
+// internals can change without breaking the ABI.
+//
+// Create with STORM_contig_new(), destroy with STORM_contig_free(); there are
+// no user-servicable fields. Nothing outside storm.cpp ever read them.
 
 // implementation ----->
 STORM_bitmap_t* STORM_bitmap_new();

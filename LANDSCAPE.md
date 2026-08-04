@@ -14,8 +14,9 @@ flagged where they need verification.
 
 ## 1. What this repo claims
 
-`storm.c` / `storm.h` (~1300 lines C) plus the `libalgebra` submodule. Computes `XXᵀ` for a
-binary matrix — equivalently, the all-pairs set-intersection cardinality `|Xᵢ ∩ Xⱼ|` for N sets.
+`storm.cpp` / `storm.h` (~1,300 lines; C++17 internals behind a C ABI as of Phase 0) plus vendored
+`libalgebra`. Computes `XXᵀ` for a binary matrix — equivalently, the all-pairs set-intersection
+cardinality `|Xᵢ ∩ Xⱼ|` for N sets.
 
 Two storage models:
 
@@ -536,7 +537,7 @@ fail is worthless, and the first version of this suite caught none of these (see
 | `CMakeLists.txt` | `find_path(... NAMES REQUIRED roaring/roaring.h)` mis-uses the `NAMES` list and made CRoaring a **hard requirement for the entire project**, including the library and tests that do not use it. Now optional; only `benchmark` needs it |
 | `CMakeLists.txt` | `CMAKE_C_STANDARD 99` is inherited by `add_subdirectory()` and breaks CRoaring's C11 `<stdatomic.h>` detection (`#error "Unknown atomic implementation"`). Now C11 |
 | repo-wide | CRoaring was unpinned — whatever happened to be installed. Now vendored as a submodule at **v4.7.2**, so baseline numbers are reproducible and version-stated |
-| repo-wide | `.travis.yml` / `appveyor.yml` target defunct services — **still outstanding**, needs GitHub Actions |
+| repo-wide | `.travis.yml` / `appveyor.yml` targeted defunct services — **deleted**, along with their README badges. Hosted CI is deliberately out of scope |
 
 ### 8.4 Measurement caveat, newly surfaced
 
