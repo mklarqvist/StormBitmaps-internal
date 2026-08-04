@@ -116,108 +116,45 @@ stated. **This also makes P5 substantially more winnable than assumed** and move
 
 ---
 
-## 2. What to do, in priority order
+## 2. Status after ten iterations (2026-08-04)
 
-Ordered by (evidence value) ÷ (effort), not by the original phase numbering.
+The pareto front of low-hanging fruit is **exhausted**. Everything below with a
+good value/effort ratio has been done; what remains is genuinely expensive or
+genuinely low-value, which is the stopping condition.
 
-### P0 — the critical path
+### Done
 
-**N1. Wire CRoaring into the new harness as a first-class baseline.** *(2–3 days)*
-Currently zero baselines exist in `bench/bench_cells.cpp` or `bench_select.cpp`;
-they compare Storm against Storm. P1 and P5 are therefore **unfalsifiable as
-written**, which is a fatal review problem independent of how fast we are.
-CRoaring is already vendored at `third_party/CRoaring` and pinned at v4.7.2.
-Highest value/effort ratio in this document, and §1.4 says we should win the
-mixed cells decisively.
-*Exit:* head-to-head ns/pair vs `roaring_bitmap_and_cardinality` across the five
-corpora and the full density sweep, both spectra, in `results/`.
+| # | Item | Result |
+|---|---|---|
+| **N1** | CRoaring baseline | **1.7–19.1×** over a `run_optimize`-tuned CRoaring on 4 hosts. P5 holds |
+| **N7** | Cross-ISA | 4 microarchitectures: NEON, SVE, SVE2, AVX-512 |
+| **N2** | M3 tile hoisting | **Gate 1 PASSES** — selection 28–48% → 0.10–0.48%. P2 holds |
+| — | Probe-and-commit | Fixes the decision-quality problem hoisting exposed (0.66× → 1.09×) |
+| **N4** | DRAM residency | **F11**: work avoidance scales *up* (8.8→20.5×), SIMD scales *down* (1.52→1.17×) |
+| — | AVX-512 kernel | Dense B×B **10×**; 5× loss → 1.21× win; 0.125 c/word ceiling tier-1 → tier-2 |
+| **N5** | §6 API forms 1–2 | `allpairs_sum`, `allpairs_tiles` shipped |
+| **N9** | Doc reconciliation | PROBLEM_STATEMENT, RESEARCH_PLAN, LANDSCAPE §9 |
+| **N10** | Variant pruning | 179 → 88 |
+| **N11** | Landmines | 4 fixed, incl. a heap-buffer-overflow ASan found that 2.6 M correctness checks could not |
 
-**N2. M3 — tile-hoisted selection. Fix Gate 1.** *(3–5 days)*
-Gate 1 fails: selection costs 13.3 ns/pair = **28.3% of runtime against a 2%
-budget**, regret 94.1%. `RESEARCH_PLAN.md` §8 Phase 1 prescribes exactly this
-remedy for exactly this case and it has never been attempted. Every downstream
-claim depends on it. Three sub-steps, cheapest first:
-  1. Sort/partition rows by cardinality so a tile shares one pairing decision.
-  2. Decide once per tile from tile-aggregate metadata; measure amortized cost.
-  3. If still >2%, fall back to a static per-tile schedule and re-scope P2
-     honestly as "per-tile, not per-pair."
-*Exit:* selection ≤2% of runtime, or a documented re-scope of P2.
+### Remaining — none of it low-hanging
 
-**N3. Kill the function-pointer dispatch on the hot path.** *(2–3 days)*
-Every kernel call goes through `fn_bb`-style pointers (`kernels/storm_cells.h`),
-which blocks inlining of a three-instruction body and is named in `OPTLOG.md` F8
-as an unattacked cause of the selection overhead. `AGENTS.md` says C++17 exists
-in this project precisely for `template<Repr,Repr>` + `if constexpr` dispatch,
-and that dispatch was never built. Directly complements N2.
-*Note:* keep the pointer-based registry for the **benchmark**; the shipping path
-should be templated. These are different builds of the same kernels.
+| Item | Effort | Why it is not on the front |
+|---|---|---|
+| **Threading** (§5.3, Phase 6) | 3–5 d | Real work, and F7's 10–70× per-pairing cost spread means naive partitioning load-balances badly. Deliberately late so single-thread numbers stay comparable |
+| **Cross-pair register blocking** (L1/L2, §2) | 5+ d | F11 says this is where the DRAM win is, but it needs a new kernel signature — every kernel is `(view,view)→count`. Architectural, not incremental |
+| **Regret for the probe policy** | 2 d | Needs a true per-pair timing oracle over the batched driver. Worth doing before the write-up; not before threading |
+| **§6 form 3** (thresholded) | 2 d | Only matters once a pruning bound attaches, which §6 lists as a non-goal until after Gate 2 |
+| **Community mechanism** (§9.1) | 2–3 d | schema.json, plot.py, `--submit`. Valuable for the paper's cross-ISA story, but we now have 4 ISAs ourselves |
+| **Two-level zone map** | 2–3 d | Only binds at universes where m/512 is itself expensive — beyond what is currently measured |
+| **AVX2 / SVE2 kernels** | 3–5 d each | The portable path already runs there; these are optimizations, not gaps |
 
-### P1 — makes the results trustworthy at the scale we claim
+### The one thing to do next
 
-**N4. Scale to DRAM residency.** *(1–2 days — mostly re-running existing tooling)*
-Every one of ~130 variants was measured on 1.5–6 MB, **L2-resident** corpora.
-`PROBLEM_STATEMENT.md` §2 motivates 10⁷-bit universes — **1.25 MB per row**, so a
-modest corpus is DRAM-resident. At least three conclusions are residency-dependent
-and may invert:
-  - F1 "SIMD-issue bound, not load bound" — derived at L2.
-  - "Prefetch never helps" — the hardware prefetcher had headroom at L2.
-  - **"Register blocking will not pay on NEON"** — this rests on loads not being
-    the binding resource, which is a statement about L2, not about DRAM.
-*Exit:* the sweep re-run at m ∈ {16k, 156k} words with residency labelled, and
-any inverted conclusion corrected in `OPTLOG.md`.
-
-**N5. The §6 API — it does not exist.** *(2–3 days)*
-None of `STORM_allpairs_sum`, `_tiles`, `_threshold`, `_matrix` are written.
-`RESEARCH_PLAN.md` §6 calls the batched primitive "the deliverable" and §11 makes
-it a hard requirement for Definition of Done. It is also the interface contract
-with Tomahawk (§8b). Build `_sum` and `_tiles` first — §3.5 shows the interesting
-regime is output-bound, so the forms that never materialize N² are the ones that
-matter.
-
-### P2 — completeness, and one real risk
-
-**N6. Zone-map extensions the per-cell loop could not reach.** *(3–4 days)*
-Only one bin width (512 bits) was ever tested, and the summary is only wired into
-B×B, B×S (where it loses, F9) and B×W. Untried:
-  - bin-width sweep — may close F8's unexplained 28% dense-corpus overhead;
-  - **two-level zone map** (summary over the summary) — at 10⁷-bit universes the
-    O(m/512) scan stops being negligible and the trick that fixed rank applies
-    again;
-  - zone map as the **tile-partitioning signal** for N2, rather than an in-kernel
-    gate — this is probably how N2 should be implemented.
-
-**N7. Cross-ISA — the whole kernel layer is NEON-only.** *(needs x86 hardware)*
-Every vector path is behind `#if defined(__ARM_NEON)`. Two of the plan's four
-B×S designs (D1 gather, D3 `VPCONFLICTD`) are **unimplementable on NEON and
-untested anywhere**, and the register-blocking argument (§3.2) was designed for
-AVX-512's dedicated popcount port and has only ever been refuted on an ISA
-without one. Several negative results in `OPTLOG.md` are ISA-local and should be
-labelled as such until an x86 run exists.
-
-**N8. Threading (§5.3, Phase 6).** *(3–5 days)*
-Zero work-splitting code exists. Deliberately deferred, correctly — but it is the
-last thing between the current numbers and a wall-clock claim, and F7's 10–70×
-per-pairing cost spread means naive row partitioning will load-balance badly.
-
-### P3 — hygiene, cheap, do alongside
-
-**N9. Reconcile the documents with the measurements.** *(1 day)* — §3 below.
-**N10. Prune the variant registry.** *(half a day)* ~130 variants; the threshold
-sweeps (`adapt_r*`, `adapt_b*`, `adapt_f*`, `skip_f*`, `neon_u{2,3,6,12,16,24}`,
-`occ_sel{5,15,60,85}`) are the evidence trail, not distinct algorithms. Collapse
-each cell to {reference, winner, one bracketing probe, labelled negative
-controls}. Keep `neon_hs` and `neon_ld2` — they are cited negative results.
-**N11. Landmines.** *(half a day)*
-  - `storm.cpp` — `int i` compared against `uint32_t n_vectors` throughout the
-    `STORM_wrapper_*` family; latent signed-overflow UB at large N.
-  - `kernels/cell_wah.cpp` `Cursor::consume` — `fill_left -= k` with no bounds
-    check; a bad `k` wraps `uint32_t` silently instead of failing loudly.
-  - `cell_bs.cpp` / `cell_br.cpp` `g_inflate*` — grow-only `thread_local`
-    buffers, never released; ≥1.25 MB per thread at 10⁷-bit rows.
-  - `storm_gen.cpp` `gen_uniform` complement path walks the whole universe per
-    row — makes corpus *generation* the bottleneck at 10⁷ bits.
-
----
+**Write the paper.** The evidence base is sufficient and further kernel work has
+stopped producing findings that change conclusions. Iterations 1–10 produced two
+results that moved the thesis (F11's opposite scaling, and probe-and-commit
+weakening the cost model's importance) and the last three produced none.
 
 ## 3. Document corrections required
 
