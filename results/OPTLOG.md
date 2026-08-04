@@ -33,15 +33,24 @@ a batch containing any win resets that cell's counter to 0.
 | cell | consecutive non-improving | best variant now | last positive finding |
 |---|---:|---|---|
 | **B × S** | **5 — CONVERGED** | `ilp8` / `shift` (within ~5%) | r6 `ilp16x` |
-| **B × W** | **2** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
-| **B × R** | **1** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
-| **B × B** | 0 | `occ_sel60` / `occ` / `neon_u6` | r10 `neon_u6`, `occ_sel60` |
-| **S × R** | 0 | `adapt_b8` / `merge_bl` | r10 `adapt_b8` |
-| **S × W** | 0 | `adapt_f64` | r10 `adapt_f64` |
-| **S × S** | 0 | `adapt_r3` / `adapt_r24` | r10 `adapt_r3` |
-| **R × R** | 0 | `adapt_r3` / `merge_bl` | r10 `adapt_r3` |
-| **R × W** | 0 | `skip2` / `merge2` | r10 `skip2` |
-| **W × W** | 0 | `skip2` / `skip` | r10 `skip2` |
+| **B × W** | **4** | `occ` / `skip` / `rank` by corpus | r8 `occ` |
+| **B × B** | **4** | `occ_sel` / `occ` | r8 `occ_sel` |
+| **B × R** | **3** | `scalar` / `rank` / `hybrid_pair` by corpus | r7 `hybrid_pair` |
+| **S × W** | **2** | `adapt_f64` / `search` | r7 `adaptive` |
+| **R × R** | **2** | `adapt_r3` / `merge_bl` | r7 `adaptive2` |
+| **R × W** | **2** | `skip2` / `merge2` | r7 `adaptive` |
+| **W × W** | **2** | `skip2` / `skip` | r7 `skip2` |
+| **S × R** | 0 | `adapt_b8` / `merge_bl` | r10 `adapt_b8` (1.24×) |
+| **S × S** | 0 | `adapt_r3` / `adapt_r24` | r10 `adapt_r24` (1.15×) |
+
+**Counting correction.** Rounds 6–10 credited any corpus win as an improvement,
+including margins of 1.00–1.05× — which round 3 had already established is
+within the within-run noise floor. Applying that standard consistently
+(`/tmp/margin.py` against `results/iter10_raw.txt`), only **two** of round 10's
+ten cells improved by more than 5%: S×R (1.24×) and S×S (1.15×). The other
+eight were noise and their counters advance. This is not a relaxation of the
+rule — it is the rule measured against the noise floor the project already
+committed to, and the earlier accounting was the inconsistent one.
 
 **B × S is closed** at 5 consecutive non-improving iterations: `ilp12` and
 `prefetch64` joined `ilp_cache`, `prefetch_deep` and `occ` in failing. The cell
@@ -85,6 +94,53 @@ direction is a *second level* of summary (a zone map over the zone map) for
 universes large enough that m/512 is itself expensive — irrelevant at the
 65,536-bit universes benchmarked here, potentially decisive at the 10⁷ bits
 `PROBLEM_STATEMENT.md` §2 motivates.
+
+---
+
+## M4 — the cost model, and GATE 1 currently FAILS
+
+Built at the user's direction after F10 showed hand-tuned thresholds losing
+systematically. `kernels/storm_cost.{h,cpp}`, validated by
+`bench/bench_select.cpp` on the clustered/1-over-i corpus:
+
+| policy | ns/pair | vs all-bitmap |
+|---|---:|---:|
+| all-bitmap (B×B) | 30.76 | 1.00× |
+| **M4 model** | 47.13 | 0.7× |
+| per-pair oracle | 24.28 | 1.3× (unattainable floor) |
+
+**Regret 94.1%. Selection cost 13.3 ns/pair = 28.3% of runtime. Gate 1 requires
+≤2%. FAIL.**
+
+`RESEARCH_PLAN.md` §8 Phase 1 says exactly what to do here: ">10% and not
+reducible → the per-pair adaptive premise is in trouble. Fall back to
+per-tile-only selection and re-scope. This is the cheapest possible test of the
+core premise." The gate is doing its job.
+
+Three causes, in order of size, two already fixed:
+
+1. **Transcendentals in the selection loop.** v1 called `std::log2` per
+   candidate; the fix introduced `std::pow` and made it worse (24 → 38 ns/pair)
+   — the same mistake twice in one function. Both replaced with integer and
+   linear forms: 38 → 13.3 ns/pair. A selector ranking ten candidates cannot
+   afford a transcendental in any of them.
+
+2. **The zone map broke the model's core assumption.** B×B is no longer Θ(m).
+   `occ_sel` visits only the bins live on both sides, so predicting its cost
+   from m over-estimates by exactly the factor the zone map saves — 5–25× on
+   skewed data. The model chose against B×B on nearly every pair and measured
+   151% regret. Charging B×B for expected live bins instead lifted agreement
+   from 14.8% to 31.8%. **`PROBLEM_STATEMENT.md` §2's premise that bitmap ×
+   bitmap is fixed cost is now false of our own best B×B kernel** — the zone map
+   made the dense cell adaptive too.
+
+3. **Still 13.3 ns/pair, still 14× over budget.** The remaining cost is ten
+   double-precision predictions per pair. Not yet attacked: integer arithmetic
+   throughout, and pruning candidates before scoring them.
+
+The plan's own fallback — M3 tile hoisting, deciding once per tile of pairs
+rather than once per pair — is the indicated next step, and it is what makes
+the 13.3 ns amortize.
 
 ---
 

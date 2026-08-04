@@ -146,7 +146,8 @@ set(STORM_KERNEL_SOURCES
 	kernels/cell_bs.cpp
 	kernels/cell_br.cpp
 	kernels/cell_sparse.cpp
-	kernels/cell_wah.cpp)
+	kernels/cell_wah.cpp
+	kernels/storm_cost.cpp)
 
 add_library(storm_kernels STATIC ${STORM_KERNEL_SOURCES})
 target_include_directories(storm_kernels PUBLIC "${PROJECT_SOURCE_DIR}")
@@ -171,3 +172,6 @@ add_test(NAME storm_correctness COMMAND test_storm)
 add_executable(test_cells tests/test_cells.cpp)
 target_link_libraries(test_cells PUBLIC storm_kernels)
 add_test(NAME cells_correctness COMMAND test_cells)
+# M4 cost-model validation: oracle regret and selection overhead (Gate 1).
+add_executable(bench_select bench/bench_select.cpp)
+target_link_libraries(bench_select PUBLIC storm_kernels)
