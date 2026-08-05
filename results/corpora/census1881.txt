@@ -1,19 +1,31 @@
 # host=census1881 corpus=real/real d=0.00117334 rows=200 universe=4277806 pairs=19900 card_mean=5019.3 runs_mean=4616.4
 # footprint storm_B=104439kB roaring=1958kB roaring_ro=1848kB zonemap=204.7kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                    1272.32        0.99x
-CRoaring run_optimize       1263.30        1.00x
-storm B x B dense          11204.94        0.11x
-storm B x B zonemap           79.88       15.81x
-storm B x S                   79.81       15.83x
-storm B x R                  197.53        6.40x
-storm B x W                  515.06        2.45x
-storm S x S                  435.96        2.90x
-storm S x R                 2434.65        0.52x
-storm R x R                 1232.11        1.03x
-storm W x W                 6536.64        0.19x
+CRoaring                    1270.01        1.01x
+CRoaring run_optimize       1277.17        1.00x
+storm B x B dense          12039.34        0.11x
+storm B x B zonemap           79.52       16.06x
+storm B x S                   84.66       15.09x
+storm B x R                  193.01        6.62x
+storm B x W                  522.68        2.44x
+storm S x S                  436.30        2.93x
+storm S x R                 2360.63        0.54x
+storm R x R                 1157.78        1.10x
+storm W x W                 6521.39        0.20x
 
-BEST storm cell: B x S at 79.81 ns/pair
-  vs CRoaring(run_optimize):    15.83x
-  vs CRoaring(default):         15.94x
-  vs storm all-bitmap:         140.39x   [claim P1]
+BEST storm cell: B x B at 79.52 ns/pair
+  vs CRoaring(run_optimize):    16.06x
+  vs CRoaring(default):         15.97x
+  vs storm all-bitmap:         151.41x   [claim P1]
+
+ZONE-MAP ABLATION  (index-free vs index-using, same cell)
+cell                           no-index    indexed    speedup
+B x B  neon_u8 -> occ_sel      11168.27      79.52    140.45x
+B x S  ilp8    -> occ             84.66     337.26      0.25x
+B x R  neon    -> occ            187.94     221.23      0.85x
+B x R  neon    -> hybrid4        187.94     193.01      0.97x
+
+BEST index-free cell:         84.66 ns/pair
+BEST overall (indexed):       79.52 ns/pair
+  zone map/rank buys:          1.06x
+  zone map footprint:         0.196% of bitmap bytes

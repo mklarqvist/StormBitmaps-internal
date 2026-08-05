@@ -1,182 +1,175 @@
 # host      arm64-Darwin
 # rows      256   pairs 20000   repeats 7
 # out       results/corpora
-converting census1881 ...
     # universe m      4,277,806
     # sets (kept)     200 of 200
     # mean density    1.173e-03
     # skew            top 1% of sets hold 23.7% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
-converting census1881_srt ...
     # universe m      4,277,735
     # sets (kept)     200 of 200
     # mean density    7.957e-04
     # skew            top 1% of sets hold 30.0% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting census-income ...
     # universe m      199,523
     # sets (kept)     200 of 200
     # mean density    1.735e-01
     # skew            top 1% of sets hold 5.7% of all elements
     # REGIME          universe>=1e6: FAIL   density<=1e-3: FAIL   => OUT OF REGIME
-converting census-income_srt ...
     # universe m      199,523
     # sets (kept)     200 of 200
     # mean density    1.527e-01
     # skew            top 1% of sets hold 6.5% of all elements
     # REGIME          universe>=1e6: FAIL   density<=1e-3: FAIL   => OUT OF REGIME
-converting weather_sept_85 ...
     # universe m      1,015,367
     # sets (kept)     200 of 200
     # mean density    6.338e-02
     # skew            top 1% of sets hold 14.1% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
-converting weather_sept_85_srt ...
     # universe m      1,015,367
     # sets (kept)     200 of 200
     # mean density    7.932e-02
     # skew            top 1% of sets hold 11.2% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
-converting wikileaks-noquotes ...
     # universe m      1,353,179
     # sets (kept)     200 of 200
     # mean density    1.017e-03
     # skew            top 1% of sets hold 13.2% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
-converting wikileaks-noquotes_srt ...
     # universe m      1,353,133
     # sets (kept)     200 of 200
     # mean density    1.064e-03
     # skew            top 1% of sets hold 23.4% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
-converting uscensus2000 ...
     # universe m      36,974,578
     # sets (kept)     200 of 200
     # mean density    8.093e-07
     # skew            top 1% of sets hold 56.4% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting dimension_003 ...
     # universe m      3,866,847
     # sets (kept)     15,482 of 15,482
     # mean density    6.459e-05
     # skew            top 1% of sets hold 52.7% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting dimension_008 ...
     # universe m      3,866,845
     # sets (kept)     5,240 of 5,240
     # mean density    1.399e-04
     # skew            top 1% of sets hold 65.3% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting dimension_033 ...
     # universe m      3,866,847
     # sets (kept)     173 of 173
     # mean density    5.780e-03
     # skew            top 1% of sets hold 27.9% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
-converting as-skitter ...
     # universe m      1,696,415
     # sets (kept)     1,478,016 of 1,696,415
     # mean density    8.763e-06
     # skew            top 1% of sets hold 31.7% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting wiki-Talk ...
     # universe m      2,394,385
     # sets (kept)     67,492 of 2,394,385
     # mean density    3.058e-05
     # skew            top 1% of sets hold 46.9% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting soc-Pokec ...
     # universe m      1,632,804
     # sets (kept)     1,277,002 of 1,632,804
     # mean density    1.461e-05
     # skew            top 1% of sets hold 8.8% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-converting com-LiveJournal ...
     # universe m      4,036,538
     # sets (kept)     3,212,032 of 4,036,538
     # mean density    5.289e-06
     # skew            top 1% of sets hold 15.1% of all elements
     # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
-skip com-Orkut (no com-orkut.txt)
+    # universe m      3,072,627
+    # sets (kept)     3,004,674 of 3,072,627
+    # mean density    2.538e-05
+    # skew            top 1% of sets hold 11.8% of all elements
+    # REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
 == census1881  (rows=200 stride=1)
-   BEST storm cell: B x S at 79.81 ns/pair
-     vs CRoaring(run_optimize):    15.83x
-     vs CRoaring(default):         15.94x
-     vs storm all-bitmap:         140.39x   [claim P1]
+   BEST index-free cell:         84.66 ns/pair
+   BEST overall (indexed):       79.52 ns/pair
+     zone map/rank buys:          1.06x
+     zone map footprint:         0.196% of bitmap bytes
 == census1881_srt  (rows=200 stride=1)
-   BEST storm cell: B x B at 31.41 ns/pair
-     vs CRoaring(run_optimize):     2.02x
-     vs CRoaring(default):          3.09x
-     vs storm all-bitmap:         355.46x   [claim P1]
+   BEST index-free cell:         37.07 ns/pair
+   BEST overall (indexed):       30.44 ns/pair
+     zone map/rank buys:          1.22x
+     zone map footprint:         0.196% of bitmap bytes
 == census-income  (rows=200 stride=1)
-   BEST storm cell: B x B at 298.23 ns/pair
-     vs CRoaring(run_optimize):    12.82x
-     vs CRoaring(default):         13.33x
-     vs storm all-bitmap:           1.23x   [claim P1]
+   BEST index-free cell:        354.96 ns/pair
+   BEST overall (indexed):      301.89 ns/pair
+     zone map/rank buys:          1.18x
+     zone map footprint:         0.225% of bitmap bytes
 == census-income_srt  (rows=200 stride=1)
-   BEST storm cell: B x B at 134.95 ns/pair
-     vs CRoaring(run_optimize):    10.59x
-     vs CRoaring(default):         10.00x
-     vs storm all-bitmap:           2.80x   [claim P1]
+   BEST index-free cell:        381.43 ns/pair
+   BEST overall (indexed):      136.02 ns/pair
+     zone map/rank buys:          2.80x
+     zone map footprint:         0.225% of bitmap bytes
 == weather_sept_85  (rows=200 stride=1)
-   BEST storm cell: B x B at 1822.97 ns/pair
-     vs CRoaring(run_optimize):    10.75x
-     vs CRoaring(default):         13.22x
-     vs storm all-bitmap:           1.53x   [claim P1]
+   BEST index-free cell:       2600.11 ns/pair
+   BEST overall (indexed):     1178.79 ns/pair
+     zone map/rank buys:          2.21x
+     zone map footprint:         0.195% of bitmap bytes
 == weather_sept_85_srt  (rows=200 stride=1)
-   BEST storm cell: B x B at 656.70 ns/pair
-     vs CRoaring(run_optimize):     3.75x
-     vs CRoaring(default):          3.55x
-     vs storm all-bitmap:           8.34x   [claim P1]
+   BEST index-free cell:       1124.49 ns/pair
+   BEST overall (indexed):      322.72 ns/pair
+     zone map/rank buys:          3.48x
+     zone map footprint:         0.195% of bitmap bytes
 == wikileaks-noquotes  (rows=200 stride=1)
-   BEST storm cell: B x B at 57.80 ns/pair
-     vs CRoaring(run_optimize):     7.42x
-     vs CRoaring(default):         13.07x
-     vs storm all-bitmap:          61.25x   [claim P1]
+   BEST index-free cell:        151.06 ns/pair
+   BEST overall (indexed):       60.76 ns/pair
+     zone map/rank buys:          2.49x
+     zone map footprint:         0.199% of bitmap bytes
 == wikileaks-noquotes_srt  (rows=200 stride=1)
-   BEST storm cell: B x B at 18.99 ns/pair
-     vs CRoaring(run_optimize):     5.33x
-     vs CRoaring(default):          8.92x
-     vs storm all-bitmap:         201.07x   [claim P1]
+   BEST index-free cell:         75.10 ns/pair
+   BEST overall (indexed):       19.77 ns/pair
+     zone map/rank buys:          3.80x
+     zone map footprint:         0.199% of bitmap bytes
 == uscensus2000  (rows=200 stride=1)
-   BEST storm cell: B x R at 8.95 ns/pair
-     vs CRoaring(run_optimize):     1.38x
-     vs CRoaring(default):          2.27x
-     vs storm all-bitmap:       23072.34x   [claim P1]
+   BEST index-free cell:          7.45 ns/pair
+   BEST overall (indexed):        7.45 ns/pair
+     zone map/rank buys:          1.00x
+     zone map footprint:         0.195% of bitmap bytes
 == dimension_003  (rows=15482 stride=60)
-   BEST storm cell: S x S at 2.86 ns/pair
-     vs CRoaring(run_optimize):     1.09x
-     vs CRoaring(default):          1.31x
-     vs storm all-bitmap:        4772.61x   [claim P1]
+   BEST index-free cell:          2.76 ns/pair
+   BEST overall (indexed):        2.76 ns/pair
+     zone map/rank buys:          1.00x
+     zone map footprint:         0.197% of bitmap bytes
 == dimension_008  (rows=5240 stride=20)
-   BEST storm cell: R x R at 3.90 ns/pair
-     vs CRoaring(run_optimize):     1.83x
-     vs CRoaring(default):          6.04x
-     vs storm all-bitmap:        4155.65x   [claim P1]
+   BEST index-free cell:          3.93 ns/pair
+   BEST overall (indexed):        3.93 ns/pair
+     zone map/rank buys:          1.00x
+     zone map footprint:         0.197% of bitmap bytes
 == dimension_033  (rows=173 stride=1)
-   BEST storm cell: B x B at 51.70 ns/pair
-     vs CRoaring(run_optimize):     1.89x
-     vs CRoaring(default):         10.79x
-     vs storm all-bitmap:         275.21x   [claim P1]
+   BEST index-free cell:         39.91 ns/pair
+   BEST overall (indexed):       36.68 ns/pair
+     zone map/rank buys:          1.09x
+     zone map footprint:         0.197% of bitmap bytes
 == as-skitter  (rows=1478016 stride=5773)
-   BEST storm cell: B x S at 5.54 ns/pair
-     vs CRoaring(run_optimize):     5.61x
-     vs CRoaring(default):          5.78x
-     vs storm all-bitmap:        1181.39x   [claim P1]
+   BEST index-free cell:          7.19 ns/pair
+   BEST overall (indexed):        7.19 ns/pair
+     zone map/rank buys:          1.00x
+     zone map footprint:         0.196% of bitmap bytes
 == wiki-Talk  (rows=67492 stride=263)
-   BEST storm cell: B x S at 8.03 ns/pair
-     vs CRoaring(run_optimize):    12.51x
-     vs CRoaring(default):          9.33x
-     vs storm all-bitmap:        1507.64x   [claim P1]
+   BEST index-free cell:          9.19 ns/pair
+   BEST overall (indexed):        9.19 ns/pair
+     zone map/rank buys:          1.00x
+     zone map footprint:         0.198% of bitmap bytes
 == soc-Pokec  (rows=1277002 stride=4988)
-   BEST storm cell: B x B at 20.87 ns/pair
-     vs CRoaring(run_optimize):     7.18x
-     vs CRoaring(default):          7.90x
-     vs storm all-bitmap:         200.98x   [claim P1]
+   BEST index-free cell:         40.96 ns/pair
+   BEST overall (indexed):       27.15 ns/pair
+     zone map/rank buys:          1.51x
+     zone map footprint:         0.196% of bitmap bytes
 == com-LiveJournal  (rows=3212032 stride=12547)
-   BEST storm cell: B x S at 18.72 ns/pair
-     vs CRoaring(run_optimize):     3.28x
-     vs CRoaring(default):          3.14x
-     vs storm all-bitmap:         571.92x   [claim P1]
+   BEST index-free cell:         30.98 ns/pair
+   BEST overall (indexed):       28.84 ns/pair
+     zone map/rank buys:          1.07x
+     zone map footprint:         0.197% of bitmap bytes
+== com-Orkut  (rows=3004674 stride=11737)
+   BEST index-free cell:        118.13 ns/pair
+   BEST overall (indexed):       39.70 ns/pair
+     zone map/rank buys:          2.98x
+     zone map footprint:         0.196% of bitmap bytes
 
 raw per-corpus output in results/corpora/

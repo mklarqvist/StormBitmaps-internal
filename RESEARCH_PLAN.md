@@ -1280,3 +1280,43 @@ entire evaluation.
    real *genomic* dataset reaching the regime. Density unmeasured.
 5. msprime/stdpopsim scale sweep, replacing the hand-rolled 1/i draw in
    `kernels/storm_gen.cpp` with a coalescent generator.
+
+### 15.8 Zone-map ablation, 2026-08-05 — new claim C12
+
+Full table: [`results/corpora/ABLATION.md`](results/corpora/ABLATION.md), §7 of
+`results/CORPORA.md`. Collate with `bench/ablate_zonemap.py`.
+
+The zone map is built **unconditionally** in `build_row()`, so §15.2's table
+could never answer whether it is worth building. `bench_baseline` now times each
+cell's best index-free variant against its index-using one. The index-free B×B
+baseline is `neon_u8`, not the portable `dense` — comparing against the weaker
+portable form would have inflated the mechanism on ARM for the wrong reason.
+
+**C12: the zone map helps 12/17 corpora, is neutral on 5, harms 0 at
+system level, and costs 0.195% of bitmap bytes. Net gain 1.00×–3.80×.**
+
+Three qualifications that matter more than the headline:
+
+1. **The per-cell B×B figure (up to 745×) must not be quoted as the benefit.**
+   Those are corpora where B×B loses to a sparse cell regardless; the zone map
+   is rescuing a kernel that would never be selected.
+2. **B×S with a zone map is below 1.0× on 10 of 17.** `bs_occ` loses to plain
+   `ilp8` — when the sparse side is a short list, gating each 512-bit bin costs
+   more than the probes it saves. Clean negative result in the cell where the
+   mechanism looked most attractive.
+3. **It never loses at system level only because selection routes around it.**
+   Per-cell it can lose badly (B×S on census1881, 0.25×). So the zone map is not
+   independently a good idea — it is a good idea *given* a selector that can
+   decline it. State that coupling explicitly; it is a claim about the
+   architecture, not about the data structure.
+
+The five neutral corpora are exactly those whose winner is a sparse cell reading
+no side structure. Gains cluster at both ends of the density range with a
+neutral middle, and the `_srt` variants gain consistently more than their
+unsorted counterparts (3.80 vs 2.49; 3.48 vs 2.21; 2.80 vs 1.18) — the expected
+direction, since sorting raises clustering and clustering is what empties bins.
+
+**Open:** the build cost of `build_occ()` is not charged anywhere in these
+numbers — rows are constructed before timing starts. At 0.195% space it is
+unlikely to matter, but the claim is currently "free to use", not "free to
+build", and only the former is measured.

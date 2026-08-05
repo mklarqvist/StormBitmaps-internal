@@ -1,19 +1,31 @@
 # host=weather_sept_85_srt corpus=real/real d=0.0793215 rows=200 universe=1015367 pairs=19900 card_mean=80540.5 runs_mean=945.3
 # footprint storm_B=24791kB roaring=6379kB roaring_ro=669kB zonemap=48.4kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                    2328.07        1.06x
-CRoaring run_optimize       2464.49        1.00x
-storm B x B dense           5474.72        0.45x
-storm B x B zonemap          656.70        3.75x
-storm B x S                 6228.36        0.40x
-storm B x R                 1391.80        1.77x
-storm B x W                 3101.94        0.79x
-storm S x S                33745.65        0.07x
-storm S x R                 5248.16        0.47x
-storm R x R                 1812.54        1.36x
-storm W x W                 4129.58        0.60x
+CRoaring                    2051.87        0.86x
+CRoaring run_optimize       1757.13        1.00x
+storm B x B dense           2451.23        0.72x
+storm B x B zonemap          322.72        5.44x
+storm B x S                 3953.44        0.44x
+storm B x R                  995.88        1.76x
+storm B x W                 2750.23        0.64x
+storm S x S                31010.30        0.06x
+storm S x R                 5865.45        0.30x
+storm R x R                 2003.17        0.88x
+storm W x W                 4330.40        0.41x
 
-BEST storm cell: B x B at 656.70 ns/pair
-  vs CRoaring(run_optimize):     3.75x
-  vs CRoaring(default):          3.55x
-  vs storm all-bitmap:           8.34x   [claim P1]
+BEST storm cell: B x B at 322.72 ns/pair
+  vs CRoaring(run_optimize):     5.44x
+  vs CRoaring(default):          6.36x
+  vs storm all-bitmap:           7.60x   [claim P1]
+
+ZONE-MAP ABLATION  (index-free vs index-using, same cell)
+cell                           no-index    indexed    speedup
+B x B  neon_u8 -> occ_sel       2772.29     322.72      8.59x
+B x S  ilp8    -> occ           3953.44   10757.92      0.37x
+B x R  neon    -> occ           1124.49    1226.15      0.92x
+B x R  neon    -> hybrid4       1124.49     995.88      1.13x
+
+BEST index-free cell:       1124.49 ns/pair
+BEST overall (indexed):      322.72 ns/pair
+  zone map/rank buys:          3.48x
+  zone map footprint:         0.195% of bitmap bytes

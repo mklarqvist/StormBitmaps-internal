@@ -63,26 +63,26 @@ representation pairing wins where, not one headline number.
 
 | corpus | universe m | sets | mean \|Xi\| | density | best cell | ns/pair | vs CRoaring_ro | vs all-bitmap |
 |---|---:|---:|---:|---:|---|---:|---:|---:|
-| uscensus2000 | 36,974,578 | 200 | 30 | 8.1e-07 | B×R | 8.9 | **1.4×** | 23,080× |
-| com-LiveJournal | 4,036,538 | 256 | 21 | 5.1e-06 | B×S | 18.7 | **3.3×** | 572× |
-| as-skitter | 1,696,415 | 256 | 15 | 9.1e-06 | B×S | 5.5 | **5.6×** | 1,180× |
-| soc-Pokec | 1,632,804 | 256 | 25 | 1.6e-05 | B×B | 20.9 | **7.2×** | 201× |
-| wiki-Talk | 2,394,385 | 256 | 52 | 2.2e-05 | B×S | 8.0 | **12.5×** | 1,507× |
-| dimension_003 | 3,866,847 | 256 | 91 | 2.4e-05 | S×S | 2.9 | **1.1×** | 4,770× |
-| com-Orkut | 3,072,627 | 256 | 82 | 2.7e-05 | B×B | 38.1 | **6.1×** | 211× |
-| dimension_008 | 3,866,845 | 256 | 347 | 9.0e-05 | R×R | 3.9 | **1.8×** | 4,160× |
-| census1881_srt | 4,277,735 | 200 | 3,404 | 8.0e-04 | B×B | 31.4 | **2.0×** | 355× |
-| wikileaks-noquotes | 1,353,179 | 200 | 1,377 | 1.0e-03 | B×B | 57.8 | **7.4×** | 61× |
-| wikileaks-noquotes_srt | 1,353,133 | 200 | 1,440 | 1.1e-03 | B×B | 19.0 | **5.3×** | 201× |
-| census1881 | 4,277,806 | 200 | 5,019 | 1.2e-03 | B×S | 79.8 | **15.8×** | 140× |
-| dimension_033 | 3,866,847 | 173 | 22,352 | 5.8e-03 | B×B | 51.7 | **1.9×** | 275× |
-| weather_sept_85 | 1,015,367 | 200 | 64,353 | 6.3e-02 | B×B | 1823.0 | **10.8×** | 2× |
-| weather_sept_85_srt | 1,015,367 | 200 | 80,540 | 7.9e-02 | B×B | 656.7 | **3.8×** | 8× |
-| census-income_srt | 199,523 | 200 | 30,464 | 1.5e-01 | B×B | 134.9 | **10.6×** | 3× |
-| census-income | 199,523 | 200 | 34,610 | 1.7e-01 | B×B | 298.2 | **12.8×** | 1× |
+| uscensus2000 | 36,974,578 | 200 | 30 | 8.09e-07 | B×S | 7.5 | **2.29x** | 24,919× |
+| com-LiveJournal | 4,036,538 | 256 | 21 | 5.14e-06 | B×B | 28.8 | **2.04x** | 544× |
+| as-skitter | 1,696,415 | 256 | 15 | 9.08e-06 | B×S | 7.2 | **4.02x** | 756× |
+| soc-Pokec | 1,632,804 | 256 | 25 | 1.55e-05 | B×B | 27.1 | **4.36x** | 175× |
+| wiki-Talk | 2,394,385 | 256 | 52 | 2.17e-05 | B×S | 9.2 | **8.80x** | 910× |
+| dimension_003 | 3,866,847 | 256 | 91 | 2.36e-05 | S×S | 2.8 | **1.12x** | 4,042× |
+| com-Orkut | 3,072,627 | 256 | 82 | 2.66e-05 | B×B | 39.7 | **6.07x** | 232× |
+| dimension_008 | 3,866,845 | 256 | 347 | 8.98e-05 | R×R | 3.9 | **1.73x** | 2,846× |
+| census1881_srt | 4,277,735 | 200 | 3,404 | 7.96e-04 | B×R | 30.4 | **2.33x** | 387× |
+| wikileaks-noquotes | 1,353,179 | 200 | 1,377 | 1.02e-03 | B×B | 60.8 | **6.79x** | 67× |
+| wikileaks-noquotes_srt | 1,353,133 | 200 | 1,440 | 1.06e-03 | B×B | 19.8 | **6.06x** | 223× |
+| census1881 | 4,277,806 | 200 | 5,019 | 1.17e-03 | B×B | 79.5 | **16.06x** | 151× |
+| dimension_033 | 3,866,847 | 173 | 22,352 | 5.78e-03 | B×R | 36.7 | **2.82x** | 290× |
+| weather_sept_85 | 1,015,367 | 200 | 64,353 | 6.34e-02 | B×B | 1178.8 | **15.02x** | 2× |
+| weather_sept_85_srt | 1,015,367 | 200 | 80,540 | 7.93e-02 | B×B | 322.7 | **5.44x** | 8× |
+| census-income_srt | 199,523 | 200 | 30,464 | 1.53e-01 | B×B | 136.0 | **9.78x** | 3× |
+| census-income | 199,523 | 200 | 34,610 | 1.73e-01 | B×B | 301.9 | **13.11x** | 1× |
 
-**The winning cell distribution is the actual result**: B×B ×10, B×S ×4,
-B×R ×1, S×S ×1, R×R ×1. No representation pairing dominates. Had one done so,
+**The winning cell distribution is the actual result**: B×B ×10, B×S ×3,
+B×R ×2, S×S ×1, R×R ×1. No representation pairing dominates. Had one done so,
 the pairing matrix would be unnecessary. The per-cell matrix in
 [`results/corpora/SUMMARY.md`](results/corpora/SUMMARY.md) shows the cost of
 choosing wrong: on `dimension_033`, B×B gives 1.9× and S×S gives 0.02× — a 95×
@@ -111,14 +111,42 @@ enough that chunks stay under that threshold even when *global* density is 6% or
 bitset containers at density 1.2e-3. This is a "do the right kind of work"
 result, not a SIMD result.
 
+### Ablation: does the zone map earn its keep?
+
+The zone map (1 bit per 512-bit bin) is built unconditionally by `build_row()`,
+so the table above cannot answer this — it only ever shows the planned kernel.
+`bench_baseline` therefore also times each cell's best **index-free** variant
+against its index-using one. Full table:
+[`results/corpora/ABLATION.md`](results/corpora/ABLATION.md).
+
+**Net: helps 12/17, neutral 5/17, hurts 0/17, at 0.195% of bitmap bytes.**
+
+| | |
+|---|---|
+| net gain, best-cell level | 1.00×–3.80× |
+| B×B in isolation | up to 745× — but mostly on corpora where B×B loses anyway |
+| B×S in isolation | **below 1.0× on 10 of 17** — gating bins costs more than the probes it saves |
+| largest gains | both ends of the density range; middle mostly neutral |
+| `_srt` vs unsorted | sorted variants gain more (3.80 vs 2.49, 3.48 vs 2.21) — clustering is what empties bins |
+
+Two things follow. The five neutral corpora are exactly those where a sparse
+cell (B×S, S×S, R×R) wins and reads no side structure — the zone map is built,
+unused, and paid for only in space. And it never loses at system level *because*
+selection routes around it: per-cell it can lose badly (B×S with zone map on
+census1881 is 0.25×). The zone map is not independently a good idea; it is a
+good idea **given** a selector that can decline it.
+
 ### Measurement caveats — read before quoting any number above
 
-1. **Ratios are reliable to about ±1 significant figure, no better.** Repeating
-   individual corpora as independent processes gives spreads of 16.1–18.2×
-   (census1881), 7.6–13.9× (census-income) and **1.2–3.7× (dimension_003)**.
-   The fastest corpora are the noisiest, which is expected: at 2.9 ns/pair a
-   20,000-pair batch lasts 58 µs, short enough for scheduling and frequency
-   ramp to dominate.
+1. **Ratios are reliable to about ±1 significant figure, no better.** The full
+   sweep was run twice: both runs win 17/17, but ratios drift by a median of
+   1.15× and up to 1.65×, and **the winning cell changes on 5 of 17**. Three of
+   those five are harmless near-ties (census1881 run 1: B×B 15.81 vs B×S 15.83);
+   `uscensus2000` and `dimension_033` are not, moving both winner and magnitude,
+   and should not be quoted until the harness is fixed. Repeating single corpora
+   as independent processes gives spreads of 16.1–18.2× (census1881) and
+   **1.2–3.7× (dimension_003)** — the fastest corpora are the noisiest, since at
+   2.9 ns/pair a 20,000-pair batch lasts only 58 µs.
 2. **The table is systematically pessimistic.** Values were collected in one
    back-to-back batch of 17 corpora; standalone repeats land at or *above* the
    recorded figure in every case checked. Likely thermal accumulation and

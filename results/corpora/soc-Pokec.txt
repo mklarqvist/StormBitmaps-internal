@@ -1,19 +1,31 @@
 # host=soc-Pokec corpus=real/real d=1.5524e-05 rows=256 universe=1632804 pairs=20000 card_mean=25.3 runs_mean=24.9
 # footprint storm_B=51026kB roaring=33kB roaring_ro=33kB zonemap=100.0kB
 kernel                      ns/pair vs roaring_ro
-CRoaring                     164.76        0.91x
-CRoaring run_optimize        149.88        1.00x
-storm B x B dense           4194.27        0.04x
-storm B x B zonemap           20.87        7.18x
-storm B x S                   35.88        4.18x
-storm B x R                   26.38        5.68x
-storm B x W                  120.48        1.24x
-storm S x S                   51.62        2.90x
-storm S x R                  136.30        1.10x
-storm R x R                   95.96        1.56x
-storm W x W                  291.97        0.51x
+CRoaring                     122.55        0.97x
+CRoaring run_optimize        118.33        1.00x
+storm B x B dense           4742.96        0.02x
+storm B x B zonemap           27.15        4.36x
+storm B x S                   49.63        2.38x
+storm B x R                   59.26        2.00x
+storm B x W                  127.89        0.93x
+storm S x S                   60.39        1.96x
+storm S x R                  154.88        0.76x
+storm R x R                  101.07        1.17x
+storm W x W                  295.44        0.40x
 
-BEST storm cell: B x B at 20.87 ns/pair
-  vs CRoaring(run_optimize):     7.18x
-  vs CRoaring(default):          7.90x
-  vs storm all-bitmap:         200.98x   [claim P1]
+BEST storm cell: B x B at 27.15 ns/pair
+  vs CRoaring(run_optimize):     4.36x
+  vs CRoaring(default):          4.51x
+  vs storm all-bitmap:         174.69x   [claim P1]
+
+ZONE-MAP ABLATION  (index-free vs index-using, same cell)
+cell                           no-index    indexed    speedup
+B x B  neon_u8 -> occ_sel       4579.34      27.15    168.67x
+B x S  ilp8    -> occ             49.63      20.55      2.42x
+B x R  neon    -> occ             40.96      15.46      2.65x
+B x R  neon    -> hybrid4         40.96      59.26      0.69x
+
+BEST index-free cell:         40.96 ns/pair
+BEST overall (indexed):       27.15 ns/pair
+  zone map/rank buys:          1.51x
+  zone map footprint:         0.196% of bitmap bytes

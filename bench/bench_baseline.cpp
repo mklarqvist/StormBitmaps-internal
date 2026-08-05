@@ -185,6 +185,31 @@ int main(int argc, char** argv) {
 
     const auto f_bbz = pick(cell_bb(), "occ_sel");
     const auto f_bbp = pick(cell_bb(), "dense");   // portable multi-accumulator; the P1 "all-bitmap" reference
+
+    /* --- zone-map ablation -------------------------------------------------
+     * The zone map (1 bit per 512-bit bin, built unconditionally by build_row)
+     * is the project's central "move up to planning" mechanism, but until now
+     * the table reported it only against `dense` -- the PORTABLE multi-
+     * accumulator. On ARM that understates the no-zone-map baseline, because
+     * the best index-free kernel is neon_u8, not dense. Comparing a planned
+     * kernel against a deliberately weaker unplanned one would flatter the
+     * mechanism for the wrong reason.
+     *
+     * So time, for each cell that has one, the best variant that uses NO side
+     * structure alongside the one that does. `needs_rank` in the registry marks
+     * every variant reading rank or occ, which is exactly the set to ablate.
+     * pick_opt returns null when a variant is absent (e.g. NEON forms on x86)
+     * rather than silently falling back to the scalar reference and reporting
+     * it as the ablated baseline. */
+    auto pick_opt = [](auto list, const char* nm) -> decltype(list.v[0].fn) {
+        for (size_t i = 0; i < list.n; ++i)
+            if (std::string(list.v[i].name) == nm) return list.v[i].fn;
+        return nullptr;
+    };
+    const auto f_bb_free = pick_opt(cell_bb(), "neon_u8");  // best index-free B x B
+    const auto f_bs_occ  = pick_opt(cell_bs(), "occ");      // B x S WITH zone map
+    const auto f_br_free = pick_opt(cell_br(), "neon");     // B x R without rank/occ
+    const auto f_br_occ  = pick_opt(cell_br(), "occ");      // B x R with zone map
     const auto f_bs  = pick(cell_bs(), "ilp8");
     const auto f_br  = pick(cell_br(), "hybrid4");
     const auto f_bw  = pick(cell_bw(), "skip");
@@ -272,6 +297,36 @@ int main(int argc, char** argv) {
     std::printf("  vs CRoaring(run_optimize): %8.2fx\n", t_roro / best.t);
     std::printf("  vs CRoaring(default):      %8.2fx\n", t_ro   / best.t);
     std::printf("  vs storm all-bitmap:       %8.2fx   [claim P1]\n", t_bbp / best.t);
+
+    // --- zone-map ablation --------------------------------------------------
+    const double t_bbf = f_bb_free ? timeit([&](const P& p){ return f_bb_free(c.rows[p.d].B(), c.rows[p.s].B()); }) : 0.0;
+    const double t_bso = f_bs_occ  ? timeit([&](const P& p){ return f_bs_occ (c.rows[p.d].B(), c.rows[p.s].S()); }) : 0.0;
+    const double t_brf = f_br_free ? timeit([&](const P& p){ return f_br_free(c.rows[p.d].B(), c.rows[p.s].R()); }) : 0.0;
+    const double t_bro = f_br_occ  ? timeit([&](const P& p){ return f_br_occ (c.rows[p.d].B(), c.rows[p.s].R()); }) : 0.0;
+
+    std::printf("\nZONE-MAP ABLATION  (index-free vs index-using, same cell)\n");
+    std::printf("%-28s %10s %10s %10s\n", "cell", "no-index", "indexed", "speedup");
+    auto abl = [&](const char* n, double free_t, double idx_t) {
+        if (free_t <= 0.0 || idx_t <= 0.0) { std::printf("%-28s %10s %10s %10s\n", n, "n/a", "n/a", "--"); return; }
+        std::printf("%-28s %10.2f %10.2f %9.2fx\n", n, free_t, idx_t, free_t / idx_t);
+    };
+    abl("B x B  neon_u8 -> occ_sel", t_bbf, t_bbz);
+    abl("B x S  ilp8    -> occ",     t_bs,  t_bso);
+    abl("B x R  neon    -> occ",     t_brf, t_bro);
+    abl("B x R  neon    -> hybrid4", t_brf, t_br);
+
+    // The headline ablation: best cell when zone-map/rank variants are allowed,
+    // against the best cell when they are not. This is the number that says
+    // whether the side structure earns its keep at all on this corpus.
+    double best_free = 1e30;
+    if (t_bbf > 0) best_free = std::min(best_free, t_bbf);
+    if (t_brf > 0) best_free = std::min(best_free, t_brf);
+    best_free = std::min({best_free, t_bs, t_ss, t_sr, t_rr, t_ww, t_bw});
+    std::printf("\nBEST index-free cell:      %8.2f ns/pair\n", best_free);
+    std::printf("BEST overall (indexed):    %8.2f ns/pair\n", best.t);
+    std::printf("  zone map/rank buys:      %8.2fx\n", best_free / best.t);
+    std::printf("  zone map footprint:      %8.3f%% of bitmap bytes\n",
+                100.0 * c.bytes_occ / (c.bytes_B > 0 ? c.bytes_B : 1.0));
 
     for (size_t i = 0; i < rb.size(); ++i) {
         roaring_bitmap_free(rb[i]);
