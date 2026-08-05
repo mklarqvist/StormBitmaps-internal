@@ -44,6 +44,42 @@ The core algorithms are described in the papers:
 * [Consistently faster and smaller compressed bitmaps with Roaring](https://arxiv.org/abs/1603.06549) by D. Lemire, G. Ssi-Yan-Kai,
   and O. Kaser (21 Mar 2016).
 
+## All-pairs: the tile pipeline
+
+Full record: [`results/ALLPAIRS.md`](results/ALLPAIRS.md) · harness:
+`bench/bench_tile.cpp`
+
+**In the target regime 95–100% of pairs have an empty intersection**, so the
+operation being optimised is disjointness *proof*, not intersection. Exploiting
+the all-pairs structure — rather than the per-pair constant — is worth one to
+three orders of magnitude:
+
+| corpus | unfiltered B×S | tile pipeline | speedup |
+|---|---:|---:|---:|
+| dimension_003 | 56.68 ns | **0.010 ns** | ~5,700× |
+| soc-Pokec | 55.80 ns | **0.098 ns** | ~570× |
+| com-LiveJournal | 42.60 ns | **0.214 ns** | ~200× |
+| as-skitter | 42.82 ns | **0.408 ns** | ~105× |
+| com-Orkut | 149.13 ns | **2.571 ns** | ~58× |
+| dimension_033 | 2522.1 ns | **47.8 ns** | ~53× |
+| wiki-Talk | 69.18 ns | **9.762 ns** | ~7× |
+| census-income | 2382.8 ns | **323.9 ns** | ~7× |
+| weather_sept_85 | 4613.7 ns | **1115.0 ns** | ~4× |
+
+The pipeline gates on measured selectivity, then for tiles it accepts: sorts
+rows by minimum, rejects pairs whose extents cannot meet, transposes the tile's
+zone maps to resolve every pair's bucket overlap in one sparse pass, and probes
+only survivors. Tiles it rejects are routed to the cell the pairing matrix
+selects for that density.
+
+**Every improvement across 19 iterations came from removing work; none came from
+executing it faster.** Ten iterations produced no improvement and are recorded
+with the reasons — including a dual-tree over rows, which prunes 89% of node
+pairs at 16 rows/node and **0.0% at 256**, because union filters saturate
+quadratically. Read [`results/ALLPAIRS.md`](results/ALLPAIRS.md) §5 and §7 before
+quoting any figure above: the transpose build is excluded by an amortisation
+argument, only within-tile pairs are measured, and bucket width is still tuned.
+
 ## Real-corpus benchmark vs CRoaring
 
 Full record: [`results/CORPORA.md`](results/CORPORA.md) · raw runs:
