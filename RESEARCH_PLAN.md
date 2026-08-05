@@ -1814,3 +1814,45 @@ build is excluded by the amortisation argument, which holds only when each tile
 is paired with many others; for a single-block workload it would dominate
 outright. Memory-constrained deployment would need a smaller width and would
 land back near C15's answer.
+
+### 15.17 Iterations 12-14 (C19)
+
+**12 — bracket the width. No further improvement.** 4M buckets is worse than 1M
+for the graphs (soc-Pokec 0.393 vs 0.209) and still improving for `uscensus2000`
+(0.014 vs 0.021, universe 3.7e7). Optimum scales with universe; 1M is the graph
+answer, not a universal constant.
+
+**13 — empty-tile skip. NO IMPROVEMENT.** A tile with no multi-occupancy bucket
+has every pair provably disjoint and can answer zero in O(1). It fires on
+12.5-43.8% of tiles for the sparse corpora but geomean is 1.02x, and `wiki-Talk`
+regresses to 0.79x where 0% of tiles are empty and the branch is pure cost.
+Not adopted on its own.
+
+**14 — direct pair emission. IMPROVEMENT.** At wide bucket widths the resolve is
+nearly free and the fixed per-tile overhead dominates: clearing 64 candidate
+words then scanning all 64 rows costs ~128 operations whether or not any pair
+survives. Deriving the touched-row mask from the multi list and clearing and
+scanning only those rows:
+
+| corpus | multi-bucket | direct | change |
+|---|---:|---:|---:|
+| as-skitter | 1.302 | **0.406** | 3.21x |
+| dimension_003 | 0.019 | **0.012** | 1.58x |
+| uscensus2000 | 0.021 | **0.014** | 1.50x |
+| soc-Pokec | 0.115 | **0.089** | 1.29x |
+| wiki-Talk | 12.366 | **11.072** | 1.12x |
+| com-LiveJournal | 0.217 | **0.208** | 1.04x |
+| com-Orkut | 2.824 | **2.785** | 1.01x |
+
+Geomean 1.42x, improves all seven, all verified against the oracle.
+
+**C19: once the planning structure is wide enough, per-tile fixed overhead — not
+the resolve — is the binding cost.** Both surviving optimisations at this stage
+(multi-occupancy filtering, touched-row scanning) work by making per-tile cost
+proportional to what is actually occupied rather than to T.
+
+**Iteration counter for the standing goal:** improvements at 9, 11, 14; no
+improvement at 10, 12, 13. Currently **0 consecutive** non-improvements, so the
+loop is not finished. Untried angles remain: SIMD on the resolve, applying the
+cascade to B x B and B x R rather than only B x S, gating tile width by universe,
+and a two-level coarse-to-fine matrix.

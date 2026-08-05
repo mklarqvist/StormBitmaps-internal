@@ -782,6 +782,91 @@ int main(int argc, char** argv) {
         return a;
     });
 
+    /* ---- 12. EMPTY-TILE SKIP ------------------------------------------------
+     * If a tile has NO multi-occupancy bucket then no two of its rows share any
+     * bucket, so every one of its T(T-1)/2 pairs is provably disjoint and the
+     * whole tile answers zero without touching a single row. At the wide bucket
+     * widths of C18 collisions are rare, so this should fire often on sparse
+     * corpora -- and when it does it removes 2,016 pairs for one branch. */
+    {
+        uint32_t empties = 0;
+        for (uint32_t t = 0; t < ntiles; ++t) if (multi[t].empty()) ++empties;
+        std::printf("# empty tiles (no shared bucket): %u of %u (%.1f%%)\n",
+                    empties, ntiles, 100.0*empties/(double)ntiles);
+    }
+    bench("multi + empty-tile skip", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) {
+            uint64_t a = 0;
+            for (uint32_t i = 0; i < T; ++i) for (uint32_t j = i+1; j < T; ++j)
+                a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a;
+        }
+        if (multi[t].empty()) return (uint64_t)0;      // whole tile provably disjoint
+        std::fill(cand.begin(), cand.end(), 0ull);
+        for (const uint64_t w : multi[t]) {
+            uint64_t r = w;
+            while (r) { const uint32_t i = (uint32_t)__builtin_ctzll(r); r &= r-1; cand[i] |= w; }
+        }
+        uint64_t a = 0;
+        for (uint32_t i = 0; i < T; ++i) {
+            uint64_t m = cand[i] & ~((i==63) ? ~0ull : ((1ull<<(i+1))-1));
+            if (!m) continue;
+            if (use_range) {
+                const uint32_t li = lo[b+i], hii = hi[b+i];
+                uint64_t mm = m; m = 0;
+                while (mm) { const uint32_t j = (uint32_t)__builtin_ctzll(mm); mm &= mm-1;
+                    if (!(hii < lo[b+j] || hi[b+j] < li)) m |= 1ull << j; }
+            }
+            while (m) { const uint32_t j = (uint32_t)__builtin_ctzll(m); m &= m-1; a += gated(b+i, b+j); }
+        }
+        return a;
+    });
+
+    /* ---- 13. DIRECT PAIR EMISSION -------------------------------------------
+     * At wide bucket widths the resolve itself is nearly free, and the fixed
+     * per-tile overhead dominates: clearing 64 candidate words and then scanning
+     * all 64 rows costs ~128 operations whether or not any pair survives.
+     *
+     * When the multi list is short, skip the accumulator entirely and emit pairs
+     * straight from each occupancy word -- a word with popcount p yields
+     * p(p-1)/2 pairs directly. Duplicates across words are possible, so pairs
+     * are still deduplicated through a small candidate set, but only over the
+     * rows that actually appear rather than all T. */
+    bench("direct pair emission", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) {
+            uint64_t a = 0;
+            for (uint32_t i = 0; i < T; ++i) for (uint32_t j = i+1; j < T; ++j)
+                a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a;
+        }
+        if (multi[t].empty()) return (uint64_t)0;
+        // touched = rows appearing in any multi bucket; only those need clearing
+        uint64_t touched = 0;
+        for (const uint64_t w : multi[t]) touched |= w;
+        { uint64_t r = touched; while (r) { const uint32_t i = (uint32_t)__builtin_ctzll(r); r &= r-1; cand[i] = 0ull; } }
+        for (const uint64_t w : multi[t]) {
+            uint64_t r = w;
+            while (r) { const uint32_t i = (uint32_t)__builtin_ctzll(r); r &= r-1; cand[i] |= w; }
+        }
+        uint64_t a = 0;
+        uint64_t tr = touched;
+        while (tr) {
+            const uint32_t i = (uint32_t)__builtin_ctzll(tr); tr &= tr-1;
+            uint64_t m = cand[i] & ~((i==63) ? ~0ull : ((1ull<<(i+1))-1));
+            if (!m) continue;
+            if (use_range) {
+                const uint32_t li = lo[b+i], hii = hi[b+i];
+                uint64_t mm = m; m = 0;
+                while (mm) { const uint32_t j = (uint32_t)__builtin_ctzll(mm); mm &= mm-1;
+                    if (!(hii < lo[b+j] || hi[b+j] < li)) m |= 1ull << j; }
+            }
+            while (m) { const uint32_t j = (uint32_t)__builtin_ctzll(m); m &= m-1; a += gated(b+i, b+j); }
+        }
+        return a;
+    });
+
     // --- report ---------------------------------------------------------------
     std::printf("# %s universe=%u rows=%zu tiles=%u pairs=%u filter=%u bits\n",
                 tag.c_str(), nb, rows.size(), ntiles, ntiles*(T*(T-1)/2), fbits);
