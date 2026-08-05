@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -262,11 +263,33 @@ Pairing select_pairing(const CostModel& m, const RowMeta& a, const RowMeta& b,
         return Pairing::Empty;
     }
 
-    Pairing best = Pairing::BB;
-    double  bestc = predict(m, Pairing::BB, a, b);
+    /* DIAGNOSTIC: STORM_EXCLUDE is a comma-free list of cell letters to remove
+     * from the candidate set -- "bb", "ss", "bbss". Ablating a cell is the only
+     * way to attribute a corpus's loss to a specific misroute: on census1881
+     * the tile policy sends 4.8% of pairs to S x S where the oracle sends 1.1%,
+     * and S x S costs 434 ns/pair there against B x S's 71.6, so that 3.7-point
+     * difference is worth more than its share of the mix suggests. */
+    static const char* excl = std::getenv("STORM_EXCLUDE");
+    auto banned = [](Pairing q) {
+        if (!excl) return false;
+        const char* n = nullptr;
+        switch (q) { case Pairing::BB: n="bb"; break; case Pairing::BS: n="bs"; break;
+                     case Pairing::BR: n="br"; break; case Pairing::BW: n="bw"; break;
+                     case Pairing::SS: n="ss"; break; case Pairing::SR: n="sr"; break;
+                     case Pairing::RR: n="rr"; break; case Pairing::WW: n="ww"; break;
+                     default: return false; }
+        return std::strstr(excl, n) != nullptr;
+    };
+    /* B x B is the seed candidate, as before: it is the only cell that is always
+     * applicable, so it is what the selector must fall back to when every other
+     * cell is uncalibrated. Seeding with B x S instead would hand the decision
+     * to a cell whose predict() is just ns_fixed when its rate is zero. */
+    Pairing best  = banned(Pairing::BB) ? Pairing::BS : Pairing::BB;
+    double  bestc = predict(m, best, a, b);
     for (int i = 0; i < (int)Pairing::Empty; ++i) {
         const Pairing p = (Pairing)i;
         if (m.ns_per_unit[i] <= 0.0) continue;          // uncalibrated: not a candidate
+        if (banned(p)) continue;
         const double c = predict(m, p, a, b);
         if (c < bestc) { bestc = c; best = p; }
     }
