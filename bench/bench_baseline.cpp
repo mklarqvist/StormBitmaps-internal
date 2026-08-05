@@ -169,8 +169,20 @@ int main(int argc, char** argv) {
         rb[i] = roaring_bitmap_create();
         roaring_bitmap_add_many(rb[i], c.rows[i].list.size(), c.rows[i].list.data());
         roaring_bitmap_shrink_to_fit(rb[i]);
+        // Copy BEFORE any Storm promotion pass, so run_optimize() on rbro
+        // sees the same stock-CRoaring starting representation it always
+        // would -- see the long comment at
+        // roaring_bitmap_storm_promote_arrays() (croaring_modified only)
+        // for why promoting before run_optimize regresses it.
         rbro[i] = roaring_bitmap_copy(rb[i]);
         roaring_bitmap_run_optimize(rbro[i]);
+#ifdef STORM_CROARING_MODIFIED
+        // C11 prototype (RESEARCH_PLAN.md 15.3): promote remaining ARRAY
+        // containers to BITSET past the measured AND-cardinality compute
+        // crossover, not CRoaring's memory break-even DEFAULT_MAX_SIZE.
+        roaring_bitmap_storm_promote_arrays(rb[i], -1);
+        roaring_bitmap_storm_promote_arrays(rbro[i], -1);
+#endif
         roaring_bitmap_shrink_to_fit(rbro[i]);
         rb_bytes   += (double)roaring_bitmap_portable_size_in_bytes(rb[i]);
         rbro_bytes += (double)roaring_bitmap_portable_size_in_bytes(rbro[i]);

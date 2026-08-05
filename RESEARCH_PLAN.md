@@ -3188,3 +3188,73 @@ citing.**
 only the block diagonal; holding tile i's transpose resident while streaming
 tiles j > i is the BLIS outer-panel pattern and completes the SYRK. Falsify
 cheaply on the 2-tile case against the oracle before scaling.
+
+---
+
+## 26. A 20-line CRoaring fix erases most of Storm's dense-corpus advantage (C35)
+
+`third_party/croaring_modified/` (the vendored `croaring_amalg` is untouched and
+verified byte-identical). One change: after `run_optimize()`, promote array
+containers with cardinality above a threshold to bitsets —
+`roaring_bitmap_storm_promote_arrays()`, threshold 64 rather than CRoaring's
+`DEFAULT_MAX_SIZE = 4096`.
+
+**Why 4096 is wrong.** It is the point where `sizeof(array) == sizeof(bitset)` —
+a *memory* crossover. For count-only AND the relevant crossover is where the
+scalar array-merge stops beating a fixed-cost bitset popcount, measured at
+**k = 64-128** on this host. CRoaring's threshold is optimal for the objective it
+was chosen for and 30-60x off for ours. (`array_container_intersection_cardinality`
+also has no NEON path in this amalgamation — only `CROARING_IS_X64` is
+vectorised — so the ARM crossover sits lower still.)
+
+Correctness: every pair cross-checked against Storm's oracle-tested kernels, zero
+disagreements on any run.
+
+| corpus | density | stock CR ns | modified CR ns | CR gain | Storm vs stock | **Storm vs modified** |
+|---|---:|---:|---:|---:|---:|---:|
+| census1881 | 1.2e-3 | 1,483.5 | **76.1** | **19.5x** | 13.40x | **0.59x** |
+| census-income | 1.7e-1 | 4,873.1 | **667.3** | **7.3x** | 10.65x | **1.88x** |
+| wikileaks-noquotes | 1.0e-3 | 449.9 | 422.3 | 1.1x | 5.15x | 3.67x |
+| dbpedia-link | 1.6e-6 | 137.1 | 130.7 | 1.0x | 2.44x | 2.79x |
+| uscensus2000 | 8.1e-7 | 16.4 | 21.6 | **0.8x** | 2.27x | 2.76x |
+| as-skitter | 9.1e-6 | 31.3 | 48.4 | **0.6x** | 3.35x | 3.23x |
+
+### 26.1 C35: what this does to the claims
+
+**Storm's dense-corpus advantage was substantially an artifact of a mis-tuned
+constant in the baseline.** On census1881 a 13.40x win becomes a **1.7x loss**.
+On census-income 10.65x becomes 1.88x. This must be stated plainly and the
+CRoaring column in every table re-derived against a *competently tuned*
+baseline — standing rule 9 requires baselines tuned in good faith, and
+`run_optimize()` alone no longer meets that bar now that a better configuration
+is known to exist and takes twenty lines.
+
+**Storm's sparse-corpus advantage is untouched, and slightly improves.**
+as-skitter 3.35 -> 3.23, dbpedia-link 2.44 -> 2.79, uscensus2000 2.27 -> 2.76.
+The regime where this project claims its contribution is unaffected, because the
+promotion helps only where containers are dense.
+
+### 26.2 The finding underneath is better than the one it damages
+
+**The modification is itself density-dependent: 19.5x on dense corpora, 0.6-0.8x
+on sparse ones.** Neither 4096 nor 64 is right. A single fixed container
+threshold is wrong at both ends of the density axis — which is precisely this
+project's thesis, now demonstrated *inside the incumbent* rather than against it.
+
+That reframes C11 from "Roaring gets this wrong" to something stronger and more
+useful: **Roaring needs adaptive selection for the same reason Storm does, and
+the density map predicts where its fixed threshold fails.** A three-line
+adaptive rule in CRoaring would likely beat both configurations, and that is a
+directly contributable upstream improvement.
+
+### 26.3 Consequences
+
+1. **Re-run the 17-corpus benchmark against modified CRoaring.** The headline
+   "1.09-16x over tuned CRoaring" is not defensible until the baseline is
+   competently tuned. Expect the dense end to collapse and the sparse end to hold.
+2. **Report both baselines.** Stock is what a user gets today; modified is what
+   the incumbent can do with a known fix. Quoting only stock overstates Storm.
+3. **Offer the fix upstream**, with the density-dependence documented — it is a
+   real contribution independent of anything Storm claims.
+4. Not yet measured: the modification on the large sparse corpora
+   (enwiki, livejournal, wikipedia_link_en) or on any other ISA.
