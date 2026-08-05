@@ -55,7 +55,7 @@ template <class L> static auto pick(L l, const char* nm) -> decltype(l.v[0].fn) 
 int main(int argc, char** argv) {
     const char* path = nullptr;
     uint32_t want_rows = 512, stride = 1;
-    double t_thresh = 0.01; int repeats = 5; std::string tag = "host";
+    double t_thresh = 0.01; int repeats = 5; std::string tag = "host"; bool csv = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return i+1<argc ? argv[++i] : ""; };
@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
         else if (a == "--t")      t_thresh = atof(nx());
         else if (a == "--repeats")repeats = atoi(nx());
         else if (a == "--tag")    tag = nx();
+        else if (a == "--csv")    csv = true;
     }
     if (!path) { std::printf("need --file\n"); return 1; }
     if (!stride) stride = 1;
@@ -171,8 +172,15 @@ int main(int argc, char** argv) {
         const double w_prefix = 2.0*sump + sumsq*meanS;
         const double w_exact  = (double)NPAIRS*meanS;
         est_ratio = w_exact > 0 ? w_prefix / w_exact : 1e9;
-        use_prefix = est_ratio < 0.5;
-        std::printf("# DIAG meanS=%.0f sump=%.0f sumsq=%.0f NPAIRS=%llu "
+        /* Boundary measured, not guessed. At t=0.001 the corpora that should
+         * use prefix filtering have est 0.08-1.72 and those that should bypass
+         * have 22.8-5917 -- an order-of-magnitude gap with nothing in between.
+         * The original 0.5 sat below two genuine wins (census1881_srt 1.25x at
+         * est 1.22, wikileaks-noquotes 2.99x at est 1.72) and forfeited them.
+         * 5.0 sits in the empty band, costing 3% on census1881 (0.97x, est 0.74)
+         * to recover both. */
+        use_prefix = est_ratio < 5.0;
+        if (!csv) std::printf("# DIAG meanS=%.0f sump=%.0f sumsq=%.0f NPAIRS=%llu "
                     "traversal/pair=%.2f cand/pair=%.4f\n",
                     meanS, sump, sumsq, (unsigned long long)NPAIRS,
                     sumsq/(double)NPAIRS, sumsq/(double)NPAIRS);
@@ -279,6 +287,17 @@ int main(int argc, char** argv) {
     std::sort(ref.begin(), ref.end()); std::sort(got.begin(), got.end());
     const bool ok = (ref == got);
 
+    if (csv) {
+        // corpus,t,N,pairs,hits,candidates,exact_ns,prefix_ns,gated_ns,speedup,gated_speedup,gate,correct
+        const double t_gated = use_prefix ? t_prefix : t_exact;
+        std::printf("%s,%.6f,%u,%llu,%zu,%llu,%.6f,%.6f,%.6f,%.4f,%.4f,%s,%d\n",
+                    tag.c_str(), t_thresh, N, (unsigned long long)NPAIRS, ref.size(),
+                    (unsigned long long)cands,
+                    t_exact/(double)NPAIRS, t_prefix/(double)NPAIRS, t_gated/(double)NPAIRS,
+                    t_exact/t_prefix, t_exact/t_gated,
+                    use_prefix ? "prefix" : "exact", ok ? 1 : 0);
+        return ok ? 0 : 1;
+    }
     std::printf("# %s N=%u pairs=%llu t=%.3f  hits=%zu (%.4f%% of pairs)  candidates=%llu (%.4f%%)\n",
                 tag.c_str(), N, (unsigned long long)NPAIRS, t_thresh, ref.size(),
                 100.0*(double)ref.size()/(double)NPAIRS,

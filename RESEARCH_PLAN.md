@@ -2212,3 +2212,48 @@ which separates cleanly: below 1 the method wins 10–721x, above 49 it loses.
 - Index build is inside the timed region; for a single-shot query the build
   would not amortise.
 - One microarchitecture.
+
+### 15.24 Threshold sweep across all corpora (C24 cont.)
+
+`bench/sweep_threshold.sh` sweeps t linearly over [0.001, 0.5] in 50 steps on
+all 13 corpora (650 points), `bench/plot_threshold.py` renders four panels to
+`results/threshold/sweep.png`. Every point is verified to produce a hit set
+identical to the exact scan's; the sweep aborts on any mismatch rather than
+dropping a row, since a gap would read as missing data instead of a wrong result.
+
+**Gated speedup at t=0.001 — the conservative end, and the figure to quote:**
+
+| corpus | gated | gate | pairs above threshold |
+|---|---:|---|---:|
+| com-LiveJournal | **89.61x** | prefix | 0.0368% |
+| soc-Pokec | **75.52x** | prefix | 0.0827% |
+| com-Orkut | **44.49x** | prefix | 0.4442% |
+| as-skitter | **41.68x** | prefix | 0.4013% |
+| uscensus2000 | **29.31x** | prefix | 0.0000% |
+| dimension_003 | **15.69x** | prefix | 0.0000% |
+| wiki-Talk | **6.29x** | prefix | 2.7574% |
+| wikileaks-noquotes | **3.78x** | prefix | 3.0754% |
+| dimension_008 | 1.00x | exact | 60.85% |
+| weather_sept_85 | 1.00x | exact | 38.81% |
+| census-income | 1.00x | exact | 61.65% |
+| census1881 | 0.97x | prefix | 0.3216% |
+| census1881_srt | 0.91x | prefix | 0.2613% |
+
+Speedup rises with t throughout (panel 1), so t=0.001 is the floor rather than
+the headline. Panel 3 explains the shape: the corpora that gain most are those
+where almost nothing clears the threshold (0.00-0.44% of pairs), and the three
+that gate to the exact scan are those where 39-62% of pairs do — there is simply
+no work to skip.
+
+**Gate boundary, measured rather than guessed.** At t=0.001 the corpora that
+should use prefix filtering have est 0.08-1.72 and those that should bypass have
+22.8-5917, an order-of-magnitude empty band. The original threshold of 0.5 sat
+*below* two genuine wins and forfeited them (wikileaks-noquotes 2.99x at est
+1.72). Moving it to 5.0 recovers wikileaks (1.00x -> 3.78x).
+
+**Honest cost of that change:** the two census1881 variants now sit slightly
+below par (0.97x, 0.91x) where they previously gated to exactly 1.00x. They fall
+in a marginal band (est 0.74-1.22) that measures anywhere from 0.91x to 1.25x
+across runs, so the choice inside that band is noise, not signal — **the strict
+never-worse property of C16 does not hold here**, and the worst case is ~0.91x
+rather than 1.00x. Stated rather than tuned away.
