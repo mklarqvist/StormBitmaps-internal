@@ -1882,3 +1882,56 @@ excluded rather than reported.)
 
 **Goal counter: 1 consecutive non-improvement.** Improvements at iterations 9,
 11, 14; none at 10, 12, 13, 15.
+
+### 15.19 Iterations 16-19 — four failures, loop terminates (C20)
+
+**16 — prefetch surviving pairs. FAILED, 1.5-1.8x SLOWER.** Surviving pairs are
+known before any data is touched, so the dense row's bitmap words can be
+requested ahead of the probe. It loses everywhere (com-Orkut 5.043 vs 2.711,
+wiki-Talk 16.914 vs 9.979): the prefetch pass walks the list a second time and
+requests addresses the zone map then rejects. Prefetching in front of a filter
+prefetches precisely the work the filter exists to avoid.
+
+**17 — unrolled resolve (two occupancy words per iteration).** 0.98-1.04x.
+Within noise; the ctz/clear-lowest dependency chain was not the bottleneck.
+
+**18 — popcount-sorted multi list.** ~1.02x, mixed sign. No effect.
+
+**19 — popcount-2 fast path.** Logically sound (a 2-row word needs only
+`cand[i] |= w` for the lower row, since the higher row's candidates are masked
+off anyway) and correctness-verified, but medians over 5 independent processes
+give **1.009x, 1.010x, 1.084x, 1.010x** — geomean 1.03x, inside the documented
+run-to-run band. Not a defensible improvement.
+
+**C20: five consecutive iterations without improvement (15-19). The depth loop
+terminates.**
+
+Final configuration: C16 gate -> within-tile lo-sort -> adaptive cascade
+(range, then tile transpose when enough pairs survive) -> multi-occupancy
+resolve -> direct pair emission, at tuned bucket width.
+
+| corpus | ilp8 ns | final ns | speedup |
+|---|---:|---:|---:|
+| dimension_003 | 56.68 | 0.010 | ~5,700x |
+| soc-Pokec | 55.80 | 0.098 | ~570x |
+| com-LiveJournal | 42.60 | 0.214 | ~200x |
+| as-skitter | 42.82 | 0.408 | ~105x |
+| com-Orkut | 149.13 | 2.571 | ~58x |
+| wiki-Talk | 69.18 | 9.762 | ~7x |
+
+**What the whole campaign found.** Across iterations 1-19 the improvements came
+from removing work, never from executing it faster: the winners were the range
+predicate (two comparisons), resolving all pairs at once by transposing the tile,
+visiting only multi-occupancy buckets, and scaling per-tile cost to occupied
+rows rather than to T. Every attempt at a faster *mechanism* -- hashing,
+prefetch, unrolling, dedup, wide tiles, adaptive filter sizing, group
+collapsing, probe-and-commit -- failed. That is the same result the pairing
+matrix reported at pair level (C1: SIMD wins 0 of 25 asymmetric points), now
+reproduced at tile level.
+
+**The four caveats bounding every number above** are unchanged and important:
+the transpose build is excluded by an amortisation argument that holds only for
+genuine all-pairs; only within-tile pairs are measured; bucket width is still a
+tuned parameter and iteration 15 could not derive it, so this is not yet
+deployable on unknown data; and at 1M buckets the side structure is 128 kB/row.
+One microarchitecture throughout.

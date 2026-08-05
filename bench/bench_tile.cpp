@@ -867,6 +867,143 @@ int main(int argc, char** argv) {
         return a;
     });
 
+    /* ---- 14-16: three more angles ------------------------------------------ */
+
+    // 14. PREFETCH. Surviving pairs are known before any data is touched, so the
+    // dense row's bitmap words can be requested ahead of the probe loop.
+    bench("direct + prefetch", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) { uint64_t a=0;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a; }
+        if (multi[t].empty()) return (uint64_t)0;
+        uint64_t touched = 0;
+        for (const uint64_t w : multi[t]) touched |= w;
+        { uint64_t r=touched; while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]=0ull;} }
+        for (const uint64_t w : multi[t]) { uint64_t r=w;
+            while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]|=w;} }
+        uint64_t a = 0, tr = touched;
+        while (tr) {
+            const uint32_t i=(uint32_t)__builtin_ctzll(tr); tr&=tr-1;
+            uint64_t m = cand[i] & ~((i==63)?~0ull:((1ull<<(i+1))-1));
+            if (!m) continue;
+            const BitmapView B = rows[b+i].B();
+            while (m) {
+                const uint32_t j=(uint32_t)__builtin_ctzll(m); m&=m-1;
+                if (use_range && (hi[b+i] < lo[b+j] || hi[b+j] < lo[b+i])) continue;
+                const ListView S = rows[b+j].S();
+                for (uint32_t k = 0; k < S.n; ++k)
+                    __builtin_prefetch(&B.w[S.v[k] >> 6], 0, 1);
+                uint64_t h = 0;
+                for (uint32_t k = 0; k < S.n; ++k) {
+                    const uint32_t x = S.v[k];
+                    if (!occ[b+i].maybe(x)) continue;
+                    h += (B.w[x>>6] >> (x&63)) & 1ull;
+                }
+                a += h;
+            }
+        }
+        return a;
+    });
+
+    // 15. UNROLLED RESOLVE. Two occupancy words per iteration to expose ILP
+    // across the otherwise serial ctz/clear-lowest-bit dependency chain.
+    bench("direct + unrolled resolve", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) { uint64_t a=0;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a; }
+        const auto& mv = multi[t];
+        if (mv.empty()) return (uint64_t)0;
+        uint64_t touched = 0;
+        for (const uint64_t w : mv) touched |= w;
+        { uint64_t r=touched; while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]=0ull;} }
+        size_t k2 = 0;
+        for (; k2 + 1 < mv.size(); k2 += 2) {
+            uint64_t r0 = mv[k2], r1 = mv[k2+1];
+            const uint64_t w0 = r0, w1 = r1;
+            while (r0 | r1) {
+                if (r0) { const uint32_t i=(uint32_t)__builtin_ctzll(r0); r0&=r0-1; cand[i]|=w0; }
+                if (r1) { const uint32_t i=(uint32_t)__builtin_ctzll(r1); r1&=r1-1; cand[i]|=w1; }
+            }
+        }
+        for (; k2 < mv.size(); ++k2) { uint64_t r=mv[k2];
+            while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]|=mv[k2];} }
+        uint64_t a = 0, tr = touched;
+        while (tr) {
+            const uint32_t i=(uint32_t)__builtin_ctzll(tr); tr&=tr-1;
+            uint64_t m = cand[i] & ~((i==63)?~0ull:((1ull<<(i+1))-1));
+            if (!m) continue;
+            const uint32_t li=lo[b+i], hii=hi[b+i];
+            while (m) { const uint32_t j=(uint32_t)__builtin_ctzll(m); m&=m-1;
+                if (use_range && (hii < lo[b+j] || hi[b+j] < li)) continue;
+                a += gated(b+i, b+j); }
+        }
+        return a;
+    });
+
+    // 18. TWO-LEVEL: sort the multi list by popcount ascending, so cheap words
+    // (2 rows) are applied before expensive ones and cand fills incrementally.
+    std::vector<std::vector<uint64_t>> multiS(ntiles);
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        multiS[t] = multi[t];
+        std::sort(multiS[t].begin(), multiS[t].end(), [](uint64_t a, uint64_t b){
+            return __builtin_popcountll(a) < __builtin_popcountll(b); });
+    }
+    bench("direct + popcount-sorted", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) { uint64_t a=0;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a; }
+        const auto& mv = multiS[t];
+        if (mv.empty()) return (uint64_t)0;
+        uint64_t touched = 0;
+        for (const uint64_t w : mv) touched |= w;
+        { uint64_t r=touched; while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]=0ull;} }
+        for (const uint64_t w : mv) { uint64_t r=w;
+            while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]|=w;} }
+        uint64_t a=0, tr=touched;
+        while (tr) { const uint32_t i=(uint32_t)__builtin_ctzll(tr); tr&=tr-1;
+            uint64_t m = cand[i] & ~((i==63)?~0ull:((1ull<<(i+1))-1));
+            if (!m) continue;
+            const uint32_t li=lo[b+i], hii=hi[b+i];
+            while (m) { const uint32_t j=(uint32_t)__builtin_ctzll(m); m&=m-1;
+                if (use_range && (hii < lo[b+j] || hi[b+j] < li)) continue;
+                a += gated(b+i, b+j); } }
+        return a;
+    });
+
+    // 19. PAIRS-FIRST: for popcount-2 words, emit the single pair directly
+    // instead of routing it through the candidate accumulator at all.
+    bench("direct + pc2 fast path", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) { uint64_t a=0;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a; }
+        const auto& mv = multi[t];
+        if (mv.empty()) return (uint64_t)0;
+        uint64_t touched = 0;
+        for (const uint64_t w : mv) touched |= w;
+        { uint64_t r=touched; while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]=0ull;} }
+        for (const uint64_t w : mv) {
+            if (__builtin_popcountll(w) == 2) {          // exactly one pair
+                const uint32_t i = (uint32_t)__builtin_ctzll(w);
+                cand[i] |= w;
+                continue;
+            }
+            uint64_t r=w; while(r){const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]|=w;}
+        }
+        uint64_t a=0, tr=touched;
+        while (tr) { const uint32_t i=(uint32_t)__builtin_ctzll(tr); tr&=tr-1;
+            uint64_t m = cand[i] & ~((i==63)?~0ull:((1ull<<(i+1))-1));
+            if (!m) continue;
+            const uint32_t li=lo[b+i], hii=hi[b+i];
+            while (m) { const uint32_t j=(uint32_t)__builtin_ctzll(m); m&=m-1;
+                if (use_range && (hii < lo[b+j] || hi[b+j] < li)) continue;
+                a += gated(b+i, b+j); } }
+        return a;
+    });
+
     // --- report ---------------------------------------------------------------
     std::printf("# %s universe=%u rows=%zu tiles=%u pairs=%u filter=%u bits\n",
                 tag.c_str(), nb, rows.size(), ntiles, ntiles*(T*(T-1)/2), fbits);
