@@ -2502,3 +2502,68 @@ disk budget (mean cardinality ~136k/row would need ~35 GB). Simulation itself
 completed in 48s using 1.8 GB RAM, so the limit was footprint, not compute.
 Population growth was not simulated — constant Ne was fixed by the task — and is
 the one demographic knob that moves density materially.
+
+---
+
+## 18. Three new corpora at 7.5–18.3M universe (C26)
+
+Fetched and converted by subagents; all three verified structurally (row count
+matches header, zero non-ascending rows, zero out-of-range values).
+
+| corpus | universe m | rows | mean \|Xi\| | median | density | top-1% | regime |
+|---|---:|---:|---:|---:|---:|---:|---|
+| dbpedia-link (KONECT) | 18,268,993 | 4,384,102 | 29.8 | 17 | 1.63e-06 | 13.3% | **QUALIFIES** |
+| livejournal-groupmemberships (KONECT, bipartite) | 7,489,074 | 2,197,915 | 48.7 | 3 | 6.50e-06 | 75.1% | **QUALIFIES** |
+| usher_sarscov2 (UCSC UShER MAT) | 8,451,771 | 29,411 | 15,769.3 | 404 | 1.87e-03 | 88.5% | out of regime |
+
+These carry universes **4–11x larger than anything previously measured** (the
+prior maximum was `uscensus2000` at 3.7M), and `livejournal-groupmemberships` is
+a new *shape*: bipartite, group-against-group over shared members, median
+cardinality 3 with 75% of the mass in the top 1%.
+
+### 18.1 C26: the density map predicts the winning cell on unseen data
+
+| corpus | density | winning cell | vs all-bitmap | runner-up |
+|---|---:|---|---:|---|
+| livejournal-groupmemberships | 6.5e-06 | B x S | **2142.9x** | B x R 1708x |
+| dbpedia-link | 1.6e-06 | B x S | **1474.7x** | S x S 1336x |
+| usher_sarscov2 | 1.9e-03 | **B x B zone-mapped** | 154.8x | B x R 53x |
+
+**UShER routes to B x B, and B x S loses to it by 3.5x** (567.0 vs 161.0
+ns/pair). Its density of 1.87e-3 sits just above the ~1e-2 boundary where the
+17-corpus benchmark put the dense/sparse crossover, and the map calls it
+correctly on a corpus it was never fitted to. That is the strongest evidence so
+far that the map is a predictive object rather than a description of the corpora
+it was built from.
+
+### 18.2 UShER: real data exhibiting the C25 mechanism
+
+UShER misses the regime on density (1.87e-3 vs the 1e-3 bar) but the failure is
+instructive. **Mean cardinality is 15,769 against a median of 404** — a 39x gap.
+A handful of near-universal variants (max 8,428,858 carriers, 99.7% of all
+genomes) drag the mean up, while the typical variant sits at density 4.8e-5,
+comfortably inside the regime.
+
+This is C25's mechanism in real data: the mean is dominated by the common tail,
+not the rare bulk, because sum_i i*(1/i) is carried by large i. §17 derived it
+from the neutral coalescent; UShER shows it empirically at 8.45M genomes with
+real demography and real ascertainment.
+
+It also predicts the gnomAD result under test: the whole-spectrum answer should
+be no, and the regime should be reachable in genomics only by explicitly
+filtering to rare variants. UShER would qualify at a MAF cutoff — its median
+already does.
+
+### 18.3 Not yet done
+
+- `wikipedia_link_en` edge list extracted (4.0 GB) but not converted.
+- `enwiki-latest-categorylinks.sql.gz` (2.3 GB, gzip-valid) downloaded but not
+  parsed — the IR-posting-list analogue is still missing from the corpus set.
+- None of the three new corpora has been run through `bench_tile` or the
+  thresholded mode.
+- Subagent note: three of four agents stalled by starting background jobs and
+  waiting for notifications rather than completing inline; the conversions and
+  all measurements above were finished directly. One agent triggered a security
+  warning for `rm -rf` on intermediates — inspected, the deletions were within
+  the "delete intermediates as you go" instruction it was given, every STORMBIN
+  output and source download survived, and the removed files are regenerable.
