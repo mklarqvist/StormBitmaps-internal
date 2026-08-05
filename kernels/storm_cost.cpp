@@ -7,6 +7,7 @@
 #include "kernels/storm_gen.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -55,6 +56,16 @@ const char* name_of(Pairing p) {
  * under independence, from the two occupancy fractions. Approximate, O(1), and
  * good enough to rank -- which is all a selector needs.
  */
+/* How many element-units one bitmap touch costs. See work_units(). Read once;
+ * 0 reproduces the pre-memory-term model exactly. */
+static double probe_weight() {
+    static const double v = [] {
+        if (const char* e = std::getenv("STORM_PROBE_WEIGHT")) return std::atof(e);
+        return 0.0;
+    }();
+    return v;
+}
+
 static double bb_expected_bins(const RowMeta& a, const RowMeta& b) {
     const double bins = std::max(1.0, (double)std::max(a.n_words, b.n_words) / 8.0);
     const double fa = std::min(1.0, (double)a.n_nonzero_w / std::max(1u, a.n_words));
@@ -101,11 +112,60 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
     const double d_runs = a_sparse ? rb : ra;      // denser side
     const double d_ewah = a_sparse ? wb : wa;
 
+    /* A MEMORY term for the bitmap-probing cells.
+     *
+     * B x S walks the sparse side's positions and probes the dense side's
+     * bitmap at each one, so its cost has two parts that scale differently:
+     * s_card arithmetic operations, and one bitmap TOUCH per distinct word the
+     * sparse side occupies. At universe 2^14 the bitmap is 2 kB and every touch
+     * is an L1 hit, so the second term vanishes and cost is ~s_card. At 1.3e8
+     * the bitmap is 15.8 MB and every touch is a miss, so the second term is
+     * everything -- and the ratio between B x S and a cell that streams
+     * sequentially is a ratio of MISS counts, not of element counts.
+     *
+     * That divergence is what three separate attempts to fix the model by
+     * recalibrating could not capture (see calibrate_on_rows in storm_cost.h):
+     * a single ns_per_unit cannot be both, so measuring it on real data made
+     * predictions more accurate and selection worse.
+     *
+     * n_nonzero_w is already in RowMeta and is exactly the count wanted: the
+     * number of distinct 64-bit words the row's positions occupy. probe_weight()
+     * is how many element-units one such touch costs.
+     *
+     * MEASURED, AND IT IS A NET LOSS. Default 0, which reproduces the previous
+     * model exactly; STORM_PROBE_WEIGHT overrides. Per-tile vs fixed Roaring,
+     * medians of three:
+     *
+     *                          w=0    w=1    w=4   w=16
+     *   dimension_008         1.19x  1.16x  1.08x  0.99x
+     *   weather_sept_85       1.32x  1.17x  1.21x  1.06x
+     *   soc-Pokec             2.48x  2.34x  2.44x  2.47x
+     *   msprime_10k           3.94x  3.87x  3.89x  3.88x
+     *   dimension_033         3.04x  1.17x  0.48x  0.46x
+     *   census1881            0.87x  0.94x  0.93x  0.89x   <- helps
+     *   as-skitter            1.05x  1.15x  1.11x  1.20x   <- helps
+     *   enwiki-categorylinks  3.35x  3.58x  3.20x  3.12x   <- helps
+     *
+     * w=0 is best on 5 of 8. dimension_033 shows what goes wrong: any positive
+     * weight makes it abandon B x R (72% of pairs, 3.04x) for a B x S / B x W /
+     * W x W mixture at 0.46x. The touch term is charged to B x R as well as
+     * B x S, but B x R's touches are SEQUENTIAL within a run -- one miss brings
+     * in a line the next several probes hit -- while B x S's are scattered.
+     * Charging both the same per-touch price is what inverts the ranking.
+     *
+     * So the diagnosis was right that the model lacks a memory term, and wrong
+     * that n_nonzero_w is it. The quantity that distinguishes these cells is
+     * distinct CACHE LINES touched, not distinct words, and it differs between
+     * a run-structured row and a scattered one at the same n_nonzero_w. RowMeta
+     * does not carry it and it cannot be derived from what RowMeta has. */
+    const double s_touch = a_sparse ? (double)a.n_nonzero_w : (double)b.n_nonzero_w;
+    const double pw = probe_weight();
+
     switch (p) {
         case Pairing::BB: return bb_expected_bins(a, b);
-        case Pairing::BS: return s_card;
-        case Pairing::BR: return s_runs;
-        case Pairing::BW: return s_ewah;
+        case Pairing::BS: return s_card + pw * s_touch;
+        case Pairing::BR: return s_runs + pw * s_touch;
+        case Pairing::BW: return s_ewah + pw * s_touch;
         // Integer log2, NOT std::log2. The first version of this called the
         // libm double routine inside the selection loop and selection cost
         // measured 24 ns/pair -- 36% of runtime against a 2% gate. Standing
