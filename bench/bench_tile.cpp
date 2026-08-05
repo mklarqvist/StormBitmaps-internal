@@ -697,6 +697,91 @@ int main(int argc, char** argv) {
         }
     }
 
+    /* ---- 11. MULTI-OCCUPANCY BUCKETS ONLY -----------------------------------
+     * The resolve visits every occupied bucket, but a bucket held by exactly one
+     * row yields `cand[i] |= (1<<i)` -- itself, no pair. On sparse data almost
+     * every bucket is a singleton: as-skitter puts 64*15 = 960 set bits into
+     * 16,384 buckets, so the overwhelming majority of the resolve's work
+     * produces no candidate at all.
+     *
+     * Keep a compact list of the buckets whose occupancy word has popcount >= 2,
+     * built once with the transpose, and iterate only those. This also replaces
+     * the nonempty-summary scan with a dense array walk. */
+    std::vector<std::vector<uint64_t>> multi(ntiles), multiU(ntiles);
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        for (size_t b2 = 0; b2 < allT[t].size(); ++b2)
+            if (__builtin_popcountll(allT[t][b2]) >= 2) multi[t].push_back(allT[t][b2]);
+        /* `cand[i] |= w` is idempotent, so a repeated occupancy word contributes
+         * nothing after its first application. Clustered data produces the same
+         * row-set in many adjacent buckets, so deduplicating is exact and can
+         * only shrink the resolve. Cost is one sort at build time, which the
+         * transpose already amortises across every block the tile joins. */
+        multiU[t] = multi[t];
+        std::sort(multiU[t].begin(), multiU[t].end());
+        multiU[t].erase(std::unique(multiU[t].begin(), multiU[t].end()), multiU[t].end());
+    }
+    {
+        double sh = 0; for (uint32_t t = 0; t < ntiles; ++t) sh += (double)multi[t].size();
+        double su = 0; for (uint32_t t = 0; t < ntiles; ++t) su += (double)multiU[t].size();
+        std::printf("# multi-occupancy buckets: %.0f of %zu per tile (%.2f%%), "
+                    "distinct %.0f (%.1f%% of multi)\n",
+                    sh/ntiles, allT[0].size(), 100.0*sh/ntiles/(double)allT[0].size(),
+                    su/ntiles, sh > 0 ? 100.0*su/sh : 0.0);
+    }
+    bench("multi-bucket resolve", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) {
+            uint64_t a = 0;
+            for (uint32_t i = 0; i < T; ++i) for (uint32_t j = i+1; j < T; ++j)
+                a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a;
+        }
+        std::fill(cand.begin(), cand.end(), 0ull);
+        for (const uint64_t w : multi[t]) {
+            uint64_t r = w;
+            while (r) { const uint32_t i = (uint32_t)__builtin_ctzll(r); r &= r-1; cand[i] |= w; }
+        }
+        uint64_t a = 0;
+        for (uint32_t i = 0; i < T; ++i) {
+            uint64_t m = cand[i] & ~((i==63) ? ~0ull : ((1ull<<(i+1))-1));
+            if (use_range) {
+                const uint32_t li = lo[b+i], hii = hi[b+i];
+                uint64_t mm = m; m = 0;
+                while (mm) { const uint32_t j = (uint32_t)__builtin_ctzll(mm); mm &= mm-1;
+                    if (!(hii < lo[b+j] || hi[b+j] < li)) m |= 1ull << j; }
+            }
+            while (m) { const uint32_t j = (uint32_t)__builtin_ctzll(m); m &= m-1; a += gated(b+i, b+j); }
+        }
+        return a;
+    });
+
+    bench("multi + dedup", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) {
+            uint64_t a = 0;
+            for (uint32_t i = 0; i < T; ++i) for (uint32_t j = i+1; j < T; ++j)
+                a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a;
+        }
+        std::fill(cand.begin(), cand.end(), 0ull);
+        for (const uint64_t w : multiU[t]) {
+            uint64_t r = w;
+            while (r) { const uint32_t i = (uint32_t)__builtin_ctzll(r); r &= r-1; cand[i] |= w; }
+        }
+        uint64_t a = 0;
+        for (uint32_t i = 0; i < T; ++i) {
+            uint64_t m = cand[i] & ~((i==63) ? ~0ull : ((1ull<<(i+1))-1));
+            if (use_range) {
+                const uint32_t li = lo[b+i], hii = hi[b+i];
+                uint64_t mm = m; m = 0;
+                while (mm) { const uint32_t j = (uint32_t)__builtin_ctzll(mm); mm &= mm-1;
+                    if (!(hii < lo[b+j] || hi[b+j] < li)) m |= 1ull << j; }
+            }
+            while (m) { const uint32_t j = (uint32_t)__builtin_ctzll(m); m &= m-1; a += gated(b+i, b+j); }
+        }
+        return a;
+    });
+
     // --- report ---------------------------------------------------------------
     std::printf("# %s universe=%u rows=%zu tiles=%u pairs=%u filter=%u bits\n",
                 tag.c_str(), nb, rows.size(), ntiles, ntiles*(T*(T-1)/2), fbits);

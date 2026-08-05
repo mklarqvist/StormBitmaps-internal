@@ -1749,3 +1749,68 @@ All wide-tile results verified against a reference over the identical pair set.
 **Status: T=256 is not adopted.** A 1.20x geomean that regresses on 40% of
 corpora fails the genericity bar set in C16, and the mechanism to fix it (gate on
 tile width) is not yet built.
+
+### 15.16 Multi-occupancy resolve and bucket width — C15's rule reverses in the tile regime (C18)
+
+Two further iterations on the tile pipeline, both verified against the oracle on
+the identical pair set.
+
+**Iteration 9 — resolve only multi-occupancy buckets. IMPROVEMENT.** The resolve
+visited every occupied bucket, but a bucket held by exactly one row yields
+`cand[i] |= (1<<i)` — itself, no pair. Only **0.08-5.6% of buckets hold two or
+more rows**, so nearly all of that work produced no candidate. Keeping a compact
+list of multi-occupancy words, built once with the transpose:
+
+| corpus | amortised | multi-bucket | change |
+|---|---:|---:|---:|
+| dimension_003 | 0.132 | **0.039** | 3.38x |
+| com-LiveJournal | 1.819 | **1.256** | 1.45x |
+| soc-Pokec | 2.255 | **1.615** | 1.40x |
+| as-skitter | 2.399 | **2.007** | 1.20x |
+| uscensus2000 | 1.088 | **0.958** | 1.14x |
+| com-Orkut | 24.586 | **23.010** | 1.07x |
+| wiki-Talk | 24.738 | **23.820** | 1.04x |
+
+**Iteration 10 — deduplicate the multi list. NO IMPROVEMENT.** `cand[i] |= w` is
+idempotent so repeated occupancy words are exactly removable, but distinct words
+are already 50-97% of the list and the sort costs what the skipping saves:
+geomean 1.01x (range 0.95-1.11x). Not adopted.
+
+**Iteration 11 — bucket width. LARGE IMPROVEMENT, and it reverses C15.**
+
+| corpus | 16k | 65k | 262k | **1M** |
+|---|---:|---:|---:|---:|
+| uscensus2000 | 0.372 | 0.165 | 0.248 | **0.021** |
+| dimension_003 | 0.040 | 0.027 | 0.052 | **0.018** |
+| soc-Pokec | 1.873 | 0.654 | 0.242 | **0.156** |
+| com-LiveJournal | 1.573 | 0.716 | 1.108 | **0.227** |
+| as-skitter | 2.228 | 1.018 | 0.580 | **0.412** |
+| com-Orkut | 20.658 | 9.994 | 4.923 | **2.870** |
+| wiki-Talk | 27.385 | 19.352 | 14.504 | **10.731** |
+
+1M bits (128 kB/row) wins on all seven, by 2.2x-17.7x over the 16k that C15
+selected. Bracketed at 4M: worse for the graphs (soc-Pokec 0.393 vs 0.209) but
+still improving for `uscensus2000` (0.014 vs 0.021), whose universe is 3.7e7 —
+**the optimum scales with the universe, not with a constant.**
+
+**C18: in the tile regime, wider is better; in the per-pair regime it is not.**
+C15 found a fixed 2 kB beat wider filters because the probe had to hold the
+filter in cache on every pair. Neither pressure survives here: the transpose is
+built once and amortised across every block the tile joins, and the resolve
+touches only multi-occupancy buckets — of which a wider filter produces *fewer*,
+because collisions are what create them. Widening therefore cuts both the
+resolve and the false-candidate rate at once. The same structure has opposite
+tuning in the two regimes, which is a result about the access pattern rather
+than about the data.
+
+**Cumulative, from C17's amortised 16k baseline to multi-bucket at 1M:**
+uscensus2000 51.8x, soc-Pokec 14.5x, com-Orkut 8.6x, com-LiveJournal 8.0x,
+dimension_003 7.3x, as-skitter 5.8x, wiki-Talk 2.3x.
+
+**Costs not charged, and they are not small.** At 1M buckets the per-tile
+transpose is 8 MB and the corpus-wide filter set is 128 kB/row — for the 1,024-row
+runs above that is ~128 MB of side structure against ~500 MB of bitmaps. The
+build is excluded by the amortisation argument, which holds only when each tile
+is paired with many others; for a single-block workload it would dominate
+outright. Memory-constrained deployment would need a smaller width and would
+land back near C15's answer.
