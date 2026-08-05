@@ -71,3 +71,9 @@ build_portable/
 
 # uv virtualenv
 .venv/
+
+# Scratch: benchmark drivers write intermediates here, and several sweeps stage
+# multi-GB edge lists before conversion. Nothing under tmp/ is an input or a
+# result -- data/README.md describes how to regenerate every corpus.
+tmp/
+*.tmp
