@@ -135,6 +135,7 @@ is the result:
 | Wide tiles (T=256) | 1.20× but loses on 2/5 | transposed tile 4× larger, candidate rows 4 words; working set offsets the arithmetic saving |
 | Prefetch surviving pairs | 1.5–1.8× **slower** | prefetching in front of a filter fetches exactly the work the filter exists to avoid |
 | Dual-tree over rows | prunes 0.0% at 256 rows/node | union filters saturate quadratically — see §6 |
+| Hierarchical zone map (position axis) | 0.01–0.41×, i.e. 2.4–100× slower | the compact multi-occupancy list has already removed every empty and singleton bucket; a coarse level has nothing to prune and adds a dense scan |
 | Dedup / unroll / popcount-sort / pc2 | 1.01–1.03× | inside the run-to-run noise band |
 
 **The pattern: every improvement came from removing work; none came from
@@ -200,8 +201,11 @@ These bound every number above and are not minor.
    recovered only 42–102% of the tuned gain, so cardinality and clustering must
    enter it. Until that is solved the tile pipeline is **not deployable on
    unknown data** in the sense the pair-level gate achieves.
-4. **Memory is not free**: 128 kB/row of side structure at 1M buckets, and an
-   8 MB per-tile transpose.
+4. **Memory**: 128 kB/row of per-row zone maps at 1M buckets. The 8 MB per-tile
+   transpose was previously listed here — that was peak *build* memory reported
+   as resident. It exists only to construct the compact multi-occupancy list
+   (0.02–0.82 kB/tile) and can be freed, a 7,000–400,000× reduction at zero
+   runtime cost (C22b).
 5. **One microarchitecture** (Apple M4). Zone-map behaviour is known to differ on
    x86 — growth is ARM-only and flat on Sapphire Rapids.
 6. **T is hardwired to 64** by the 64-bit candidate words.
