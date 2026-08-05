@@ -2131,3 +2131,84 @@ the contract.
   galloping already lost there (S x S 0.14-0.37x), so the prior is not strong.
 - **Sideways information passing** across tile blocks: results from block (i,j)
   constraining block (i,k). No obvious formulation for symmetric all-pairs.
+
+### 15.23 Thresholded mode as an opt-in contract (C24)
+
+Harness: `bench/bench_threshold.cpp`. **Exact all-pairs remains the default and
+the paper's claim.** This adds a *user-selected* mode for consumers that supply a
+similarity threshold — LD for plotting wants pairs above an r² cutoff, while
+other analyses need every exact cardinality. Both are supported; the caller
+chooses.
+
+Correctness is preserved in the strong sense: reported cardinalities are exact,
+only the *set* of reported pairs is restricted, and every run is checked to
+produce a hit set identical to the exact scan's.
+
+#### Breadth pass — pruning power of the similarity-join family
+
+Fraction of pairs eliminated before any intersection work, at t=0.01. The
+assertion that no prune drops a true hit held on every corpus.
+
+| corpus | size | range | **prefix** | **bucket-cnt** | ANY | true hits |
+|---|---:|---:|---:|---:|---:|---:|
+| as-skitter | 1.5% | 17.0% | **99.4%** | 99.3% | 99.4% | 0.57% |
+| com-LiveJournal | 0.5% | 12.9% | **100.0%** | 99.9% | 100.0% | 0.04% |
+| soc-Pokec | 0.2% | 4.7% | **99.9%** | 99.9% | 100.0% | 0.04% |
+| com-Orkut | 0.5% | 1.3% | **99.7%** | 99.9% | 99.9% | 0.05% |
+| census1881 | 32.7% | 63.3% | **98.6%** | 99.6% | 100.0% | 0.01% |
+| wiki-Talk | 8.0% | 6.4% | **95.7%** | 97.9% | 98.6% | 1.08% |
+| dimension_003 | 9.0% | 99.6% | **100.0%** | 100.0% | 100.0% | 0.00% |
+| weather_sept_85 | 25.3% | 0.6% | 34.9% | **83.1%** | 83.1% | 16.85% |
+
+Alpha is in **prefix filtering**, with the bucket-count bound complementary
+(prefix collapses to 34.9% on weather_sept_85 where the count bound still gives
+83.1%). **Size filtering — the member I flagged from the Parquet survey — is the
+weakest of the family by a wide margin.**
+
+Prefix filtering is structurally unlike everything else here: it is *candidate
+generation*, not pair filtering. It never enumerates the N(N−1)/2 pairs at all.
+
+#### Depth — and two implementation defects worth more than any algorithm
+
+| stage | as-skitter | com-LiveJournal | census1881 |
+|---|---:|---:|---:|
+| `unordered_map` index | 7.58x | 8.73x | 0.01x |
+| CSR index (flat, no hashing) | 39.76x | 35.16x | 0.07x |
+| dense ranks precomputed | **108.67x** | **223.31x** | **1.16x** |
+
+The first version used `unordered_map<uint32_t, vector<uint32_t>>` for the
+posting index — ~1M distinct keys each owning a heap vector. The second still
+probed a `rank` hash map once per prefix element inside the timed loop, ~1M
+lookups per repeat on census1881. **Together those two defects cost 14–26x and
+made the algorithm look asymptotically unsuited to long-row corpora when it was
+merely badly implemented.** census1881 went from 0.01x to 1.16x on
+implementation alone.
+
+#### C24: result
+
+| corpus | t=0.01 | t=0.50 |
+|---|---:|---:|
+| com-LiveJournal | 223.31x | **721.73x** |
+| soc-Pokec | 226.98x | 438.98x |
+| as-skitter | 108.67x | 479.56x |
+| com-Orkut | 88.50x | 291.79x |
+| wiki-Talk | 11.01x | 94.55x |
+| dimension_003 | 10.43x | 24.74x |
+| census1881 | 1.16x | 2.74x |
+| weather_sept_85 | 0.19x | 0.58x → **gated to 1.00x** |
+
+**7 of 8 corpora win, 1.16x–721x; the eighth is gated to the exact scan at
+1.00x.** The gate predicts on index traffic per pair (Σ prefix lengths ÷ pairs),
+which separates cleanly: below 1 the method wins 10–721x, above 49 it loses.
+
+#### Limitations
+
+- Gains scale with t, so the headline depends on a parameter the caller sets.
+  t=0.01 is the conservative end and is what should be quoted.
+- The gate's cost model went through two wrong versions before the diagnostic
+  identified index traffic as the dominant term. It is fitted to eight corpora
+  and the separation (1 vs 49) is wide, but it has not been tested near the
+  boundary.
+- Index build is inside the timed region; for a single-shot query the build
+  would not amortise.
+- One microarchitecture.
