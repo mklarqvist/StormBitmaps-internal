@@ -61,7 +61,7 @@ const char* name_of(Pairing p) {
 static double probe_weight() {
     static const double v = [] {
         if (const char* e = std::getenv("STORM_PROBE_WEIGHT")) return std::atof(e);
-        return 0.0;
+        return 0.25;
     }();
     return v;
 }
@@ -132,40 +132,52 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
      * number of distinct 64-bit words the row's positions occupy. probe_weight()
      * is how many element-units one such touch costs.
      *
-     * MEASURED, AND IT IS A NET LOSS. Default 0, which reproduces the previous
-     * model exactly; STORM_PROBE_WEIGHT overrides. Per-tile vs fixed Roaring,
-     * medians of three:
+     * SWEPT, AND IT WORKS -- BUT ONLY ON B x S. Default 0.25;
+     * STORM_PROBE_WEIGHT overrides, and 0 reproduces the previous model.
      *
-     *                          w=0    w=1    w=4   w=16
-     *   dimension_008         1.19x  1.16x  1.08x  0.99x
-     *   weather_sept_85       1.32x  1.17x  1.21x  1.06x
-     *   soc-Pokec             2.48x  2.34x  2.44x  2.47x
-     *   msprime_10k           3.94x  3.87x  3.89x  3.88x
-     *   dimension_033         3.04x  1.17x  0.48x  0.46x
-     *   census1881            0.87x  0.94x  0.93x  0.89x   <- helps
-     *   as-skitter            1.05x  1.15x  1.11x  1.20x   <- helps
-     *   enwiki-categorylinks  3.35x  3.58x  3.20x  3.12x   <- helps
+     * Charged to B x S, B x R and B x W alike it is a disaster: dimension_033
+     * abandons B x R (72% of pairs, 3.05x) for a B x S / B x W / W x W mixture
+     * at 0.46x, and it does so at every positive weight tested down to 0.125.
+     * The reason is that the three cells touch the same words for different
+     * reasons. B x S probes at SCATTERED positions, one line per distinct word.
+     * B x R and B x W walk RANGES, so their probes are sequential within a run
+     * and one miss serves the several that follow. Pricing them alike inverts
+     * the ranking between them.
      *
-     * w=0 is best on 5 of 8. dimension_033 shows what goes wrong: any positive
-     * weight makes it abandon B x R (72% of pairs, 3.04x) for a B x S / B x W /
-     * W x W mixture at 0.46x. The touch term is charged to B x R as well as
-     * B x S, but B x R's touches are SEQUENTIAL within a run -- one miss brings
-     * in a line the next several probes hit -- while B x S's are scattered.
-     * Charging both the same per-touch price is what inverts the ranking.
+     * On B x S alone, per-tile vs fixed Roaring over the 23-corpus sweep:
      *
-     * So the diagnosis was right that the model lacks a memory term, and wrong
-     * that n_nonzero_w is it. The quantity that distinguishes these cells is
-     * distinct CACHE LINES touched, not distinct words, and it differs between
-     * a run-structured row and a scattered one at the same n_nonzero_w. RowMeta
-     * does not carry it and it cannot be derived from what RowMeta has. */
+     *   enwiki-categorylinks  3.35x -> 3.89x     dimension_008  0.93x -> 1.05x
+     *   wikileaks-noquotes    3.56x -> 5.15x     msprime_1M     1.34x -> 2.07x
+     *   census1881_srt        2.49x -> 3.34x     dbpedia-link   1.55x -> 1.98x
+     *   soc-Pokec             2.32x -> 2.49x     weather_sept85 1.07x -> 1.15x
+     *
+     * 21/23 -> 22/23 wins. The mechanism is visible in the cell mix: S x S now
+     * appears where it never did (wiki-Talk 11.5%, gnomad 12.3%, census1881_srt
+     * 15.8%). Those are pairs whose sparse side is scattered enough that a
+     * sequential list merge beats scattered bitmap probes -- a choice the
+     * element-count model could not express, because by element count B x S is
+     * always cheaper than a merge that must walk both sides.
+     *
+     * The weight is a tier-2 fitted constant, not a measured one. It should be
+     * derivable: 0.25 element-units per word touched is a statement about this
+     * machine's miss cost relative to its ALU throughput, and calibrate() could
+     * measure it the way it now measures ns_fixed. Open item.
+     */
     const double s_touch = a_sparse ? (double)a.n_nonzero_w : (double)b.n_nonzero_w;
     const double pw = probe_weight();
 
     switch (p) {
         case Pairing::BB: return bb_expected_bins(a, b);
+        // The touch term is charged to B x S ALONE. B x S probes the dense
+        // bitmap at scattered positions, one line per distinct word. B x R and
+        // B x W walk RANGES, so their probes are sequential within a run and
+        // one miss serves the several that follow -- charging them the same
+        // per-touch price is what made dimension_033 abandon B x R (72% of
+        // pairs, 3.05x) for a B x S / B x W / W x W mixture at 0.46x, and it
+        // did so at every positive weight down to 0.125.
         case Pairing::BS: return s_card + pw * s_touch;
-        case Pairing::BR: return s_runs + pw * s_touch;
-        case Pairing::BW: return s_ewah + pw * s_touch;
+        case Pairing::BR: return s_runs;
+        case Pairing::BW: return s_ewah;
         // Integer log2, NOT std::log2. The first version of this called the
         // libm double routine inside the selection loop and selection cost
         // measured 24 ns/pair -- 36% of runtime against a 2% gate. Standing

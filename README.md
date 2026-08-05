@@ -270,7 +270,7 @@ given `roaring_bitmap_run_optimize()` so it gets its run containers, and all
 ratios are quoted against that tuned variant. Every kernel is checked against
 `roaring_bitmap_and_cardinality` on every pair before anything is timed.
 
-**Online selection beats fixed CRoaring on 21 of 23 corpora.** Reproduce with
+**Online selection beats fixed CRoaring on 22 of 23 corpora.** Reproduce with
 `bench/vs_roaring.sh`; raw table in [`results/vs_roaring.csv`](results/vs_roaring.csv).
 
 This is the *dynamic* number — Storm decides per tile, at runtime, from row
@@ -284,29 +284,29 @@ median of three whole-process runs, with the observed range beside it.
 
 | corpus | domain | universe m | Roaring ns | Storm ns | **vs Roaring** | range | cell mix |
 |---|---|---:|---:|---:|---:|---|---|
-| enwiki-categorylinks | IR | 129,698,523 | 44.5 | 11.9 | **3.75×** | 3.26–6.07 | B×S=89.1% ∅=10.9% |
-| uscensus2000 | census | 36,974,578 | 16.1 | 5.2 | **3.08×** | 2.46–3.41 | B×S=45.2% ∅=54.8% |
-| dbpedia-link | graph | 18,268,993 | 108.3 | 71.1 | **1.55×** | 1.52–1.74 | B×S=97.3% S×S=1.3% ∅=1.4% |
-| wikipedia_link_en | graph | 11,206,012 | 114.5 | 68.6 | **1.83×** | 1.50–1.84 | B×S=98.0% ∅=2.0% |
-| livejournal-groupmemberships | graph | 7,489,074 | 28.0 | 23.5 | **1.20×** | 1.16–1.21 | B×S=78.1% ∅=21.9% |
-| com-Orkut | graph | 3,072,627 | 202.2 | 95.9 | **2.11×** | 2.07–2.16 | B×S=99.5% ∅=0.5% |
-| com-LiveJournal | graph | 4,036,538 | 48.7 | 35.2 | **1.38×** | 1.37–1.43 | B×S=85.2% ∅=14.8% |
-| soc-Pokec | graph | 1,632,804 | 94.2 | 41.4 | **2.32×** | 2.26–2.33 | B×S=95.5% ∅=4.5% |
-| as-skitter | graph | 1,696,415 | 26.1 | 23.7 | **1.12×** | 0.80–1.21 | B×S=82.8% ∅=17.2% |
-| wiki-Talk | graph | 2,394,385 | 38.0 | 19.0 | **2.17×** | 1.85–2.26 | B×S=85.6% ∅=14.4% |
-| dimension_003 | druid | 3,866,847 | 2.9 | 1.6 | **1.74×** | 1.73–1.79 | B×S=0.1% B×R=0.3% ∅=99.5% |
-| dimension_008 | druid | 3,866,845 | 7.1 | 7.6 | *0.93×* | 0.71–1.00 | B×S=60.5% B×R=25.0% ∅=14.6% |
-| dimension_033 | druid | 3,866,847 | 103.3 | 28.4 | **3.48×** | 3.45–3.67 | B×R=72.0% ∅=28.0% |
-| census1881 | census | 4,277,806 | 49.1 | 53.5 | *0.92×* | 0.78–1.04 | B×B=0.1% B×S=31.7% S×S=4.8% ∅=63.3% |
-| census1881_srt | census | 4,277,735 | 60.2 | 24.6 | **2.49×** | 2.28–2.72 | B×B=0.0% B×S=51.6% B×R=11.8% ∅=36.6% |
-| wikileaks-noquotes | text | 1,353,179 | 380.8 | 105.9 | **3.56×** | 1.30–5.57 | B×B=0.1% B×S=24.7% B×W=39.0% ∅=36.1% |
-| weather_sept_85 | sensor | 1,015,367 | 1321.2 | 1230.0 | **1.07×** | 1.00–1.16 | B×B=45.9% B×S=53.4% ∅=0.6% |
-| census-income | census | 199,523 | 449.4 | 259.1 | **1.76×** | 1.70–1.89 | B×B=46.1% B×S=53.8% ∅=0.1% |
-| usher_sarscov2 | genomics | 8,451,771 | 1058.0 | 526.0 | **2.01×** | 1.89–2.08 | B×S=74.5% B×R=25.0% ∅=0.5% |
-| gnomad_chr21_exomes_af1e-3 | genomics | 1,461,894 | 63.4 | 24.5 | **2.57×** | 2.48–2.64 | B×S=82.6% ∅=17.4% |
-| msprime_1M | genomics-sim | 2,000,000 | 2070.3 | 1340.2 | **1.34×** | 1.28–1.80 | B×B=14.0% B×S=83.7% S×S=0.4% ∅=1.9% |
-| msprime_100k | genomics-sim | 200,000 | 228.1 | 131.2 | **1.86×** | 1.70–2.09 | B×B=14.0% B×S=84.1% ∅=1.9% |
-| msprime_10k | genomics-sim | 20,000 | 90.4 | 22.0 | **4.06×** | 4.06–4.18 | B×B=25.0% B×S=72.7% ∅=2.4% |
+| enwiki-categorylinks | IR | 129,698,523 | 45.5 | 10.9 | **3.89×** | 3.74–4.19 | B×S=89.1% ∅=10.9% |
+| uscensus2000 | census | 36,974,578 | 12.4 | 5.0 | **2.40×** | 2.31–2.83 | B×S=45.2% ∅=54.8% |
+| dbpedia-link | graph | 18,268,993 | 101.5 | 52.4 | **1.98×** | 1.77–2.00 | B×S=98.6% ∅=1.4% |
+| wikipedia_link_en | graph | 11,206,012 | 104.9 | 62.6 | **1.70×** | 1.65–1.70 | B×S=96.9% S×S=1.1% ∅=2.0% |
+| livejournal-groupmemberships | graph | 7,489,074 | 27.9 | 22.1 | **1.29×** | 1.24–1.35 | B×S=74.2% S×S=3.9% ∅=21.9% |
+| com-Orkut | graph | 3,072,627 | 214.4 | 95.9 | **2.21×** | 2.09–2.34 | B×S=99.5% ∅=0.5% |
+| com-LiveJournal | graph | 4,036,538 | 49.1 | 33.2 | **1.50×** | 1.35–1.51 | B×S=84.1% S×S=1.1% ∅=14.8% |
+| soc-Pokec | graph | 1,632,804 | 95.1 | 38.6 | **2.49×** | 2.33–2.51 | B×S=90.6% S×S=4.9% ∅=4.5% |
+| as-skitter | graph | 1,696,415 | 27.2 | 24.9 | **1.09×** | 0.96–1.22 | B×S=82.8% ∅=17.2% |
+| wiki-Talk | graph | 2,394,385 | 37.9 | 17.6 | **2.15×** | 2.12–2.17 | B×S=74.1% S×S=11.5% ∅=14.4% |
+| dimension_003 | druid | 3,866,847 | 2.9 | 1.6 | **1.81×** | 1.77–1.86 | B×S=0.1% B×R=0.3% ∅=99.5% |
+| dimension_008 | druid | 3,866,845 | 7.4 | 7.1 | **1.05×** | 0.69–1.16 | B×S=53.4% B×R=25.0% S×S=7.1% ∅=14.6% |
+| dimension_033 | druid | 3,866,847 | 96.6 | 29.3 | **3.33×** | 1.21–3.38 | B×R=72.0% ∅=28.0% |
+| census1881 | census | 4,277,806 | 52.1 | 55.4 | *0.92×* | 0.88–1.29 | B×B=0.1% B×S=34.0% S×S=2.6% ∅=63.3% |
+| census1881_srt | census | 4,277,735 | 61.6 | 18.4 | **3.34×** | 3.09–3.38 | B×B=0.0% B×S=35.7% B×R=11.8% S×S=15.8% ∅=36.6% |
+| wikileaks-noquotes | text | 1,353,179 | 385.8 | 74.8 | **5.15×** | 4.90–5.74 | B×B=0.1% B×S=24.7% B×R=39.0% ∅=36.1% |
+| weather_sept_85 | sensor | 1,015,367 | 1390.7 | 1195.7 | **1.15×** | 1.12–1.24 | B×B=45.9% B×S=53.4% ∅=0.6% |
+| census-income | census | 199,523 | 436.2 | 259.4 | **1.73×** | 1.65–1.90 | B×B=46.1% B×S=53.8% ∅=0.1% |
+| usher_sarscov2 | genomics | 8,451,771 | 1004.6 | 588.8 | **1.71×** | 0.96–1.95 | B×S=85.5% B×R=14.0% ∅=0.5% |
+| gnomad_chr21_exomes_af1e-3 | genomics | 1,461,894 | 62.8 | 23.0 | **2.73×** | 2.52–2.78 | B×S=70.2% S×S=12.3% ∅=17.4% |
+| msprime_1M | genomics-sim | 2,000,000 | 2749.5 | 1328.1 | **2.07×** | 1.47–2.39 | B×B=14.0% B×S=83.7% S×S=0.4% ∅=1.9% |
+| msprime_100k | genomics-sim | 200,000 | 271.6 | 135.1 | **1.85×** | 1.83–2.98 | B×B=14.0% B×S=79.6% S×S=4.5% ∅=1.9% |
+| msprime_10k | genomics-sim | 20,000 | 90.4 | 23.6 | **4.02×** | 3.72–4.40 | B×B=25.0% B×S=72.4% S×S=0.3% ∅=2.4% |
 
 ∅ = pairs settled as provably disjoint by the O(1) span test, no kernel run.
 
@@ -316,10 +316,7 @@ ones, B×B still takes 46% of the dense sensor and census pairs, and on
 `dimension_003` 99.5% of pairs never reach a kernel at all. A library that
 picked any one of these would lose on the corpora the others own.
 
-**The two losses are honest, and they want opposite fixes.** Both ranges reach
-parity, so neither is a decisive loss — but neither is noise either.
-
-`census1881`'s per-pair oracle measures 45.1 ns against Roaring's 48.9, so
+**The one loss is honest.** `census1881`'s per-pair oracle measures 45.1 ns against Roaring's 48.9, so
 winning decisions exist and one-cell-per-tile cannot express them.
 `Policy::Refine` (rank candidates once per tile, choose between the top two per
 pair) recovers them: 0.92× → **1.09×**, with the cell mix moving to within a
