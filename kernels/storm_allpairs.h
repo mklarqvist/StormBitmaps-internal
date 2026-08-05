@@ -109,25 +109,40 @@ struct AllPairsStats {
  * against a tile policy at ~52, decisions that exist and are being discarded
  * by granularity.
  *
- * It does not. Swept 8/16/32/64/128 on 16 corpora (standing instruction:
- * generic, not tuned to the dataset that raised the question), medians of
- * three whole-process runs:
+ * It does not, and there is no corpus-level rule either. Swept twice, the
+ * second time after six model fixes, medians of three whole-process runs:
  *
- *              T=8    T=16   T=32   T=64
- *   dim_008   1.03x  1.06x  1.13x  1.17x
- *   census1881 0.86x 0.80x  0.80x  0.84x
- *   as-skitter 0.91x 1.02x  1.07x  1.20x
- *   wiki-Talk  1.90x 1.90x  2.05x  1.97x
+ *   corpus            row_kB   T=8   T=16   T=32   T=64  T=128
+ *   msprime_10k            2  4.44x 4.68x  4.40x  3.93x  3.72x
+ *   census-income         24    -   1.74x  1.75x  1.71x    -
+ *   msprime_100k          24    -   1.74x  1.62x  1.81x    -
+ *   weather_sept_85      123  1.18x 1.28x  1.21x  1.23x  1.07x
+ *   wikileaks-noquotes   165    -   5.95x  5.44x  5.77x    -
+ *   as-skitter           207  0.96x 1.05x  1.09x  1.16x  1.13x
+ *   msprime_1M           244    -   1.82x  1.72x  1.47x    -
+ *   wiki-Talk            292  2.03x 2.19x  2.21x  2.48x  2.56x
+ *   dimension_008        472  1.02x 1.10x  1.25x  1.26x  1.22x
+ *   dimension_033        472  3.21x 3.21x  3.34x  3.39x  3.33x
+ *   census1881           522  0.91x 0.72x  0.92x  0.91x  0.74x
+ *   census1881_srt       522    -   4.03x  4.21x  4.26x    -
  *
- * Wider is better on the marginal corpora, not worse -- a wide tile amortises
- * the row loads across more pairs, and that locality outweighs the decision
- * error it introduces. So census1881's oracle gap is not a granularity
- * problem after all.
+ * The obvious hypothesis -- that a tile should be sized so its working set
+ * fits L2, which would mean SMALL tiles for the 522 kB rows and large ones for
+ * the 2 kB rows -- is contradicted outright: census1881 at 522 kB/row is worst
+ * at T=16, and msprime_10k at 2 kB/row is best there. The reverse hypothesis
+ * fails too, because msprime_10k (2 kB) and msprime_1M (244 kB) both prefer 16
+ * while msprime_100k (24 kB) and census1881_srt (522 kB) both prefer 64. Row
+ * size does not order the optimum in either direction.
  *
- * Recorded because it was briefly changed to 32 on a SINGLE-SHOT sweep that
- * showed the opposite ordering. On this machine, run-to-run spread between
- * whole-process invocations reaches 30% at these working-set sizes; one run
- * per cell cannot rank widths that differ by 10%.
+ * Most of the spread is noise. census1881 reads 0.91x / 0.72x / 0.92x / 0.91x
+ * across T = 8/16/32/64 -- three agreeing values and one outlier, which is what
+ * a 26% run-to-run swing looks like, not a tile-width effect. The differences
+ * that survive as plausibly real (msprime_10k and msprime_1M favouring 16 by
+ * ~20%) are not shared by their own siblings, so no rule generalises from them.
+ *
+ * T=64 stands. Recorded in full because it was briefly changed to 32 on a
+ * SINGLE-SHOT sweep that showed a different ordering, and because this is the
+ * second sweep to reach the same answer -- a third is not worth its runtime.
  */
 AllPairsStats allpairs_sum(const std::vector<Row>& rows,
                            const CostModel& model,
