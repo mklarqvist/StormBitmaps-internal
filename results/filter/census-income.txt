@@ -1,0 +1,8 @@
+# census-income universe=199523 rows=200 pairs=19900 filter=16384 bits (2048 B/row) bitmap=24 kB/row disjoint=24.8%
+# filter survival: bloom 95.716%  blocked 95.760%  coarse-occ 95.916%  (of 164303050 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)            1894.49      1.00x
+B x S zone map (512b bins)        5990.83      0.32x
+bloom k=2                         8527.33      0.22x
+blocked bloom k=2                11987.93      0.16x
+coarse zone map                   6050.01      0.31x

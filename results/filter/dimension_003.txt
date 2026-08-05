@@ -1,0 +1,8 @@
+# dimension_003 universe=3866847 rows=256 pairs=20000 filter=16384 bits (2048 B/row) bitmap=472 kB/row disjoint=100.0%
+# filter survival: bloom 1.346%  blocked 0.774%  coarse-occ 0.049%  (of 209098 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)               8.10      1.00x
+B x S zone map (512b bins)           7.31      1.11x
+bloom k=2                           11.41      0.71x
+blocked bloom k=2                   15.49      0.52x
+coarse zone map                      6.73      1.20x

@@ -1,0 +1,8 @@
+# weather_sept_85 universe=1015367 rows=200 pairs=19900 filter=16384 bits (2048 B/row) bitmap=124 kB/row disjoint=34.7%
+# filter survival: bloom 97.075%  blocked 97.114%  coarse-occ 92.104%  (of 230558213 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)            2866.82      1.00x
+B x S zone map (512b bins)       11333.13      0.25x
+bloom k=2                        11661.86      0.25x
+blocked bloom k=2                16258.30      0.18x
+coarse zone map                   9842.16      0.29x

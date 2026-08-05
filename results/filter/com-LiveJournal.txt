@@ -1,0 +1,8 @@
+# com-LiveJournal universe=4036538 rows=256 pairs=20000 filter=16384 bits (2048 B/row) bitmap=493 kB/row disjoint=99.9%
+# filter survival: bloom 0.018%  blocked 0.022%  coarse-occ 0.566%  (of 185115 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)              25.47      1.00x
+B x S zone map (512b bins)          14.06      1.81x
+bloom k=2                            9.34      2.73x
+blocked bloom k=2                   11.27      2.26x
+coarse zone map                      6.89      3.70x

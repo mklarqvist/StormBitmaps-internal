@@ -1,0 +1,8 @@
+# com-Orkut universe=3072627 rows=256 pairs=20000 filter=16384 bits (2048 B/row) bitmap=375 kB/row disjoint=99.5%
+# filter survival: bloom 0.135%  blocked 0.139%  coarse-occ 1.495%  (of 822296 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)              92.73      1.00x
+B x S zone map (512b bins)          65.71      1.41x
+bloom k=2                           35.12      2.64x
+blocked bloom k=2                   49.84      1.86x
+coarse zone map                     30.39      3.05x

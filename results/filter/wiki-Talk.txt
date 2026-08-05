@@ -1,0 +1,8 @@
+# wiki-Talk universe=2394385 rows=256 pairs=20000 filter=16384 bits (2048 B/row) bitmap=292 kB/row disjoint=95.1%
+# filter survival: bloom 1.773%  blocked 1.764%  coarse-occ 21.126%  (of 194784 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)              25.09      1.00x
+B x S zone map (512b bins)          28.82      0.87x
+bloom k=2                           16.38      1.53x
+blocked bloom k=2                   18.41      1.36x
+coarse zone map                     18.23      1.38x

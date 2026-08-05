@@ -1,0 +1,8 @@
+# as-skitter universe=1696415 rows=256 pairs=20000 filter=16384 bits (2048 B/row) bitmap=207 kB/row disjoint=99.4%
+# filter survival: bloom 0.320%  blocked 0.329%  coarse-occ 2.153%  (of 116060 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)              10.45      1.00x
+B x S zone map (512b bins)          11.19      0.93x
+bloom k=2                            6.54      1.60x
+blocked bloom k=2                    7.75      1.35x
+coarse zone map                      5.02      2.08x

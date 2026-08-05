@@ -1,0 +1,8 @@
+# uscensus2000 universe=36974578 rows=200 pairs=19900 filter=16384 bits (2048 B/row) bitmap=4514 kB/row disjoint=100.0%
+# filter survival: bloom 0.413%  blocked 0.442%  coarse-occ 2.043%  (of 64645 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)               6.16      1.00x
+B x S zone map (512b bins)           5.83      1.06x
+bloom k=2                            3.80      1.62x
+blocked bloom k=2                    4.27      1.44x
+coarse zone map                      2.96      2.08x

@@ -1,0 +1,8 @@
+# census1881 universe=4277806 rows=200 pairs=19900 filter=16384 bits (2048 B/row) bitmap=522 kB/row disjoint=96.9%
+# filter survival: bloom 88.709%  blocked 87.659%  coarse-occ 86.962%  (of 5389394 probes)
+variant                           ns/pair    vs ilp8
+B x S ilp8 (no filter)              97.76      1.00x
+B x S zone map (512b bins)         350.61      0.28x
+bloom k=2                          310.75      0.31x
+blocked bloom k=2                  422.27      0.23x
+coarse zone map                    155.40      0.63x

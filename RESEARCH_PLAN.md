@@ -1401,3 +1401,73 @@ closest structure to the zone map.
 
 **Status: tier 1 (analysis only). Nothing here is measured.** The disjointness
 rates in 15.9 are tier 3; every claim in 15.10 is a prediction.
+
+### 15.11 Tier-0 filter experiment — the Bloom hypothesis is refuted (C14)
+
+Run: `bench/bench_bloom.cpp`. Results: `results/filter/`. 15 repeats,
+round-robin interleaved across variants inside each repeat so drift hits all
+variants equally. All variants exact — the filter only skips probes it can prove
+absent, every survivor is confirmed against the bitmap. Filter budget 16,384
+bits (2 kB/row) for the table below; a 512–65,536-bit sweep is in
+`results/filter/`.
+
+**The fairness control was the whole experiment.** Comparing a Bloom filter
+against the existing 512-bit-bin zone map confounds size with structure, so
+every Bloom of N bits was raced against a **coarse positional zone map of
+exactly N bits** — same footprint, same cache behaviour, differing only in
+hashed vs positional bucketing.
+
+| corpus | disjoint | bitmap/row | ilp8 ns | bloom | blocked bloom | **coarse zone map** | existing zone map |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| com-LiveJournal | 99.9% | 493 kB | 25.5 | 2.73x | 2.26x | **3.70x** | 1.81x |
+| soc-Pokec | 99.9% | 199 kB | 36.3 | 2.82x | 2.21x | **3.46x** | 1.64x |
+| com-Orkut | 99.5% | 375 kB | 92.7 | 2.64x | 1.86x | **3.05x** | 1.41x |
+| as-skitter | 99.4% | 207 kB | 10.4 | 1.60x | 1.35x | **2.08x** | 0.93x |
+| uscensus2000 | 100.0% | 4,514 kB | 6.2 | 1.62x | 1.44x | **2.08x** | 1.06x |
+| wiki-Talk | 95.1% | 292 kB | 25.1 | 1.53x | 1.36x | **1.38x** | 0.87x |
+| dimension_003 | 100.0% | 472 kB | 8.1 | 0.71x | 0.52x | **1.20x** | 1.11x |
+| census1881 | 96.9% | 522 kB | 97.8 | 0.31x | 0.23x | **0.63x** | 0.28x |
+| census-income | 24.8% | 24 kB | 1894.5 | 0.22x | 0.16x | **0.31x** | 0.32x |
+| weather_sept_85 | 34.7% | 124 kB | 2866.8 | 0.25x | 0.18x | **0.29x** | 0.29x |
+
+**C14, three parts, all tier 3 (measured):**
+
+1. **The Bloom filter loses to a size-matched positional zone map on 9 of 10
+   corpora.** The hypothesis in 15.10 was wrong. Hashing spreads elements
+   uniformly and thereby *destroys* the positional clustering that makes
+   bucketing effective; the coarse zone map keeps it. Selectivity is not the
+   reason — Bloom is consistently the *more* selective filter (3.1% survival vs
+   5.8% on uscensus2000) and still loses, because its probe costs two multiplies
+   and two loads against the zone map's one shift and one load. **Cheaper probe
+   beats better selectivity.**
+2. **Blocked Bloom is worse than plain Bloom on 10 of 10.** At a 2 kB budget the
+   whole filter spans ~32 cache lines, so confining two probes to one line saves
+   little, while the extra block-selection hash costs on every probe. Blocking
+   is a technique for filters much larger than cache; it is counterproductive
+   here.
+3. **The current 512-bit-bin zone map is the wrong size.** A *fixed* 2 kB budget
+   beats the *m/512-proportional* map on 8 of 10 corpora — 3.70x vs 1.81x on
+   com-LiveJournal, and 2.08x vs 0.93x on as-skitter where the existing map
+   actively loses. Scaling the summary with the universe is the defect: at
+   m=3.7e7 the existing map is 9 kB and no longer cache-resident, which is the
+   thing that was supposed to make it cheap.
+
+**Where it fails, and why.** All filters lose on `census1881` (0.63x),
+`census-income` (0.31x) and `weather_sept_85` (0.29x). The predictor is not the
+disjoint rate — census1881 is 96.9% disjoint and still loses. It is **|S|**: the
+filter adds one probe per list element on top of the existing work, so it pays
+only when |S| is small relative to the bitmap. census1881 has mean |Xi|=5,019
+and weather 64,353. The rule is roughly "wins when ilp8 is already fast
+(6–93 ns), loses when it is slow (98–2,867 ns)" — the filter is a latency
+optimisation, not a throughput one.
+
+**Consequence for the architecture.** This is not a new cell; it is a new
+*decision*, and it goes the same way as C12: the tier-0 filter is a good idea
+only where the selector can decline it. Filter width now joins representation
+choice as something the cost model must set, and it has a clean predictor
+(|S| vs bitmap footprint) that should be cheap to evaluate per tile.
+
+**Not yet done:** filter build cost is not charged (built before timing, like
+`build_occ`); one microarchitecture; the 512–65,536-bit sweep is visibly noisy
+and the 2 kB optimum should be re-established with error bars before it is
+quoted as a tuned value.
