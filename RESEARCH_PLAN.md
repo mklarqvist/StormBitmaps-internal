@@ -1707,3 +1707,45 @@ zone map and inherits its failure when it is not selective.
   construction — that is the point of the variant, but it makes the number an
   upper bound for workloads where each tile is visited once.
 - One microarchitecture.
+
+### 15.15 Wide tiles — and a dead-code measurement that briefly faked an 8x win
+
+**Correction first.** The wide-tile variant initially reported 0.408 ns/pair on
+com-LiveJournal (T=256) against 3.341 for T=64, an apparent 8x. It was measuring
+an empty loop: the accumulator was stored to a local that nothing subsequently
+read, so the compiler eliminated the entire pair loop. Adding a correctness
+check against the same wide-tile pair set made the computation live and the
+figure moved to 2.876 ns/pair. **Every number from that run is void.** The
+earlier T=64 figures were unaffected -- `bench()` compares its sum to the oracle,
+which keeps the work live -- but the wide path had no such check because it
+bypassed `bench()`.
+
+This is the second dead-store/stale-artifact class error in this project
+(cf. the stale-binary reads in 15.2). The lesson is mechanical: **a timing
+harness must consume its result, and every fast path needs its own oracle
+comparison, not the one belonging to a sibling path.**
+
+**Corrected result.** Build and resolve are O(T*|A|) while pairs grow as T^2/2,
+so planning cost per pair should fall as 2|A|/T. Measured, T=256 against T=64
+with the transpose amortised in both:
+
+| corpus | T=64 amortised | T=256 | change |
+|---|---:|---:|---:|
+| as-skitter | 4.287 | **2.313** | 1.85x |
+| dimension_003 | 0.178 | **0.104** | 1.71x |
+| com-LiveJournal | 3.388 | **2.861** | 1.18x |
+| com-Orkut | 31.300 | 33.095 | 0.95x |
+| soc-Pokec | 2.739 | 3.861 | 0.71x |
+
+Geomean 1.20x, but it **loses on 2 of 5**. The predicted 2|A|/T scaling does not
+materialise cleanly: at T=256 the transposed tile is 4x larger and the candidate
+rows are 4 words instead of 1, so the resolve's working set grows and offsets the
+arithmetic saving. Tile width is therefore another gated decision, not a constant
+to raise — consistent with C15's finding that cache residency, not operation
+count, governs every structure in this stack.
+
+All wide-tile results verified against a reference over the identical pair set.
+
+**Status: T=256 is not adopted.** A 1.20x geomean that regresses on 40% of
+corpora fails the genericity bar set in C16, and the mechanism to fix it (gate on
+tile width) is not yet built.

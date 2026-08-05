@@ -66,7 +66,7 @@ struct Occ {                            // coarse positional zone map (C14/C15)
 int main(int argc, char** argv) {
     const char* path = nullptr;
     uint32_t want_rows = 1024, stride = 1, fbits = 16384;
-    int repeats = 7; std::string tag = "host"; bool gsort = false;
+    int repeats = 7; std::string tag = "host"; bool gsort = false; uint32_t wide_tile = 128;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return i+1<argc ? argv[++i] : ""; };
@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
         else if (a == "--tag")    tag = nx();
         else if (a == "--tile")   T = atoi(nx());
         else if (a == "--gsort")  gsort = true;
+        else if (a == "--wide")   wide_tile = atoi(nx());
     }
     if (!path) { std::printf("need --file\n"); return 1; }
     if (!stride) stride = 1;
@@ -607,6 +608,94 @@ int main(int argc, char** argv) {
         }
         return a;
     });
+
+    /* ---- 10. WIDE TILES ------------------------------------------------------
+     * Build and resolve are both O(set bits in tile) = O(T*|A|), while pairs
+     * grow as T^2/2, so planning cost per pair falls as 2|A|/T. Doubling the
+     * tile should halve it. T was pinned at 64 only because the candidate rows
+     * were single uint64_t words; widen them to W = T/64 words and the same
+     * algorithm runs at any multiple of 64.
+     */
+    {
+        const uint32_t WT = wide_tile;
+        const uint32_t W  = WT / 64;
+        const uint32_t nwt = (uint32_t)(rows.size() / WT);
+        if (nwt && use_filter) {
+            std::vector<uint64_t> wcolT((size_t)occ_nw * 64ull * W, 0ull);
+            std::vector<uint64_t> wne((occ_nw*64 + 63)/64, 0ull);
+            std::vector<uint64_t> wcand((size_t)WT * W, 0ull);
+            // amortised: build every wide tile's transpose once
+            std::vector<std::vector<uint64_t>> bT(nwt), bNE(nwt);
+            for (uint32_t t = 0; t < nwt; ++t) {
+                bT[t].assign((size_t)occ_nw*64ull*W, 0ull);
+                bNE[t].assign((occ_nw*64 + 63)/64, 0ull);
+                const uint32_t b = t*WT;
+                for (uint32_t i = 0; i < WT; ++i) {
+                    const uint64_t* w = occ[b+i].w.data();
+                    for (uint32_t k = 0; k < occ_nw; ++k) {
+                        uint64_t v = w[k];
+                        while (v) {
+                            const uint32_t bit = (uint32_t)__builtin_ctzll(v); v &= v-1;
+                            const uint32_t bucket = k*64 + bit;
+                            bT[t][(size_t)bucket*W + (i>>6)] |= 1ull << (i&63);
+                            bNE[t][bucket>>6] |= 1ull << (bucket&63);
+                        }
+                    }
+                }
+            }
+            double best = 1e30; uint64_t sum = 0;
+            for (int r = 0; r < repeats; ++r) {
+                uint64_t acc = 0; const uint64_t t0 = ns_now();
+                for (uint32_t t = 0; t < nwt; ++t) {
+                    const uint32_t b = t*WT;
+                    std::fill(wcand.begin(), wcand.end(), 0ull);
+                    const uint64_t* ne = bNE[t].data(); const uint64_t* ct = bT[t].data();
+                    for (size_t k = 0; k < bNE[t].size(); ++k) {
+                        uint64_t nv = ne[k];
+                        while (nv) {
+                            const uint32_t bit = (uint32_t)__builtin_ctzll(nv); nv &= nv-1;
+                            const uint64_t* w = ct + (size_t)(k*64 + bit)*W;
+                            for (uint32_t u = 0; u < W; ++u) {
+                                uint64_t r2 = w[u];
+                                while (r2) {
+                                    const uint32_t i = u*64 + (uint32_t)__builtin_ctzll(r2); r2 &= r2-1;
+                                    for (uint32_t v2 = 0; v2 < W; ++v2) wcand[(size_t)i*W + v2] |= w[v2];
+                                }
+                            }
+                        }
+                    }
+                    for (uint32_t i = 0; i < WT; ++i) {
+                        const uint32_t li = lo[b+i], hii = hi[b+i];
+                        for (uint32_t u = 0; u < W; ++u) {
+                            uint64_t m = wcand[(size_t)i*W + u];
+                            if (u == (i>>6)) m &= ((i&63)==63) ? 0ull : ~((1ull<<((i&63)+1))-1);
+                            else if (u < (i>>6)) m = 0;
+                            while (m) {
+                                const uint32_t j = u*64 + (uint32_t)__builtin_ctzll(m); m &= m-1;
+                                if (use_range && (hii < lo[b+j] || hi[b+j] < li)) continue;
+                                acc += gated(b+i, b+j);
+                            }
+                        }
+                    }
+                }
+                const double dt = (double)(ns_now() - t0);
+                if (dt < best) best = dt; sum = acc;
+            }
+            // Reference over the IDENTICAL wide-tile pair set. The T=64
+            // correctness check does not cover this tiling, and an unverified
+            // fast path is worth nothing.
+            uint64_t ref = 0;
+            for (uint32_t t = 0; t < nwt; ++t) {
+                const uint32_t b = t*WT;
+                for (uint32_t i = 0; i < WT; ++i)
+                    for (uint32_t j = i+1; j < WT; ++j)
+                        ref += f_bs(rows[b+i].B(), rows[b+j].S());
+            }
+            std::printf("# WIDE T=%u: %.3f ns/pair  (n=%u tiles, %u pairs)  correct=%s\n", WT,
+                        best / (double)(nwt * (WT*(WT-1)/2)), nwt, nwt*(WT*(WT-1)/2),
+                        sum == ref ? "yes" : "NO <-- WRONG");
+        }
+    }
 
     // --- report ---------------------------------------------------------------
     std::printf("# %s universe=%u rows=%zu tiles=%u pairs=%u filter=%u bits\n",
