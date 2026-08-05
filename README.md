@@ -128,42 +128,47 @@ cutoff, via prefix filtering (Bayardo et al. WWW 2007). **Speedup is against the
 exact scan, not against all-bitmap**, so it composes with table 1 rather than
 replacing it.
 
-| corpus | domain | pairs | t=0.001 | t=0.01 | t=0.1 |
+Run in **sparse-only mode**: no bitmaps are materialised, so the corpus is bounded
+by list size rather than by universe. That is what makes 20,000 rows (200M pairs)
+affordable at universe 1.3e8 — and it matters enormously. The same measurement
+constrained to the 74 rows a bitmap-bearing harness can hold reported
+`enwiki-categorylinks` at **0.99x**; unconstrained it is **323.6x**. A 327x
+difference, entirely an artifact of charging an O(N) index build against O(N^2)
+pairs that did not exist at that scale.
+
+| corpus | domain | rows | t=0.001 | t=0.01 | t=0.1 |
 |---|---|---:|---:|---:|---:|
-| `com-LiveJournal` | graph | 73,536 | **168.0x** | **319.1x** | **317.0x** |
-| `soc-Pokec` | graph | 73,536 | **169.8x** | **133.1x** | **184.4x** |
-| `dbpedia-link` | graph | 73,536 | **31.9x** | **29.2x** | **163.9x** |
-| `com-Orkut` | graph | 73,536 | **49.2x** | **60.0x** | **133.9x** |
-| `gnomad_chr21_exomes_af1e-3` | genomics | 73,536 | **68.5x** | **101.4x** | **127.0x** |
-| `as-skitter` | graph | 73,536 | **119.0x** | **104.6x** | **126.9x** |
-| `wikipedia_link_en` | graph | 73,536 | **11.9x** | **16.4x** | **120.1x** |
-| `livejournal-groupmemberships` | graph | 73,536 | **26.5x** | **37.9x** | **42.6x** |
-| `dimension_003` | druid | 73,536 | **31.9x** | **35.0x** | **29.0x** |
-| `wiki-Talk` | graph | 73,536 | **10.5x** | **11.3x** | **32.8x** |
-| `uscensus2000` | census | 19,900 | **25.9x** | **17.6x** | **32.3x** |
-| `wikileaks-noquotes` | text | 19,900 | **4.7x** | **3.5x** | **10.2x** |
-| `usher_sarscov2` | genomics | 73,536 | 1.00x | 1.00x | **3.0x** |
-| `enwiki-categorylinks` | IR | 2,701 | 0.99x | **2.2x** | 0.78x |
-| `dimension_033` | druid | 14,878 | **1.9x** | **2.1x** | **2.1x** |
-| `census1881_srt` | census | 19,900 | **1.2x** | **1.9x** | **1.9x** |
-| `census1881` | census | 19,900 | 1.04x | 0.95x | **1.3x** |
-| `dimension_008` | druid | 73,536 | 1.00x | 1.00x | 1.00x |
-| `weather_sept_85` | sensor | 19,900 | 1.00x | 1.00x | 1.00x |
-| `census-income` | census | 19,900 | 1.00x | 1.00x | 1.00x |
-| `msprime_1M` | genomics-sim | 73,536 | 1.00x | 1.00x | 1.00x |
-| `msprime_100k` | genomics-sim | 73,536 | 1.00x | 1.00x | 1.00x |
-| `msprime_10k` | genomics-sim | 73,536 | 1.00x | 1.00x | 1.00x |
+| `com-LiveJournal` | graph | 20,000 | **414.3x** | **333.6x** | **1,088.6x** |
+| `enwiki-categorylinks` | IR | 20,000 | **323.6x** | **417.0x** | **815.5x** |
+| `soc-Pokec` | graph | 20,000 | **224.6x** | **246.7x** | **362.5x** |
+| `gnomad_chr21_exomes_af1e-3` | genomics | 20,000 | **109.2x** | **114.2x** | **290.9x** |
+| `dimension_003` | druid | 15,482 | **128.8x** | **83.1x** | **117.7x** |
+| `livejournal-groupmemberships` | graph | 20,000 | **38.6x** | **50.2x** | **123.9x** |
+| `as-skitter` | graph | 20,000 | **91.4x** | **81.5x** | **112.8x** |
+| `dbpedia-link` | graph | 20,000 | **12.5x** | **12.5x** | **110.2x** |
+| `com-Orkut` | graph | 20,000 | **47.8x** | **43.0x** | **107.9x** |
+| `wikipedia_link_en` | graph | 20,000 | **6.4x** | **14.4x** | **103.4x** |
+| `uscensus2000` | census | 200 | **40.6x** | **15.3x** | **28.9x** |
+| `wikileaks-noquotes` | text | 200 | **4.8x** | **3.4x** | **40.1x** |
+| `wiki-Talk` | graph | 20,000 | **3.2x** | **4.7x** | **12.7x** |
+| `dimension_033` | druid | 173 | **10.9x** | **7.5x** | **10.7x** |
+| `census1881` | census | 200 | **4.0x** | **4.8x** | **4.4x** |
+| `census1881_srt` | census | 200 | **1.7x** | **1.8x** | **4.0x** |
+| `dimension_008` | druid | 5,240 | 1.00x | 1.00x | 1.00x |
+| `weather_sept_85` | sensor | 200 | 1.00x | 1.00x | 1.00x |
+| `census-income` | census | 200 | 1.00x | 1.00x | 1.00x |
+| `usher_sarscov2` | genomics | 7,926 | 1.00x | 1.00x | 1.00x |
+| `msprime_1M` | genomics-sim | 917 | 1.00x | 1.00x | 1.00x |
 
 Gated: where prefix filtering would lose, the gate falls back to the exact scan
-and the entry reads 1.00x. `msprime_*`, `weather_sept_85`, `census-income` and
-`dimension_008` bypass at every threshold — at densities of 6-17% almost every
-pair clears any cutoff, so there is nothing to skip.
+and the entry reads 1.00x. The corpora that bypass at every threshold —
+`msprime_*`, `weather_sept_85`, `census-income`, `dimension_008`,
+`usher_sarscov2` — are the dense ones, where at 6-17% density almost every pair
+clears any cutoff and there is nothing to skip.
 
-**`enwiki-categorylinks` is understated here.** The memory budget allows only 74
-rows at universe 1.3e8, giving 2,701 pairs against an index build of 19,537
-operations — 7.2 ops per pair. The index build is O(N) while pairs are O(N^2), so
-on the real 2.17M-row corpus it is negligible; at 74 rows it dominates. The same
-applies in weaker form to every corpus above ~1e7 universe.
+`msprime_100k` and `msprime_10k` are absent: at 7.7-11% density the exact
+baseline over 200M pairs did not complete in budget. `msprime_1M` did and gated
+to 1.00x, so both are expected to behave identically.
 
 ### 4. Storage cost — bits per value, data and metadata separated
 
