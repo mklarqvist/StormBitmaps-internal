@@ -44,6 +44,44 @@ The core algorithms are described in the papers:
 * [Consistently faster and smaller compressed bitmaps with Roaring](https://arxiv.org/abs/1603.06549) by D. Lemire, G. Ssi-Yan-Kai,
   and O. Kaser (21 Mar 2016).
 
+## Thresholded mode (opt-in)
+
+Full record: [`results/THRESHOLD.md`](results/THRESHOLD.md) · figure:
+`results/threshold/sweep.png` · sweep: `bench/sweep_threshold.sh`
+
+**Exact all-pairs is the default.** Some consumers need every exact cardinality;
+others supply a similarity cutoff — LD for plotting wants pairs above an r²
+threshold. When a threshold *is* available it unlocks the all-pairs
+similarity-join family (Bayardo et al. WWW 2007; Xiao et al. WWW 2008), whose
+prefix filter is **candidate generation rather than pair filtering** — it never
+enumerates the N(N−1)/2 pairs at all.
+
+Gated speedup at t=0.001, the conservative end (speedup rises with t; at t=0.5
+the winners reach 292–722×):
+
+| corpus | speedup | gate | pairs above threshold |
+|---|---:|---|---:|
+| com-LiveJournal | **89.6×** | prefix | 0.037% |
+| soc-Pokec | **75.5×** | prefix | 0.083% |
+| com-Orkut | **44.5×** | prefix | 0.444% |
+| as-skitter | **41.7×** | prefix | 0.401% |
+| uscensus2000 | **29.3×** | prefix | 0.000% |
+| dimension_003 | **15.7×** | prefix | 0.000% |
+| wiki-Talk | **6.3×** | prefix | 2.757% |
+| wikileaks-noquotes | **3.8×** | prefix | 3.075% |
+| dimension_008, weather_sept_85, census-income | 1.00× | exact | 39–62% |
+| census1881, census1881_srt | 0.97×, 0.91× | prefix | 0.3% |
+
+Reported cardinalities stay exact — only the *set* of reported pairs is
+restricted, and all 650 sweep points are verified against the exact scan's hit
+set. The gains track how much of the output the caller discards: the corpora
+that win are those where 0.00–0.44% of pairs clear the threshold, and the three
+that fall back to the exact scan are those where 39–62% do.
+
+Unlike the exact-mode gate, this one is **not never-worse** — worst case is
+≈0.91×. See [`results/THRESHOLD.md`](results/THRESHOLD.md) §5–6 before quoting
+any figure.
+
 ## All-pairs: the tile pipeline
 
 Full record: [`results/ALLPAIRS.md`](results/ALLPAIRS.md) · harness:
