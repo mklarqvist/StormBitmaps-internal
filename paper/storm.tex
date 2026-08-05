@@ -1,0 +1,103 @@
+\documentclass[fleqn,10pt]{wlscirep}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage{url}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{seqsplit} % allows line-breaking of long \texttt{} identifiers in narrow table cells
+\usepackage[per-mode=symbol]{siunitx}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc}
+\usepackage{simdgrid} % reusable SIMD lane/bit-layout primitives
+
+\renewcommand\arraystretch{1.20}
+
+% Long multi-panel captions overflow the caption package's single-line
+% measurement ("Dimension too large"); they are never single-line anyway.
+\usepackage{caption}
+\captionsetup{singlelinecheck=false}
+
+% ---------------------------------------------------------------------------
+% Representation palette. ONE definition for the whole paper (DISPLAY_ITEMS.md
+% section 1.1). B is achromatic on purpose: it is the foil, not a strategy.
+% ---------------------------------------------------------------------------
+\definecolor{reprB}{HTML}{222222} % dense bitmap (the foil; achromatic)
+\definecolor{reprS}{HTML}{4477AA} % sorted array
+\definecolor{reprR}{HTML}{228833} % run container
+\definecolor{reprW}{HTML}{AA3377} % EWAH fill-compressed
+\definecolor{reprC}{HTML}{CCBB44} % complement
+\definecolor{reprRef}{HTML}{BBBBBB} % reserved: CRoaring / all-bitmap baseline
+
+% Representation shorthands, so the symbols are typeset identically everywhere.
+\newcommand{\rB}{\textsf{B}}
+\newcommand{\rS}{\textsf{S}}
+\newcommand{\rR}{\textsf{R}}
+\newcommand{\rW}{\textsf{W}}
+\newcommand{\rC}{\textsf{C}}
+\newcommand{\cell}[2]{\ensuremath{#1\!\times\!#2}}
+
+% ---------------------------------------------------------------------------
+% DRAFT SCAFFOLDING. Remove \draftmode before submission.
+%   \nm{...}  a number the final campaign must supply
+%   \spec{...} a speculative statement pending measurement
+% ---------------------------------------------------------------------------
+%   \nm{...}   a number the final campaign must supply (red)
+%   \spec{...} a speculative statement pending measurement (blue)
+%   \prov{...} a PROVISIONAL value from the retired campaign (orange). It is
+%              real data and it makes the paper readable, but every one of
+%              these must be refreshed from the final campaign before
+%              submission. Never let a \prov survive into a submitted draft.
+\newif\ifdraftmode \draftmodetrue
+\ifdraftmode
+  \newcommand{\nm}[1]{\textcolor{red}{\textbf{[#1]}}}
+  \newcommand{\spec}[1]{\textcolor{blue!70!black}{#1}}
+  \newcommand{\prov}[1]{\textcolor{orange!85!black}{#1}}
+\else
+  \newcommand{\nm}[1]{#1}
+  \newcommand{\spec}[1]{#1}
+  \newcommand{\prov}[1]{#1}
+\fi
+
+% Placeholder for a figure whose data the final campaign has not yet produced.
+% #1 = width fraction, #2 = what the figure will show (one line).
+\newcommand{\figplaceholder}[2]{%
+  \begin{center}%
+  \fboxsep=10pt\fboxrule=0.6pt%
+  \textcolor{red}{\fbox{\parbox{#1\linewidth}{\centering\small
+  \textbf{FIGURE PLACEHOLDER}\\[3pt]#2}}}%
+  \end{center}}
+
+\title{Work avoidance for efficient sparse set algebra}
+
+\author[1]{Marcus D. R. Klarqvist}
+\affil[1]{\nm{affiliation}}
+
+\keywords{set algebra; compressed bitmaps; adaptive representation; work
+avoidance; set intersection; SIMD}
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\begin{document}
+
+\flushbottom
+\maketitle
+\thispagestyle{empty}
+
+\input{sections/introduction}
+\input{sections/results_a}
+\input{sections/results_b}
+\input{sections/discussion}
+\input{sections/methods}
+
+% wlscirep.cls already issues \bibliographystyle{naturemag-doi}; repeating it
+% makes bibtex report "Illegal, another \bibstyle command".
+\bibliography{references}
+
+\end{document}

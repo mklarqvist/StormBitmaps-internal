@@ -1,0 +1,73 @@
+% Prefix-filtering schematic (was Fig. 1e)
+% Extracted from the former Fig. 1; rendered as a panel of its own figure.
+\centering
+% ===========================================================================
+% Figure 1 — overview. Body only; \input inside a figure environment.
+% House idiom follows the scaffold paper's fig:planes: minipage panels with
+% bold letter labels, \resizebox per panel, and the two-saturation convention
+% (strong fill = the lanes the panel is about, faint same-hue fill = context).
+%
+% Requires simdgrid.sty and the repr* colours from storm.tex.
+% ===========================================================================
+
+% Focus / context saturations, one pair per representation.
+\colorlet{focB}{reprB!45}\colorlet{ctxB}{reprB!12}
+\colorlet{focS}{reprS!55}\colorlet{ctxS}{reprS!14}
+\colorlet{focR}{reprR!55}\colorlet{ctxR}{reprR!14}
+\colorlet{focW}{reprW!55}\colorlet{ctxW}{reprW!14}
+\colorlet{focC}{reprC!65}\colorlet{ctxC}{reprC!18}
+\colorlet{zone}{black!18}
+
+\tikzset{
+  gridcell/.style={draw=black!55, line width=0.4pt, minimum width=16.5mm,
+                   minimum height=6.6mm, inner sep=1pt, font=\scriptsize,
+                   anchor=center},
+  hdr/.style={font=\scriptsize\bfseries},
+  flowbox/.style={draw=black!60, rounded corners=1.2pt, align=left,
+                  font=\scriptsize, inner sep=3.2pt},
+  flowarrow/.style={-{Latex[length=1.8mm]}, draw=black!65, line width=0.5pt},
+}
+
+% ------------------------------------------------------------------ panel e
+% Prefix filtering: a candidate-pruning rule from the similarity-join
+% literature, used only in the opt-in thresholded mode.
+\centering
+\resizebox{.34\linewidth}{!}{%
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{sm/.style={draw=black!55, line width=0.35pt},
+           tiny lbl/.style={font=\tiny, text=black!70}}
+  % Encoding, not prose: prefix = saturated, tail = near-white, the shared
+  % element = accent. The verdict is a glyph. The caption narrates.
+  \colorlet{pfx}{reprS!62}\colorlet{tail}{black!5}\colorlet{hit}{reprR!60}
+  \newcommand{\prefrow}[5]{% #1 y  #2 label  #3 prefix  #4 tail  #5 hit index (-1 none)
+    \node[font=\scriptsize\bfseries, anchor=east] at (-1.4,#1+2.1) {#2};
+    \foreach \v [count=\k from 0] in {#3}{
+      \ifnum\k=#5 \def\f{hit}\else\def\f{pfx}\fi
+      \draw[sm, fill=\f] (\k*5,#1) rectangle ++(5,4.2);
+      \node[font=\tiny\bfseries] at (\k*5+2.5,#1+2.1) {\v};}
+    \foreach \v [count=\k from 0] in {#4}{
+      \draw[sm, draw=black!35, fill=tail] (\k*5+10,#1) rectangle ++(5,4.2);
+      \node[font=\tiny, text=black!45] at (\k*5+12.5,#1+2.1) {\v};}}
+  % verdict glyphs, drawn rather than set as text
+  \newcommand{\vdiscard}[2]{\draw[line width=1.1pt, draw=black!45]
+      (#1-1.7,#2-1.7) -- (#1+1.7,#2+1.7) (#1-1.7,#2+1.7) -- (#1+1.7,#2-1.7);}
+  \newcommand{\vkeep}[2]{\draw[line width=1.2pt, draw=reprR, line cap=round,
+      line join=round] (#1-1.9,#2+0.1) -- (#1-0.5,#2-1.5) -- (#1+2.0,#2+1.9);}
+
+  \draw[-{Latex[length=1.3mm]}, draw=black!45, line width=0.4pt] (0,10.4) -- (10,10.4);
+  \node[font=\tiny, text=black!55, anchor=west] at (10.8,10.4) {rarest first};
+  \prefrow{0}{$A$}{17,4}{23,8,31}{-1}
+  \prefrow{-6}{$B$}{12,23}{8,31,5}{-1}
+  \draw[decorate, decoration={brace, amplitude=2.2pt}, draw=black!55]
+    (0,4.7) -- (10,4.7) node[midway, above=1.8pt, font=\tiny, text=black!65] {prefix};
+  \vdiscard{31}{-3}
+
+  \begin{scope}[shift={(0,-11.5)}]
+    \prefrow{0}{$A$}{17,4}{23,8,31}{1}
+    \prefrow{-6}{$C$}{4,12}{8,31,5}{0}
+    \vkeep{31}{-3}
+  \end{scope}
+\end{tikzpicture}}
+
+
+\vspace{2mm}

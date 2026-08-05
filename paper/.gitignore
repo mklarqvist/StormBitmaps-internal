@@ -1,0 +1,31 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.blg
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.bcf
+*.run.xml
+_minted/
+_minted*/
+__pycache__/
+*.py[cod]
+*-eps-converted-to.pdf
+
+# OS
+.DS_Store
+
+# scratch renders used while checking layout
+figures/chk-*.png
+figures/dsc-*.png
+figures/f[0-9]-*.png
+figures/pg-*.png
+figures/prev*.png
+figures/crop_*.png
+figures/*_preview*.png
+figures/*_standalone.pdf

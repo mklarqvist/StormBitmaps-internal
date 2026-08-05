@@ -1,0 +1,118 @@
+% The batch regime: rejecting pairs wholesale, and paying for the decision once.
+% Panels were Fig. 1d and Fig. 1f before the figures were reorganised.
+\centering
+% ===========================================================================
+% Figure 1 — overview. Body only; \input inside a figure environment.
+% House idiom follows the scaffold paper's fig:planes: minipage panels with
+% bold letter labels, \resizebox per panel, and the two-saturation convention
+% (strong fill = the lanes the panel is about, faint same-hue fill = context).
+%
+% Requires simdgrid.sty and the repr* colours from storm.tex.
+% ===========================================================================
+
+% Focus / context saturations, one pair per representation.
+\colorlet{focB}{reprB!45}\colorlet{ctxB}{reprB!12}
+\colorlet{focS}{reprS!55}\colorlet{ctxS}{reprS!14}
+\colorlet{focR}{reprR!55}\colorlet{ctxR}{reprR!14}
+\colorlet{focW}{reprW!55}\colorlet{ctxW}{reprW!14}
+\colorlet{focC}{reprC!65}\colorlet{ctxC}{reprC!18}
+\colorlet{zone}{black!18}
+
+\tikzset{
+  gridcell/.style={draw=black!55, line width=0.4pt, minimum width=16.5mm,
+                   minimum height=6.6mm, inner sep=1pt, font=\scriptsize,
+                   anchor=center},
+  hdr/.style={font=\scriptsize\bfseries},
+  flowbox/.style={draw=black!60, rounded corners=1.2pt, align=left,
+                  font=\scriptsize, inner sep=3.2pt},
+  flowarrow/.style={-{Latex[length=1.8mm]}, draw=black!65, line width=0.5pt},
+}
+
+\textbf{a}\par\vspace{0.6mm}
+% ------------------------------------------------------------------ panel d
+% The overlap pre-filter: the same occupancy idea as (c), but at a chosen width
+% and applied ACROSS a tile of rows, to reject whole pairs before touching data.
+
+\resizebox{.72\linewidth}{!}{%
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{sm/.style={draw=black!55, line width=0.35pt},
+           tiny lbl/.style={font=\tiny, text=black!70}}
+  % per-row coarse summaries
+  \foreach \bits [count=\i from 0] in {{1,0,0,1},{1,1,0,0},{0,0,1,0},
+                                       {0,1,0,1},{1,0,0,0},{0,0,1,1}}{
+    \node[tiny lbl, anchor=east] at (-1,-\i*4.6-2.1) {$X_\i$};
+    \foreach \b [count=\k from 0] in \bits {
+      \ifnum\b=1 \def\f{zone}\else\def\f{white}\fi
+      \draw[sm, fill=\f] (\k*4.6,-\i*4.6-4.2) rectangle ++(4.6,4.2);}}
+  \node[tiny lbl, anchor=south west] at (0,0.6) {coarse summaries};
+  % the pair matrix: shaded = summaries overlap, white = provably disjoint
+  \begin{scope}[shift={(32,0)}]
+    \node[tiny lbl, anchor=south west] at (0,4.4) {pairs};
+    \foreach \i in {0,...,5}{
+      \node[tiny lbl] at (\i*4.6+2.3,1.8) {\i};}
+    % Row indices sit to the RIGHT of the grid, on a common edge, so they line
+    % up with each other and with the cells they label. Row 5 has no cells in
+    % the upper triangle, so it carries no label.
+    \foreach \i in {0,...,4}{
+      \node[tiny lbl, anchor=west] at (28.4,-\i*4.6-2.1) {\i};}
+    \foreach \i/\js in {0/{1,3,4,5}, 1/{3,4}, 2/{5}, 3/{5}}{
+      \foreach \j in \js {
+        \draw[sm, fill=focR] (\j*4.6,-\i*4.6-4.2) rectangle ++(4.6,4.2);}}
+    \foreach \i/\js in {0/{2}, 1/{2,5}, 2/{3,4}, 3/{4}, 4/{5}}{
+      \foreach \j in \js {
+        \draw[sm, dashed, draw=black!40, fill=white]
+          (\j*4.6,-\i*4.6-4.2) rectangle ++(4.6,4.2);}}
+  \end{scope}
+\end{tikzpicture}}
+
+\vspace{3mm}
+
+\textbf{b}\par\vspace{0.6mm}
+\resizebox{.72\linewidth}{!}{%
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{
+    barlbl/.style={anchor=east, font=\scriptsize, text=black!75},
+    keylbl/.style={anchor=west, font=\scriptsize, text=black!70},
+    ref/.style={draw=black!45, dashed, line width=0.4pt},
+  }
+  \def\bh{4.2}                       % bar height
+  \newcommand{\decide}[3]{\draw[draw=black!55, line width=0.3pt, fill=focC]
+      (#1,#2) rectangle ++(#3,\bh);}
+  \newcommand{\work}[3]{\draw[draw=black!55, line width=0.3pt, fill=black!14]
+      (#1,#2) rectangle ++(#3,\bh);}
+  \newcommand{\skipped}[3]{\draw[draw=black!42, dashed, line width=0.3pt, fill=white]
+      (#1,#2) rectangle ++(#3,\bh);}
+
+  % ---- left group: the cost of deciding, three regimes, equal total work ----
+  \node[font=\scriptsize\bfseries, anchor=west] at (0,16) {the cost of deciding};
+  \node[barlbl] at (-1.5,10+\bh/2) {one operation};
+  \decide{0}{10}{1.6} \work{1.6}{10}{58.4}
+  \node[barlbl] at (-1.5,4+\bh/2) {a batch, deciding each time};
+  \foreach \i in {0,...,9}{ \decide{\i*6}{4}{2} \work{\i*6+2}{4}{4} }
+  \node[barlbl] at (-1.5,-2+\bh/2) {a batch, deciding per tile};
+  \decide{0}{-2}{2} \foreach \i in {0,...,9}{ \work{2+\i*5.8}{-2}{5.8} }
+  \draw[ref] (60,-4) -- (60,15);
+
+  % ---- right group: the cost of filtering, where it pays and where it does not
+  \begin{scope}[shift={(0,-26)}]
+    \node[font=\scriptsize\bfseries, anchor=west] at (0,16) {the cost of filtering};
+    \node[barlbl] at (-1.5,10+\bh/2) {where bins are mostly empty};
+    \decide{0}{10}{1.6} \work{1.6}{10}{9} \skipped{10.6}{10}{49.4}
+    \node[barlbl] at (-1.5,4+\bh/2) {where every bin is occupied};
+    \decide{0}{4}{1.6} \work{1.6}{4}{60}
+    \draw[ref] (60,2) -- (60,15);
+    \node[simd note, anchor=west] at (62.2,6.1) {overhead};
+  \end{scope}
+
+  % ---- key ----
+  \begin{scope}[shift={(0,-38)}]
+    \draw[draw=black!55, line width=0.3pt, fill=focC]  (0,0) rectangle ++(4,3.2);
+    \node[keylbl] at (5,1.6) {deciding};
+    \draw[draw=black!55, line width=0.3pt, fill=black!14] (26,0) rectangle ++(4,3.2);
+    \node[keylbl] at (31,1.6) {work done};
+    \draw[draw=black!42, dashed, line width=0.3pt, fill=white] (58,0) rectangle ++(4,3.2);
+    \node[keylbl] at (63,1.6) {work skipped};
+    \draw[ref] (94,-0.4) -- (94,3.6);
+    \node[keylbl] at (95.5,1.6) {cost with no decision and no filter};
+  \end{scope}
+\end{tikzpicture}}

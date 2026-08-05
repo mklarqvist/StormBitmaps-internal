@@ -1,0 +1,402 @@
+% Modify Table and Figure names and reset their counters to 0
+\renewcommand{\figurename}{Supplementary Figure}
+\renewcommand{\tablename}{Supplementary Table}
+\setcounter{figure}{0}
+\setcounter{table}{0}
+
+% Add title again
+\title{Supplemental Information: Efficient Computation of Bitfield Statistics for Sequencing Datasets}
+\maketitlesup
+
+% Start content
+\begin{figure}[h]
+\captionsetup{type=figure}
+\begin{minted}{python}
+for c in 1..n # Loop over FLAGs, MTID, TID, QUAL
+  # Selector for passing QC or failing QC
+  QC = 1 if (flags[c] & BAM_FQCFAIL) else 0
+  if flags[c] & BAM_FSECONDARY: # Flow: Secondary read
+    ++out[QC]["secondary"]
+  elif flags[c] & BAM_FSUPPLEMENTARY: # Flow: Supplementary read
+    ++out[QC]["supplementary"]
+  elif flags[c] & BAM_FPAIRED: # Flow: Read is paired
+    if (flags[c] & BAM_FPROPER_PAIR) && not (flags[c] & BAM_FUNMAP):
+      ++out[QC]["n_pair_good"]
+    if flags[c] & BAM_FREAD1: ++out[QC]["n_read1"]
+    if flags[c] & BAM_FREAD2: ++out[QC]["n_read2"]
+    if (flags[c] & BAM_FMUNMAP) && not (flags[c] & BAM_FUNMAP):
+      ++out[QC]["n_sgltn"]
+    if not (flags[c] & BAM_FUNMAP) && not (flags[c] & BAM_FMUNMAP):
+      ++out[QC]["pair_map"]
+      if MTID[c] == TID[c]: # Read and mate map to same chromosome
+        ++out[QC]["diff_chr"]
+        if QUAL[c] >= 5:
+          ++out[QC]["diff_high]
+  if not (flags[c] & BAM_FUNMAP): ++out[QC]["mapped"] # Is mapped
+  if not (flags[c] & BAM_FDUP):   ++out[QC]["dup"] # Is not duplicated
+\end{minted}
+\caption{\label{fig:samtools-flagstats}Pseudo-code for algorithm used
+in samtools for computing summary statistics for \texttt{FLAG} values. Field names are
+described in Table \ref{tab:sam-flag-description}. The original macro subroutine can
+be found at
+\url{https://github.com/samtools/samtools/blob/master/bam_stat.c\#L47}
+(Last accessed: November 24, 2019). 
+% Note that this subroutine does not include the predicate evaluations for low mapping quality and mapping to different chromosomes for mate-pair reads. These cases are addressed separately.
+}
+\end{figure}
+
+\begin{figure}[h]
+\begin{minted}[escapeinside=\\$\\$,mathescape=true]{c}
+void mask_select_propagate_carry(__m512i* r, 
+  __m512i select, __m512i compare,
+  __m512i false_mask) 
+{
+  // *r & select == compare
+  __mmask32 mask = _mm512_cmpeq_epi16_mask(*r & select, compare);
+  // *r &= (m, m, m, $\ldots$, m), where m is in {false_mask, 65535}.
+  *r &= (_mm512_maskz_set1_epi16(mask, 65535) | false_mask);
+}
+\end{minted}
+\caption{\label{fig:mask-select-propagate-carry}Pseudo-code for SIMD-based
+algorithm for a single update for a \texttt{FLAG} word.}
+\end{figure}
+
+\begin{figure}[h]
+\begin{minted}{python}
+# Masks (rules)
+mask1 = FQCFAIL + FSECONDARY + FUNMAP + FDUP
+mask2 = FQCFAIL + FSUPPLEMENTARY + FSECONDARY + FUNMAP + FDUP
+
+for c in 1..n # Loop over registers of FLAGs
+  r[i] &= mask_select_propagate_carry(r[i], FSECONDARY,     0, mask1)
+  r[i] &= mask_select_propagate_carry(r[i], FSUPPLEMENTARY, 0, mask2)
+  r[i] &= mask_select_propagate_carry(r[i], FPAIRED, FPAIRED,  mask2)
+  // Final r[i]
+\end{minted}
+\caption{\label{fig:propagate-carry-psuedocode}\textbf{Psuedo-code for SIMD-based
+algorithm for a single update for a \texttt{FLAG} value.} The \texttt{BAM\_} bitfield prefix has been dropped for succinctness.}
+\end{figure}
+
+\begin{figure}[h]
+\begin{minted}[escapeinside=\\$\\$,mathescape=true]{c}
+void mask_select_propagate_carry2(__m512i* r, 
+  __m512i select, __m512i compare, 
+  __m512i false_mask)
+{
+  // *r & select == compare
+  __mmask32 mask = _mm512_cmpeq_epi16_mask(*r & select, compare);
+  int bin_fun = 0xE0; // a & (b | c) = 11100000b
+  *r = _mm512_ternarylogic_epi64(*r, _mm512_maskz_set1_epi16(mask, 65535), 
+         false_mask, bin_fun);
+}
+\end{minted}
+\captionof{figure}{\label{fig:mask-select-propagate-carry-ternary}\textbf{Improved pseudo-code for performing a single update for a \texttt{FLAG} word.}}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{\label{tab:mask-select-propagate-carry-vptern}\textbf{Improving the mask-select propagate carry subroutine using the \texttt{vpternlogq} instruction}. Bit combinations where $a \mathrm{~and~} (b \mathrm{~or~} c)$ equals true (one) given three input values, $a$, $b$, and $c$, are highlighted in bold.}
+\begin{tabular}{ccccc}
+\toprule
+ $c$ & $b$& $a$ & $a \mathrm{~and~} (b \mathrm{~or~} c)$ & $1a + 2b + 4c$\\\midrule
+ 0& 0& 0& 0& 0\\
+ 1& 0& 0& 0& 1\\
+ 0& 1& 0& 0& 2\\
+ 1& 1& 0& 0& 3\\
+ 0& 0& 1& 0& 4\\
+ 1& 0& 1& \textbf{1}& \textbf{5}\\
+ 0& 1& 1& \textbf{1}& \textbf{6}\\
+ 1& 1& 1& \textbf{1}& \textbf{7}\\\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[]
+\centering
+\caption{\textbf{Nybble sequences that result in set conditional bits.} These bit sequences control the special bits 12-14 where $?$ is a wildcard (zero or one). Expanding out these sequences results in: $0011_b$, $1011_b$, $1001_b$, $1011_b$, $0001_b$, $0011_b$ where the sequences $1011_b$ and $0011_b$ result in two conditional bits being set. The \texttt{BAM\_} prefix have been dropped for succinctness. Abbreviations: Cond. bit, conditional bit.}
+\label{tab:optimize-rules}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\multirow{3}{*}{\textbf{Cond. bit}} & \multicolumn{4}{c|}{\textbf{Input bit}}                                    \\ \cline{2-5} 
+                                    & \textbf{3}      & \textbf{2}     & \textbf{1}            & \textbf{0}      \\ \cline{2-5} 
+                                    & \textbf{MUNMAP} & \textbf{UNMAP} & \textbf{PROPER\_PAIR} & \textbf{PAIRED} \\ \hline
+12                                  & ?               & 0              & 1                     & 1               \\ \hline
+13                                  & 1               & 0              & ?                     & 1               \\ \hline
+14                                  & 0               & 0              & ?                     & 1               \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[]
+\centering
+\caption{\textbf{Lookup words for filling in the special bits 12-14.} Pairs of bytes are packed pairwise in reverse order to create 16-bit permutation masks: 0x40000000, 0x50000000, 0x00000000, 0x00000000, 0x20000000, 0x30000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, and 0x00000000. The \texttt{BAM\_} prefix have been dropped for succinctness.}
+\label{tab:expand-data}
+\begin{tabular}{|l|c|c|c|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{Byte}} & \multicolumn{7}{c|}{\textbf{Bit combinations}}                                                                                          & \multirow{2}{*}{\textbf{pshufbword}} \\ \cline{2-8}
+                             & \textbf{MNUNMAP} & \textbf{FUNMAP} & \textbf{FPROPER\_PAIR} & \textbf{FPAIRED} & \textbf{bit\#12} & \textbf{bit\#13} & \textbf{bit\#14} &                                      \\ \hline
+0                            & 0                & 0               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+1                            & 0                & 0               & 0                      & 1                & 0                & 0                & 1                & 0x40                                 \\ \hline
+2                            & 0                & 0               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+3                            & 0                & 0               & 1                      & 1                & 1                & 0                & 1                & 0x50                                 \\ \hline
+4                            & 0                & 1               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+5                            & 0                & 1               & 0                      & 1                & 0                & 0                & 0                & 0x00                                 \\ \hline
+6                            & 0                & 1               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+7                            & 0                & 1               & 1                      & 1                & 0                & 0                & 0                & 0x00                                 \\ \hline
+8                            & 1                & 0               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+9                            & 1                & 0               & 0                      & 1                & 0                & 1                & 0                & 0x20                                 \\ \hline
+10                           & 1                & 0               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+11                           & 1                & 0               & 1                      & 1                & 1                & 1                & 0                & 0x30                                 \\ \hline
+12                           & 1                & 1               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+13                           & 1                & 1               & 0                      & 1                & 0                & 0                & 0                & 0x00                                 \\ \hline
+14                           & 1                & 1               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+15                           & 1                & 1               & 1                      & 1                & 0                & 0                & 0                & 0x00                                 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{\label{tab:mask-select-propagate-carry-vptern}\textbf{Further improving the mask-select propagate carry subroutine using the \texttt{vpternlogq} instruction}. Bit combinations where $(a \mathrm{~and~} b) \mathrm{~or~} (\mathrm{~not~} a \mathrm{~and~} c)$ equals true (one) given three input values, $a$, $b$, and $c$, are highlighted in bold.}
+\begin{tabular}{ccccc}
+\toprule
+ $c$ & $b$& $a$ & $(a \mathrm{~and~} b) \mathrm{~or~} (\mathrm{~not~} a \mathrm{~and~} c)$ & $1a + 2b + 4c$\\\midrule
+ 0& 0& 0& 0& 0\\
+ 1& 0& 0& \textbf{1}& \textbf{1}\\
+ 0& 1& 0& 0& 2\\
+ 1& 1& 0& \textbf{1}& \textbf{3}\\
+ 0& 0& 1& 0& 4\\
+ 1& 0& 1& 0& 5\\
+ 0& 1& 1& \textbf{1}& \textbf{6}\\
+ 1& 1& 1& \textbf{1}& \textbf{7}\\\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[]
+\centering
+\caption{\textbf{Lookup words for filling in the special bits 12-14.} Pairs of bytes are packed pairwise in reverse order to create 16-bit permutation masks: 0x44000000, 0x54000000, 0x04000000, 0x04000000, 0x24000000, 0x34000000, 0x04000000, 0x04000000, 0x44000000, 0x54000000, 0x04000000, 0x04000000, 0x24000000, 0x34000000, 0x04000000, and 0x04000000. The \texttt{BAM\_} prefix have been dropped for succinctness.}
+\label{tab:expand-data2}
+\begin{tabular}{|l|c|c|c|c|c|c|c|l|}
+\hline
+\multirow{2}{*}{\textbf{Bit}} & \multicolumn{7}{c|}{\textbf{Bit combinations}}                                                                                          & \multirow{2}{*}{\textbf{pshufbword}} \\ \cline{2-8}
+                              & \textbf{MNUNMAP} & \textbf{FUNMAP} & \textbf{FPROPER\_PAIR} & \textbf{FPAIRED} & \textbf{Bit\#12} & \textbf{Bit\#13} & \textbf{Bit\#14} &                                      \\ \hline
+0                             & 0                & 0               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+1                             & 0                & 0               & 0                      & 1                & 0                & 0                & 1                & 0x44                                 \\ \hline
+2                             & 0                & 0               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+3                             & 0                & 0               & 1                      & 1                & 1                & 0                & 1                & 0x54                                 \\ \hline
+4                             & 0                & 1               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+5                             & 0                & 1               & 0                      & 1                & 0                & 0                & 0                & 0x04                                 \\ \hline
+6                             & 0                & 1               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+7                             & 0                & 1               & 1                      & 1                & 0                & 0                & 0                & 0x04                                 \\ \hline
+8                             & 1                & 0               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+9                             & 1                & 0               & 0                      & 1                & 0                & 1                & 0                & 0x24                                 \\ \hline
+10                            & 1                & 0               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+11                            & 1                & 0               & 1                      & 1                & 1                & 1                & 0                & 0x34                                 \\ \hline
+12                            & 1                & 1               & 0                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+13                            & 1                & 1               & 0                      & 1                & 0                & 0                & 0                & 0x04                                 \\ \hline
+14                            & 1                & 1               & 1                      & 0                & 0                & 0                & 0                & 0x00                                 \\ \hline
+15                            & 1                & 1               & 1                      & 1                & 0                & 0                & 0                & 0x04                                 \\ \hline
+\end{tabular}
+\end{table}
+
+
+\begin{table}[]
+\centering
+\caption{\textbf{Filter masks for the core flow-control bits in the mask-select propagate-carry approach.} These values are for failing the \texttt{FQCFAIL} bit. Pairs of bytes are packed pairwise in reverse order to create 16-bit permutations masks for \texttt{\_mm512\_permutexvar\_epi16}: 0x00000000, 0x07040604, 0x00000000, 0x070476c4, 0x00000000, 0x07040e04, 0x00000000, 0x07040e04, 0x00000000, 0x07040604, 0x00000000, 0x070476c4, 0x00000000, 0x07040e04, 0x00000000, and 0x07040e04. The \texttt{BAM\_} prefix have been dropped for succinctness.}
+\label{tab:mask-data-qc1}
+\begin{tabular}{|l|c|c|c|c|l|}
+\hline
+\multirow{2}{*}{\textbf{Byte}} & \multicolumn{4}{c|}{\textbf{Bit combinations}}                                      & \multirow{2}{*}{\textbf{Bitmask}} \\ \cline{2-5}
+                             & \textbf{FSUPPLEMENTARY} & \textbf{FPAIRED} & \textbf{FQCFAIL} & \textbf{FSECONDARY} &                                \\ \hline
+0                            & 0                       & 0                & 0                & 0                   & 0x0000                         \\ \hline
+1                            & 0                       & 0                & 0                & 1                   & 0x0000                         \\ \hline
+2                            & 0                       & 0                & 1                & 0                   & 0x0604                         \\ \hline
+3                            & 0                       & 0                & 1                & 1                   & 0x0704                         \\ \hline
+4                            & 0                       & 1                & 0                & 0                   & 0x0000                         \\ \hline
+5                            & 0                       & 1                & 0                & 1                   & 0x0000                         \\ \hline
+6                            & 0                       & 1                & 1                & 0                   & 0x76c4                         \\ \hline
+7                            & 0                       & 1                & 1                & 1                   & 0x0704                         \\ \hline
+8                            & 1                       & 0                & 0                & 0                   & 0x0000                         \\ \hline
+9                            & 1                       & 0                & 0                & 1                   & 0x0000                         \\ \hline
+10                           & 1                       & 0                & 1                & 0                   & 0x0e04                         \\ \hline
+11                           & 1                       & 0                & 1                & 1                   & 0x0704                         \\ \hline
+12                           & 1                       & 1                & 0                & 0                   & 0x0000                         \\ \hline
+13                           & 1                       & 1                & 0                & 1                   & 0x0000                         \\ \hline
+14                           & 1                       & 1                & 1                & 0                   & 0x0e04                         \\ \hline
+15                           & 1                       & 1                & 1                & 1                   & 0x0704                         \\ \hline
+16                           & 0                       & 0                & 0                & 0                   & 0x0000                         \\ \hline
+17                           & 0                       & 0                & 0                & 1                   & 0x0000                         \\ \hline
+18                           & 0                       & 0                & 1                & 0                   & 0x0604                         \\ \hline
+19                           & 0                       & 0                & 1                & 1                   & 0x0704                         \\ \hline
+20                           & 0                       & 1                & 0                & 0                   & 0x0000                         \\ \hline
+21                           & 0                       & 1                & 0                & 1                   & 0x0000                         \\ \hline
+22                           & 0                       & 1                & 1                & 0                   & 0x76c4                         \\ \hline
+23                           & 0                       & 1                & 1                & 1                   & 0x0704                         \\ \hline
+24                           & 1                       & 0                & 0                & 0                   & 0x0000                         \\ \hline
+25                           & 1                       & 0                & 0                & 1                   & 0x0000                         \\ \hline
+26                           & 1                       & 0                & 1                & 0                   & 0x0e04                         \\ \hline
+27                           & 1                       & 0                & 1                & 1                   & 0x0704                         \\ \hline
+28                           & 1                       & 1                & 0                & 0                   & 0x0000                         \\ \hline
+29                           & 1                       & 1                & 0                & 1                   & 0x0000                         \\ \hline
+30                           & 1                       & 1                & 1                & 0                   & 0x0e04                         \\ \hline
+31                           & 1                       & 1                & 1                & 1                   & 0x0704                         \\ \hline
+\end{tabular}
+\end{table}
+
+
+\begin{table}[]
+\centering
+\caption{\textbf{Filter masks for the core flow-control bits in the mask-select propagate-carry approach.} These values are for passing the \texttt{FQCFAIL} bit. Pairs of bytes are packed pairwise in reverse order to create 16-bit permutations masks for \texttt{\_mm512\_permutexvar\_epi16}: 0x07040604, 0x00000000, 0x070476c4, 0x00000000, 0x07040e04, 0x00000000, 0x07040e04, 0x00000000, 0x07040604, 0x00000000, 0x070476c4, 0x00000000, 0x07040e04, 0x00000000, 0x07040e04, and 0x00000000. Note that these values are shifted one word to the left compared to those in Supplemental Table \ref{tab:mask-data-qc1}. The \texttt{BAM\_} prefix have been dropped for succinctness.}
+\label{tab:mask-data-qc2}
+\begin{tabular}{|l|c|c|c|c|l|}
+\hline
+\multirow{2}{*}{\textbf{Byte}} & \multicolumn{4}{c|}{\textbf{Bit combinations}}                                      & \multirow{2}{*}{\textbf{Bitmask}} \\ \cline{2-5}
+                             & \textbf{FSUPPLEMENTARY} & \textbf{FPAIRED} & \textbf{FQCFAIL} & \textbf{FSECONDARY} &                                \\ \hline
+0                            & 0                       & 0                & 0                & 0                   & 0x0604                         \\ \hline
+1                            & 0                       & 0                & 0                & 1                   & 0x0704                         \\ \hline
+2                            & 0                       & 0                & 1                & 0                   & 0x0000                         \\ \hline
+3                            & 0                       & 0                & 1                & 1                   & 0x0000                         \\ \hline
+4                            & 0                       & 1                & 0                & 0                   & 0x76c4                         \\ \hline
+5                            & 0                       & 1                & 0                & 1                   & 0x0704                         \\ \hline
+6                            & 0                       & 1                & 1                & 0                   & 0x0000                         \\ \hline
+7                            & 0                       & 1                & 1                & 1                   & 0x0000                         \\ \hline
+8                            & 1                       & 0                & 0                & 0                   & 0x0e04                         \\ \hline
+9                            & 1                       & 0                & 0                & 1                   & 0x0704                         \\ \hline
+10                           & 1                       & 0                & 1                & 0                   & 0x0000                         \\ \hline
+11                           & 1                       & 0                & 1                & 1                   & 0x0000                         \\ \hline
+12                           & 1                       & 1                & 0                & 0                   & 0x0e04                         \\ \hline
+13                           & 1                       & 1                & 0                & 1                   & 0x0704                         \\ \hline
+14                           & 1                       & 1                & 1                & 0                   & 0x0000                         \\ \hline
+15                           & 1                       & 1                & 1                & 1                   & 0x0000                         \\ \hline
+16                           & 0                       & 0                & 0                & 0                   & 0x0604                         \\ \hline
+17                           & 0                       & 0                & 0                & 1                   & 0x0704                         \\ \hline
+18                           & 0                       & 0                & 1                & 0                   & 0x0000                         \\ \hline
+19                           & 0                       & 0                & 1                & 1                   & 0x0000                         \\ \hline
+20                           & 0                       & 1                & 0                & 0                   & 0x76c4                         \\ \hline
+21                           & 0                       & 1                & 0                & 1                   & 0x0704                         \\ \hline
+22                           & 0                       & 1                & 1                & 0                   & 0x0000                         \\ \hline
+23                           & 0                       & 1                & 1                & 1                   & 0x0000                         \\ \hline
+24                           & 1                       & 0                & 0                & 0                   & 0x0e04                         \\ \hline
+25                           & 1                       & 0                & 0                & 1                   & 0x0704                         \\ \hline
+26                           & 1                       & 0                & 1                & 0                   & 0x0000                         \\ \hline
+27                           & 1                       & 0                & 1                & 1                   & 0x0000                         \\ \hline
+28                           & 1                       & 1                & 0                & 0                   & 0x0e04                         \\ \hline
+29                           & 1                       & 1                & 0                & 1                   & 0x0704                         \\ \hline
+30                           & 1                       & 1                & 1                & 0                   & 0x0000                         \\ \hline
+31                           & 1                       & 1                & 1                & 1                   & 0x0000                         \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[]
+\centering
+\caption{\textbf{Completion time for computing FLAG summary statistics for the NA12878D readset}. \texttt{FLAG}
+fields were compressed in blocks of 512 kB (8192 16-bit words) using the general
+compression libraries LZ4 or Zstd. LZ4 can be used in two different modes: the
+standard mode that compress faster but at worse fold compresion (LZ4) and in a
+mode that compress better at slower speeds (LZ4-HC). All compression methods
+were evaluated over their parameter space for compression: LZ4 (1-9) and Zstd
+(1-19). Times are listed in milliseconds. Decompression times are included in
+either algorithm for computing the \texttt{FLAG} summary statistic. Abbreviations: Comp. Method:
+Compression Method; Decomp: Decompression.}
+\label{tab:NA12878D-perf}
+\begin{tabular}{|l|c|c|c|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{C.level}} & \multicolumn{4}{c|}{\textbf{LZ4}}                                                   & \multicolumn{4}{c|}{\textbf{Zstd}}                                                  \\ \cline{2-9} 
+                                      & \textbf{Filesize} & \textbf{Decomp.} & \textbf{samtools} & \textbf{libflagstats} & \textbf{Filesize} & \textbf{Decomp.} & \textbf{samtools} & \textbf{libflagstats} \\ \hline
+Raw                                   & 1,649 (1.0)       & 2.31                & 6.69              & 2.86                  & 1,649 (1.0)       & 2.31                & 6.69              & 2.86                  \\ \hline
+1                                     & 368 (4.5)         & 1.46                & 5.43              & 2.02                  & 184 (9.0)         & 3.46                & 7.61              & 4.01                  \\ \hline
+2                                     & 368 (4.5)         & 1.43                & 5.42              & 1.95                  & 186 (8.9)         & 3.50                & 7.52              & 4.06                  \\ \hline
+3                                     & 329 (5.0)         & 1.19                & 5.22              & 1.81                  & 184 (9.0)         & 3.48                & 7.50              & 3.97                  \\ \hline
+4                                     & 295 (5.6)         & 1.10                & 5.01              & 1.67                  & 184 (9.0)         & 3.48                & 7.58              & 3.91                  \\ \hline
+5                                     & 268 (6.2)         & 1.01                & 4.94              & 1.58                  & 156 (10.5)        & 2.85                & 6.84              & 3.42                  \\ \hline
+6                                     & 246 (6.7)         & 0.84                & 4.78              & 1.44                  & 150 (11.0)        & 2.66                & 6.72              & 3.23                  \\ \hline
+7                                     & 229 (7.2)         & 0.75                & 4.68              & 1.36                  & 150 (11.0)        & 2.65                & 6.70              & 3.16                  \\ \hline
+8                                     & 215 (7.7)         & 0.73                & 4.56              & 1.28                  & 150 (11.0)        & 2.61                & 6.73              & 3.15                  \\ \hline
+9                                     & 205 (8.1)         & 0.85                & 4.52              & 1.30                  & 145 (11.4)        & 2.39                & 6.35              & 2.89                  \\ \hline
+10                                    &                   &                     &                   &                       & 145 (11.4)        & 2.35                & 6.22              & 2.88                  \\ \hline
+11                                    &                   &                     &                   &                       & 145 (11.4)        & 2.31                & 6.27              & 2.85                  \\ \hline
+12                                    &                   &                     &                   &                       & 140 (11.7)        & 2.14                & 6.13              & 2.70                  \\ \hline
+13                                    &                   &                     &                   &                       & 135 (12.2)        & 1.95                & 5.92              & 2.53                  \\ \hline
+14                                    &                   &                     &                   &                       & 135 (12.2)        & 1.96                & 5.92              & 2.48                  \\ \hline
+15                                    &                   &                     &                   &                       & 129 (12.8)        & 1.71                & 5.68              & 2.23                  \\ \hline
+16                                    &                   &                     &                   &                       & 118 (14.0)        & 1.34                & 5.31              & 1.90                  \\ \hline
+17                                    &                   &                     &                   &                       & 114 (14.5)        & 1.32                & 5.31              & 1.84                  \\ \hline
+18                                    &                   &                     &                   &                       & 116 (14.2)        & 1.33                & 5.33              & 1.87                  \\ \hline
+19                                    &                   &                     &                   &                       & 106 (15.6)        & 1.24                & 5.25              & 1.82                  \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[]
+\centering
+\caption{\textbf{Completion time for computing FLAG summary statistics for the NA12886 readset}. \texttt{FLAG}
+fields were compressed in blocks of 512 kB (8192 16-bit words) using the general
+compression libraries LZ4 or Zstd. LZ4 can be used in two different modes: the
+standard mode that compress faster but at worse fold compresion (LZ4) and in a
+mode that compress better at slower speeds (LZ4-HC). All compression methods
+were evaluated over their parameter space for compression: LZ4 (1-9) and Zstd
+(1-19). Times are listed in milliseconds. Decompression times are included in
+either algorithm for computing the \texttt{FLAG} summary statistic. Abbreviations: Comp. Method:
+Compression Method; Decomp: Decompression.}
+\label{tab:NA12886-perf}
+\begin{tabular}{|l|c|c|c|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{C.level}} & \multicolumn{4}{c|}{\textbf{LZ4}}                                                     & \multicolumn{4}{c|}{\textbf{Zstd}}                                                    \\ \cline{2-9} 
+                                      & \textbf{Filesize}   & \textbf{Decomp.} & \textbf{samtools} & \textbf{libflagstats} & \textbf{Filesize}   & \textbf{Decmp.} & \textbf{samtools} & \textbf{libflagstats} \\ \hline
+Raw                                   & 3,537 (1.0) & 5.02                & 19.91             & 6.17                  & 3,537 (1.0) & 5.02                & 19.91             & 6.17                  \\ \hline
+1                                     & 1,595 (2.2) & 5.13                & 19.15             & 6.31                  & 682 (5.2)   & 7.43                & 21.43             & 8.28                  \\ \hline
+2                                     & 1,595 (2.2) & 5.15                & 19.31             & 6.32                  & 703 (5.0)   & 9.09                & 23.29             & 10.24                 \\ \hline
+3                                     & 1,449 (2.4) & 4.32                & 18.67             & 5.43                  & 673 (5.3)   & 7.22                & 21.49             & 8.50                  \\ \hline
+4                                     & 1,326 (2.7) & 3.70                & 18.08             & 4.93                  & 673 (5.3)   & 7.17                & 21.50             & 8.51                  \\ \hline
+5                                     & 1,219 (2.9) & 3.24                & 17.32             & 4.51                  & 676 (5.2)   & 7.71                & 22.06             & 8.90                  \\ \hline
+6                                     & 1,124 (3.1) & 2.97                & 16.98             & 4.21                  & 659 (5.4)   & 7.08                & 21.60             & 8.09                  \\ \hline
+7                                     & 1,043 (3.4) & 2.81                & 16.85             & 4.03                  & 659 (5.4)   & 6.42                & 20.97             & 7.61                  \\ \hline
+8                                     & 974 (3.6)   & 2.71                & 16.82             & 3.94                  & 658 (5.4)   & 6.15                & 20.49             & 7.25                  \\ \hline
+9                                     & 916 (3.9)   & 2.66                & 16.70             & 3.76                  & 643 (5.5)   & 5.61                & 19.94             & 6.74                  \\ \hline
+10                                    &                     &                     &                   &                       & 6432 (5.5)   & 5.70                & 20.28             & 6.92                  \\ \hline
+11                                    &                     &                     &                   &                       & 643 (5.5)   & 5.64                & 20.32             & 6.77                  \\ \hline
+12                                    &                     &                     &                   &                       & 629 (5.6)   & 5.30                & 19.85             & 6.39                  \\ \hline
+13                                    &                     &                     &                   &                       & 583 (6.1)   & 5.33                & 19.79             & 6.20                  \\ \hline
+14                                    &                     &                     &                   &                       & 583 (6.1)   & 5.10                & 20.00             & 6.46                  \\ \hline
+15                                    &                     &                     &                   &                       & 577 (6.1)   & 4.90                & 19.95             & 6.23                  \\ \hline
+16                                    &                     &                     &                   &                       & 535 (6.6)   & 4.88                & 20.10             & 5.94                  \\ \hline
+17                                    &                     &                     &                   &                       & 535 (6.6)   & 4.79                & 19.48             & 5.89                  \\ \hline
+18                                    &                     &                     &                   &                       & 538 (6.6)   & 4.58                & 19.44             & 5.91                  \\ \hline
+19                                    &                     &                     &                   &                       & 537 (6.6)   & 4.56                & 19.84             & 5.86                  \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[]
+\centering
+\caption{\textbf{Completion time for computing FLAG summary statistics for the NA06994 readset}. \texttt{FLAG}
+fields were compressed in blocks of 512 kB (8192 16-bit words) using the general
+compression libraries LZ4 or Zstd. LZ4 can be used in two different modes: the
+standard mode that compress faster but at worse fold compresion (LZ4) and in a
+mode that compress better at slower speeds (LZ4-HC). All compression methods
+were evaluated over their parameter space for compression: LZ4 (1-9) and Zstd
+(1-19). Times are listed in milliseconds. Decompression times are included in
+either algorithm for computing the \texttt{FLAG} summary statistic. Abbreviations: Comp. Method:
+Compression Method; Decomp: Decompression.}
+\label{tab:NA06994-perf}
+\begin{tabular}{|l|c|c|c|c|c|c|c|c|}
+\hline
+\multirow{2}{*}{\textbf{C.level}} & \multicolumn{4}{c|}{\textbf{LZ4}}                                                   & \multicolumn{4}{c|}{\textbf{Zstd}}                                                  \\ \cline{2-9} 
+                                      & \textbf{Filesize} & \textbf{Decomp.} & \textbf{samtools} & \textbf{libflagstats} & \textbf{Filesize} & \textbf{Decomp.} & \textbf{samtools} & \textbf{libflagstats} \\ \hline
+Raw                                   & 1,394 (1.0)       & 1.97                & 8.52              & 2.51                  & 1,394 (1.0)       & 1.97                & 8.52              & 2.51                  \\ \hline
+1                                     & 680 (2.1)         & 2.12                & 8.24              & 2.79                  & 343 (4.1)         & 3.21                & 9.36              & 3.66                  \\ \hline
+2                                     & 680 (2.1)         & 2.07                & 8.26              & 2.70                  & 344 (4.0)         & 3.86                & 10.11             & 4.28                  \\ \hline
+3                                     & 621 (2.2)         & 1.74                & 8.04              & 2.25                  & 332 (4.2)         & 3.15                & 9.46              & 3.56                  \\ \hline
+4                                     & 570 (2.4)         & 1.54                & 7.69              & 2.06                  & 332 (4.2)         & 3.12                & 9.32              & 3.62                  \\ \hline
+5                                     & 526 (2.6)         & 1.36                & 7.58              & 1.85                  & 338 (4.1)         & 3.47                & 9.79              & 4.00                  \\ \hline
+6                                     & 489 (2.8)         & 1.25                & 7.41              & 1.73                  & 331 (4.2)         & 3.19                & 9.57              & 3.71                  \\ \hline
+7                                     & 458 (3.0)         & 1.21                & 7.40              & 1.69                  & 323 (4.3)         & 2.94                & 9.19              & 3.39                  \\ \hline
+8                                     & 433 (3.2)         & 1.04                & 7.29              & 1.51                  & 323 (4.3)         & 2.90                & 9.18              & 3.32                  \\ \hline
+9                                     & 414 (3.4)         & 1.10                & 7.37              & 1.60                  & 316 (4.4)         & 2.65                & 8.90              & 3.13                  \\ \hline
+10                                    &                   &                     &                   &                       & 316 (4.4)         & 2.91                & 8.83              & 3.14                  \\ \hline
+11                                    &                   &                     &                   &                       & 316 (4.4)         & 3.30                & 9.02              & 3.20                  \\ \hline
+12                                    &                   &                     &                   &                       & 311 (4.5)         & 2.61                & 8.71              & 2.97                  \\ \hline
+13                                    &                   &                     &                   &                       & 288 (4.8)         & 2.35                & 8.59              & 2.79                  \\ \hline
+14                                    &                   &                     &                   &                       & 288 (4.8)         & 2.40                & 8.76              & 2.86                  \\ \hline
+15                                    &                   &                     &                   &                       & 287 (4.9)         & 2.46                & 8.60              & 2.86                  \\ \hline
+16                                    &                   &                     &                   &                       & 266 (5.2)         & 2.37                & 8.45              & 2.75                  \\ \hline
+17                                    &                   &                     &                   &                       & 266 (5.2)         & 2.29                & 8.59              & 2.85                  \\ \hline
+18                                    &                   &                     &                   &                       & 264 (5.3)         & 2.46                & 8.49              & 2.80                  \\ \hline
+19                                    &                   &                     &                   &                       & 264 (5.3)         & 2.38                & 8.49              & 2.83                  \\ \hline
+\end{tabular}
+\end{table}

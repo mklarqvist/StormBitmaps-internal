@@ -1,0 +1,86 @@
+% ===========================================================================
+% Figure 1 — overview. Body only; \input inside a figure environment.
+% House idiom follows the scaffold paper's fig:planes: minipage panels with
+% bold letter labels, \resizebox per panel, and the two-saturation convention
+% (strong fill = the lanes the panel is about, faint same-hue fill = context).
+%
+% Requires simdgrid.sty and the repr* colours from storm.tex.
+% ===========================================================================
+
+% Focus / context saturations, one pair per representation.
+\colorlet{focB}{reprB!45}\colorlet{ctxB}{reprB!12}
+\colorlet{focS}{reprS!55}\colorlet{ctxS}{reprS!14}
+\colorlet{focR}{reprR!55}\colorlet{ctxR}{reprR!14}
+\colorlet{focW}{reprW!55}\colorlet{ctxW}{reprW!14}
+\colorlet{focC}{reprC!65}\colorlet{ctxC}{reprC!18}
+\colorlet{zone}{black!18}
+
+\tikzset{
+  gridcell/.style={draw=black!55, line width=0.4pt, minimum width=16.5mm,
+                   minimum height=6.6mm, inner sep=1pt, font=\scriptsize,
+                   anchor=center},
+  hdr/.style={font=\scriptsize\bfseries},
+  flowbox/.style={draw=black!60, rounded corners=1.2pt, align=left,
+                  font=\scriptsize, inner sep=3.2pt},
+  flowarrow/.style={-{Latex[length=1.8mm]}, draw=black!65, line width=0.5pt},
+}
+
+\begin{minipage}[b]{.50\linewidth}
+\textbf{a}\par\vspace{0.6mm}
+\resizebox{\linewidth}{!}{%
+\begin{simdpicture}
+  \simdstrip[font=\tiny\ttfamily]{5.4}{\rB}{%
+    0/ctxB,1/focB,1/focB,1/focB, 0/ctxB,0/ctxB,0/ctxB,0/ctxB,%
+    0/ctxB,0/ctxB,0/ctxB,0/ctxB, 1/focB,1/focB,1/focB,0/ctxB}
+  \simdlabels{4.85}{0}{15}
+  \node[simd note, anchor=east] at (-0.35,4.85) {position};
+  \simdstrip[font=\tiny\ttfamily]{3.1}{\rS}{%
+    1/focS,2/focS,3/focS,12/focS,13/focS,14/focS}
+  \simdstrip[font=\tiny\ttfamily]{1.55}{\rR}{{1{:}3}/focR,{12{:}3}/focR}
+  \simdstrip[font=\tiny\ttfamily]{0}{\rW}{L/focW,{F0}/ctxW,L/focW}
+\end{simdpicture}}
+\end{minipage}\hfill
+% ------------------------------------------------------------------ panel b
+\begin{minipage}[b]{.435\linewidth}
+\textbf{b}\par\vspace{0.6mm}
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[x=1mm,y=1mm]
+  % Row labels sit to the RIGHT of the grid, level with their cells, matching
+  % the pair matrix in panel d.
+  \foreach \c/\i in {\rB/0,\rS/1,\rR/2,\rW/3}{
+    \node[hdr] at (\i*17.5,5.2) {\c};
+    \node[hdr, anchor=west] at (61.8,-\i*7.1) {\c};
+  }
+  \node[gridcell, fill=focB]  at (0,0)      {$\Theta(m)$};
+  \node[gridcell, fill=ctxS]  at (17.5,0)   {$\Theta(|S|)$};
+  \node[gridcell, fill=ctxR]  at (35,0)     {$\Theta(r)$};
+  \node[gridcell, fill=ctxW]  at (52.5,0)   {$\Theta(\ell{+}f)$};
+  \node[gridcell, fill=ctxS]  at (17.5,-7.1){$\Theta(|A|{+}|B|)$};
+  \node[gridcell, fill=ctxR]  at (35,-7.1)  {$\Theta(|S|{+}r)$};
+  \node[gridcell, fill=ctxW]  at (52.5,-7.1){$\Theta(|S|{+}\ell{+}f)$};
+  \node[gridcell, fill=ctxR]  at (35,-14.2) {$\Theta(r_A{+}r_B)$};
+  \node[gridcell, fill=ctxW]  at (52.5,-14.2){$\Theta(r{+}\ell{+}f)$};
+  \node[gridcell, fill=ctxW]  at (52.5,-21.3){$\Theta(\ell{+}f)$};
+  % Lower triangle: drawn but empty. The matrix is symmetric, so these cells
+  % carry no information and saying so in every one of them is noise.
+  \foreach \x/\y in {0/-7.1, 0/-14.2, 17.5/-14.2, 0/-21.3, 17.5/-21.3, 35/-21.3}{
+    \node[gridcell, fill=black!3, draw=black!25] at (\x,\y) {};
+  }
+
+  % The complement, shown rather than described: a dense side becomes a sparse
+  % one, and re-enters the same ten cells.
+  \begin{scope}[shift={(-8,-31)}]
+    \foreach \bit [count=\k from 0] in {1,1,1,0,1,1,1,1,1,0,1,1,1,1,0,1}{
+      \ifnum\bit=1 \def\f{focB}\else\def\f{white}\fi
+      \draw[draw=black!55, line width=0.35pt, fill=\f]
+        (\k*4,0) rectangle ++(4,4.4);}
+    \node[hdr, anchor=east] at (-1.5,2.2) {$A$};
+    \foreach \bit [count=\k from 0] in {0,0,0,1,0,0,0,0,0,1,0,0,0,0,1,0}{
+      \ifnum\bit=1 \def\f{focC}\else\def\f{white}\fi
+      \draw[draw=black!55, line width=0.35pt, fill=\f]
+        (\k*4,-8) rectangle ++(4,4.4);}
+    \node[hdr, anchor=east] at (-1.5,-5.8) {$A^{c}$};
+    \draw[flowarrow] (68,2.2) -- ++(5,0) |- (68.01,-5.8);
+  \end{scope}
+\end{tikzpicture}}
+\end{minipage}

@@ -1,0 +1,145 @@
+\begin{thebibliography}{10}
+\urlstyle{rm}
+\expandafter\ifx\csname url\endcsname\relax
+  \def\url#1{\texttt{#1}}\fi
+\expandafter\ifx\csname urlprefix\endcsname\relax\def\urlprefix{URL }\fi
+\expandafter\ifx\csname doiprefix\endcsname\relax\def\doiprefix{DOI: }\fi
+\providecommand{\bibinfo}[2]{#2}
+\providecommand{\eprint}[2][]{\url{#2}}
+
+\bibitem{bayardo2007allpairs}
+\bibinfo{author}{Bayardo, R.~J.}, \bibinfo{author}{Ma, Y.} \&
+  \bibinfo{author}{Srikant, R.}
+\newblock \bibinfo{title}{Scaling up all pairs similarity search}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 16th International
+  Conference on World Wide Web (WWW)}}, \bibinfo{pages}{131--140},
+  \doiprefix\url{10.1145/1242572.1242591} (\bibinfo{year}{2007}).
+
+\bibitem{xiao2008ppjoin}
+\bibinfo{author}{Xiao, C.}, \bibinfo{author}{Wang, W.}, \bibinfo{author}{Lin,
+  X.} \& \bibinfo{author}{Yu, J.~X.}
+\newblock \bibinfo{title}{Efficient similarity joins for near duplicate
+  detection}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 17th International
+  Conference on World Wide Web (WWW)}}, \bibinfo{pages}{131--140},
+  \doiprefix\url{10.1145/1367497.1367516} (\bibinfo{year}{2008}).
+
+\bibitem{swamidass2007bounds}
+\bibinfo{author}{Swamidass, S.~J.} \& \bibinfo{author}{Baldi, P.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Bounds and algorithms for fast
+  exact searches of chemical fingerprints in linear and sublinear time}}.
+\newblock {\emph{\JournalTitle{Journal of Chemical Information and Modeling}}}
+  \textbf{\bibinfo{volume}{47}}, \bibinfo{pages}{302--317},
+  \doiprefix\url{10.1021/ci600358f} (\bibinfo{year}{2007}).
+
+\bibitem{haque2011tanimoto}
+\bibinfo{author}{Haque, I.~S.}, \bibinfo{author}{Pande, V.~S.} \&
+  \bibinfo{author}{Walters, W.~P.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Anatomy of high-performance {2D}
+  similarity calculations}}.
+\newblock {\emph{\JournalTitle{Journal of Chemical Information and Modeling}}}
+  \textbf{\bibinfo{volume}{51}}, \bibinfo{pages}{2345--2351},
+  \doiprefix\url{10.1021/ci200235e} (\bibinfo{year}{2011}).
+
+\bibitem{dalke2019chemfp}
+\bibinfo{author}{Dalke, A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{The chemfp project}}.
+\newblock {\emph{\JournalTitle{Journal of Cheminformatics}}}
+  \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{76},
+  \doiprefix\url{10.1186/s13321-019-0398-8} (\bibinfo{year}{2019}).
+
+\bibitem{mula2018popcount}
+\bibinfo{author}{Mu\l{}a, W.}, \bibinfo{author}{Kurz, N.} \&
+  \bibinfo{author}{Lemire, D.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Faster population counts using
+  {AVX2} instructions}}.
+\newblock {\emph{\JournalTitle{The Computer Journal}}}
+  \textbf{\bibinfo{volume}{61}}, \bibinfo{pages}{111--120},
+  \doiprefix\url{10.1093/comjnl/bxx046} (\bibinfo{year}{2018}).
+\newblock \bibinfo{note}{ArXiv:1611.07612}.
+
+\bibitem{fu1995}
+\bibinfo{author}{Fu, Y.-X.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Statistical properties of
+  segregating sites}}.
+\newblock {\emph{\JournalTitle{Theoretical Population Biology}}}
+  \textbf{\bibinfo{volume}{48}}, \bibinfo{pages}{172--197},
+  \doiprefix\url{10.1006/tpbi.1995.1025} (\bibinfo{year}{1995}).
+
+\bibitem{chambi2016roaring}
+\bibinfo{author}{Chambi, S.}, \bibinfo{author}{Lemire, D.},
+  \bibinfo{author}{Kaser, O.} \& \bibinfo{author}{Godin, R.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Better bitmap performance with
+  {Roaring} bitmaps}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{709--719},
+  \doiprefix\url{10.1002/spe.2325} (\bibinfo{year}{2016}).
+\newblock \bibinfo{note}{ArXiv:1402.6407}.
+
+\bibitem{lemire2018roaring}
+\bibinfo{author}{Lemire, D.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Roaring bitmaps: Implementation of
+  an optimized software library}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{48}}, \bibinfo{pages}{867--895},
+  \doiprefix\url{10.1002/spe.2560} (\bibinfo{year}{2018}).
+\newblock \bibinfo{note}{ArXiv:1709.07821}.
+
+\bibitem{goodwin2017bitfunnel}
+\bibinfo{author}{Goodwin, B.} \emph{et~al.}
+\newblock \bibinfo{title}{{BitFunnel}: Revisiting signatures for search}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 40th International
+  ACM SIGIR Conference on Research and Development in Information Retrieval
+  (SIGIR)}}, \bibinfo{pages}{605--614}, \doiprefix\url{10.1145/3077136.3080789}
+  (\bibinfo{year}{2017}).
+
+\bibitem{raducanu2013microadaptivity}
+\bibinfo{author}{R\u{a}ducanu, B.}, \bibinfo{author}{Boncz, P.} \&
+  \bibinfo{author}{\.{Z}ukowski, M.}
+\newblock \bibinfo{title}{Micro adaptivity in {Vectorwise}}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 2013 ACM SIGMOD
+  International Conference on Management of Data (SIGMOD)}},
+  \bibinfo{pages}{1231--1242}, \doiprefix\url{10.1145/2463676.2465292}
+  (\bibinfo{year}{2013}).
+
+\bibitem{lemire2016roaring}
+\bibinfo{author}{Lemire, D.}, \bibinfo{author}{Ssi-Yan-Kai, G.} \&
+  \bibinfo{author}{Kaser, O.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Consistently faster and smaller
+  compressed bitmaps with {Roaring}}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{1547--1569},
+  \doiprefix\url{10.1002/spe.2402} (\bibinfo{year}{2016}).
+\newblock \bibinfo{note}{ArXiv:1603.06549}.
+
+\bibitem{tomahawk_github}
+\bibinfo{author}{Klarqvist, M. D.~R.}
+\newblock \bibinfo{title}{{Tomahawk}: Fast calculation of {LD} and genotype
+  correlation in large-scale cohorts}.
+\newblock \bibinfo{howpublished}{\url{https://github.com/mklarqvist/Tomahawk}}
+  (\bibinfo{year}{2017}).
+\newblock \bibinfo{note}{Software repository, created 2017-07-17}.
+
+\bibitem{jacobson1989succinct}
+\bibinfo{author}{Jacobson, G.}
+\newblock \bibinfo{title}{Space-efficient static trees and graphs}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 30th Annual Symposium
+  on Foundations of Computer Science (FOCS)}}, \bibinfo{pages}{549--554},
+  \doiprefix\url{10.1109/SFCS.1989.63533} (\bibinfo{year}{1989}).
+
+\bibitem{clark1996compact}
+\bibinfo{author}{Clark, D.~R.}
+\newblock \emph{\bibinfo{title}{Compact {Pat} Trees}}.
+\newblock Ph.D. thesis, \bibinfo{school}{University of Waterloo}
+  (\bibinfo{year}{1996}).
+
+\bibitem{vigna2008broadword}
+\bibinfo{author}{Vigna, S.}
+\newblock \bibinfo{title}{Broadword implementation of rank/select queries}.
+\newblock In \emph{\bibinfo{booktitle}{Experimental Algorithms (WEA 2008)}},
+  vol. \bibinfo{volume}{5038} of \emph{\bibinfo{series}{Lecture Notes in
+  Computer Science}}, \bibinfo{pages}{154--168},
+  \doiprefix\url{10.1007/978-3-540-68552-4_12} (\bibinfo{publisher}{Springer},
+  \bibinfo{year}{2008}).
+
+\end{thebibliography}

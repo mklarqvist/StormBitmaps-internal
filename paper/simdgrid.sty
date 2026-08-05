@@ -1,0 +1,88 @@
+% ======================================================================
+%  simdgrid.sty — reusable TikZ primitives for SIMD lane/bit-layout figures
+% ----------------------------------------------------------------------
+%  House kit for "0x80.pl-style" schematics: labeled strips of byte/bit
+%  cells, two-colour split (nibble-packed) cells, and grouping braces.
+%  Used for the packed-plane layout, the 5:3 compressor, and the drain.
+%
+%  Coordinate model: open a {simdpicture} environment; one x-unit is one
+%  cell wide (\simdcw) and one y-unit is one cell tall (\simdch), so cells
+%  sit on integer lane/row coordinates and tile exactly.
+%
+%  Public API
+%    {simdpicture}[<tikz opts>] .......... picture with the lane grid set up
+%    \simdstrip[<cellopts>]{<row y>}{<left label>}{<content/fill list>}
+%    \simdsplit{<x>}{<y>}{<lo colour>}{<hi colour>}
+%    \simdbrace{<x1>}{<x2>}{<y>}{<label>}
+%    \simdlabels{<y>}{<first>}{<last>}[<prefix>]   % lane index tick row
+%  Palette (\colorlet, override after \usepackage to restyle):
+%    simdA (strong highlight) simdB (faint highlight) simdC..simdF accents
+%  Cell metrics: \simdcw \simdch (lengths, redefine before use to rescale)
+% ======================================================================
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{simdgrid}[2026/07/17 v1.0 SIMD lane-layout TikZ primitives]
+
+\RequirePackage{tikz}
+\RequirePackage{xcolor}
+\usetikzlibrary{decorations.pathreplacing,calc,backgrounds}
+
+% ---- cell metrics (redefine before a picture to rescale a whole figure) ----
+\newlength{\simdcw}\setlength{\simdcw}{4.6mm} % one cell wide
+\newlength{\simdch}\setlength{\simdch}{4.6mm} % one cell tall
+
+% ---- palette: semantic, colourblind-aware, overridable by the caller ----
+\colorlet{simdA}{orange!72}        % strong highlight (a set bit in focus)
+\colorlet{simdB}{orange!16}        % faint highlight  (an unset bit in focus)
+\colorlet{simdC}{green!55!teal!60} % accent 1 (data provenance)
+\colorlet{simdD}{blue!45!cyan!70}  % accent 2
+\colorlet{simdE}{purple!55}        % accent 3
+\colorlet{simdF}{brown!60}         % accent 4
+\colorlet{simdgrid@line}{black!62} % cell border
+
+% ---- shared styles ----
+\tikzset{
+  simd cell/.style={anchor=south west, draw=simdgrid@line, line width=0.4pt,
+                    minimum width=\simdcw, minimum height=\simdch,
+                    inner sep=0pt, font=\scriptsize\ttfamily},
+  simd label/.style={anchor=east, font=\scriptsize\ttfamily},
+  simd note/.style={font=\scriptsize\itshape, text=black!55},
+}
+
+% ---- the picture environment: 1 unit = 1 cell in each axis ----
+\newenvironment{simdpicture}[1][]%
+  {\begin{tikzpicture}[x=\simdcw, y=\simdch, #1]}%
+  {\end{tikzpicture}}
+
+% ---- \simdstrip: one horizontal row of cells --------------------------
+%  #1 (opt) extra per-cell tikz options   #2 row y (cell units)
+%  #3 left-hand label                      #4 comma list "content/fill"
+%  Each list item MUST contain exactly one slash; use white for no fill.
+\newcommand{\simdstrip}[4][]{%
+  \node[simd label] at (-0.35,#2+0.5) {#3};%
+  \foreach \simd@c/\simd@f [count=\simd@i from 0] in {#4}{%
+    \node[simd cell, fill=\simd@f, #1] at (\simd@i,#2) {\simd@c};%
+  }%
+}
+
+% ---- \simdsplit: a diagonally split (two-colour) cell -----------------
+%  lower-left triangle = #3, upper-right triangle = #4, at cell (#1,#2)
+\newcommand{\simdsplit}[4]{%
+  \fill[#3] (#1,#2) -- (#1+1,#2) -- (#1,#2+1) -- cycle;%
+  \fill[#4] (#1+1,#2) -- (#1+1,#2+1) -- (#1,#2+1) -- cycle;%
+  \draw[draw=simdgrid@line, line width=0.4pt] (#1,#2) rectangle (#1+1,#2+1);%
+}
+
+% ---- \simdbrace: grouping brace under [x1,x2] at height y with a label -
+\newcommand{\simdbrace}[4]{%
+  \draw[decorate, decoration={brace, amplitude=3pt, mirror}, draw=black!55]
+    (#1,#3) -- (#2,#3) node[midway, below=4pt, simd note]{#4};%
+}
+
+% ---- \simdlabels: a tick row of lane indices under a strip ------------
+%  #1 y for the ticks   #2 first index   #3 last index
+\newcommand{\simdlabels}[3]{%
+  \foreach \simd@k in {#2,...,#3}{%
+    \node[simd note] at (\simd@k+0.5,#1) {\simd@k};}%
+}
+
+\endinput

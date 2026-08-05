@@ -1,0 +1,78 @@
+Citation keys used in sections/results_b.tex
+=============================================
+
+Keys match sections/intro_refs.txt entries 8-9 exactly (chambi2016roaring,
+lemire2018roaring) -- confirmed by grep against introduction.tex,
+discussion.tex and methods.tex, which already cite this pair under these
+keys. Neither key currently exists in references.bib (confirmed by grep for
+"chambi|lemire|roaring" -> 0 matches; NARRATIVE.md \S8 states the
+bibliography "has 37 entries and zero bitmap-compression literature").
+Adding the BibTeX entries themselves is out of scope for this pass and is
+presumably handled once when the whole paper's bibliography is assembled --
+see intro_refs.txt for the fuller citation-record rationale, including why
+the 2016 and 2018 Roaring papers are kept as two separate keys rather than
+one merged entry. In the test build these render as "?,?" (undefined
+citation), which is expected and not a defect in this file.
+
+Both keys are already cited in sections/introduction.tex, sections/methods.tex
+and sections/discussion.tex (Roaring is the paper's foil and is introduced
+first there, per NARRATIVE.md \S8: "Introduction, prominently and first:
+Roaring..."). They are re-cited here because results_b.tex must stand on its
+own -- R4 and R5 each make claims specifically about tuned CRoaring/Roaring's
+internals, and a reader entering the paper at either subsection should not be
+left with an unattributed system name. If the final assembly finds this
+redundant with an adjacent subsection, prune the repeated occurrence rather
+than the first; do not drop both.
+
+----------------------------------------------------------------------------------
+Key:      chambi2016roaring
+Cited at: R4 ("The winning representation pairing migrates across real
+          corpora"), Reason/Approach paragraph -- first mention of "the twelve
+          corpora CRoaring's own benchmark harness runs by default."
+          R5 ("Fixed chunk granularity misprices dense corpora"), Approach
+          paragraph -- introduction of the container-census diagnostic via
+          `roaring_bitmap_statistics()`.
+          Table 1 caption -- first mention of `run_optimize()`-tuned CRoaring
+          as the comparison baseline.
+          Table 2 caption -- attribution of the vendored CRoaring library the
+          census is read from.
+Why:      NARRATIVE.md \S8 ("Introduction, prominently and first") names this
+          as one of the two Roaring papers that must be cited, and \S4's
+          "Framing rules for the drafters" attributes the two source-verified
+          CRoaring v4.7.2 facts (DEFAULT_MAX_SIZE=4096 threshold; per-run cost
+          in run_bitset_container_intersection_cardinality) to this system,
+          which R5 draws on directly for its container-threshold claim.
+Full citation (per sections/intro_refs.txt entry 8, given verbatim by
+NARRATIVE.md \S8):
+  Chambi, S., Lemire, D., Kaser, O. & Godin, R. Better bitmap performance with
+  Roaring bitmaps. Software: Practice and Experience 46(11), 1547-1569 (2016).
+
+----------------------------------------------------------------------------------
+Key:      lemire2018roaring
+Cited at: Same four locations as chambi2016roaring above -- the two papers are
+          cited together throughout results_b.tex as the pair NARRATIVE.md \S8
+          specifies ("Chambi, Lemire, Kaser, Godin, SPE 46(11):1547-1569,
+          2016; Lemire et al., SPE 2018"), never chambi2016roaring alone.
+Why:      NARRATIVE.md \S8 requires both the original Roaring paper and the
+          "Implementation of an Optimized Software Library" follow-up; the
+          second is the paper that documents CRoaring specifically (the C
+          library vendored at third_party/croaring_amalg and benchmarked
+          against throughout Results), which is the system R4 and R5 both
+          measure against and describe.
+Full citation (per sections/intro_refs.txt entry 9 -- flagged there as
+recalled author list/volume/pages, VERIFY before entering into
+references.bib):
+  Lemire, D., Kaser, O., Kurz, N., Deri, L., O'Hara, C., Saint-Jacques, F. &
+  Ssi-Yan-Kai, G. Roaring Bitmaps: Implementation of an Optimized Software
+  Library. Software: Practice and Experience 48(4), 867-895 (2018).
+
+----------------------------------------------------------------------------------
+Not cited as bibliography entries, but attributed inline as tier-2 sourced
+facts per NARRATIVE.md \S4 (source file/line, not a \cite): in R5,
+`roaring.h:2486` (DEFAULT_MAX_SIZE = 4096) and `roaring.h:5515` (threshold
+tested at dispatch), both CRoaring v4.7.2 as vendored at
+`third_party/croaring_amalg`. These are code citations, not literature
+citations, and are intentionally rendered as `\texttt{...}` in running text
+rather than through the bibliography -- consistent with how NARRATIVE.md \S4
+itself presents them ("`enum { DEFAULT_MAX_SIZE = 4096 };` (`roaring.h:2486`)").
+No BibTeX action needed for these two.

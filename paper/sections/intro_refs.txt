@@ -1,0 +1,88 @@
+Bibliography keys used in sections/introduction.tex, for adding to references.bib.
+references.bib currently has zero bitmap-compression / all-pairs literature (NARRATIVE.md §8);
+all of the below are new entries needed for the Introduction alone. Fields marked "VERIFY" are
+recalled from general knowledge, not sourced during this pass, and must be checked against the
+actual publication before the bibliography is built (this is bibliographic metadata, not a
+performance claim, but it should still not be typeset unverified).
+
+1. bayardo2007allpairs
+   Bayardo, R. J., Ma, Y., Srikant, R.
+   "Scaling Up All Pairs Similarity Search."
+   Proceedings of the 16th International Conference on World Wide Web (WWW), 2007, pp. 131-140.
+   Given by NARRATIVE.md §8 ("All-pairs / prior tiling: Bayardo, Ma & Srikant (WWW 2007)").
+   Title/page range VERIFY.
+
+2. xiao2008ppjoin
+   Xiao, C., Wang, W., Lin, X., Yu, J. X.
+   "Efficient Similarity Joins for Near Duplicate Detection."
+   Proceedings of the 17th International Conference on World Wide Web (WWW), 2008, pp. 131-140.
+   Given by NARRATIVE.md §8 as "Xiao et al. (WWW 2008)" only. Full author list, exact title, and
+   page range are VERIFY — recalled, not sourced.
+
+3. swamidass2007bounds
+   Swamidass, S. J., Baldi, P.
+   "Bounds and Algorithms for Fast Exact Searches of Chemical Fingerprints in Linear and
+   Sublinear Time."
+   Journal of Chemical Information and Modeling, 47(2):302-317, 2007.
+   Given verbatim by NARRATIVE.md §8. Cited in the Introduction as one of the domains needing the
+   all-pairs primitive; NARRATIVE.md notes this paper's own pruning bound is deliberately not
+   implemented here (a Methods/Discussion point, not used in the Introduction text).
+
+4. haque2011tanimoto
+   Haque, I. S., Pande, V. S., Walters, W. P.
+   Journal of Chemical Information and Modeling, 51:2345-2351, 2011.
+   Given by NARRATIVE.md §8 with volume/pages but not title. VERIFY exact title (recalled as
+   "SIML: A Fast SIMD Algorithm for Calculating LINGO Chemical Similarities on GPUs and CPUs" —
+   not confirmed during this pass).
+
+5. dalke2019chemfp
+   Dalke, A.
+   "The chemfp project."
+   Journal of Cheminformatics, 11:76, 2019.
+   Given verbatim by NARRATIVE.md §8.
+
+6. mula2018popcount
+   Muła, W., Kurz, N., Lemire, D.
+   "Faster Population Counts Using AVX2 Instructions."
+   The Computer Journal, 61(1):111-120, 2018.
+   Given verbatim by NARRATIVE.md §8. Cited to credit AND+popcount as solved — the paper must not
+   appear to re-claim this result (NARRATIVE.md §2, §6 P2).
+
+7. fu1995
+   Fu, Y. X.
+   "Statistical Properties of Segregating Sites."
+   Theoretical Population Biology, 48(2):172-197, 1995.
+   Volume/issue/year given by NARRATIVE.md §8 ("Fu, Theor. Pop. Biol. 48(2), 1995 for
+   E[xi_i] ~ theta/i"); exact title and page range VERIFY.
+
+8. chambi2016roaring
+   Chambi, S., Lemire, D., Kaser, O., Godin, R.
+   "Better bitmap performance with Roaring bitmaps."
+   Software: Practice and Experience, 46(11):1547-1569, 2016.
+   Given verbatim by NARRATIVE.md §8. Split from the suggested single key
+   "lemire2016roaring" into two separate entries (this one and lemire2018roaring below) because
+   NARRATIVE.md explicitly treats the 2016 and 2018 Roaring papers as two citations with
+   different lead authors and different content (algorithm vs. optimized implementation) —
+   using one merged key would misattribute the 2016 paper's lead authorship.
+
+9. lemire2018roaring
+   Lemire, D., Kaser, O., Kurz, N., Deri, L., O'Hara, C., Saint-Jacques, F., Ssi-Yan-Kai, G.
+   "Roaring Bitmaps: Implementation of an Optimized Software Library."
+   Software: Practice and Experience, 48(4):867-895, 2018.
+   NARRATIVE.md §8 gives only "Lemire et al., SPE 2018"; full author list, volume/issue/pages
+   VERIFY — recalled, not sourced during this pass. This is also the paper NARRATIVE.md §1 cites
+   for the venue-fit argument (titled "Implementation of an Optimized Software Library").
+
+10. goodwin2017bitfunnel
+    Goodwin, B., Hopcroft, M., Luu, D., Clemmer, A., Curmei, M., Elnikety, S., He, Y.
+    "BitFunnel: Revisiting Signatures for Search."
+    Proceedings of the 40th International ACM SIGIR Conference on Research and Development in
+    Information Retrieval, 2017, pp. 605-614.
+    Given by NARRATIVE.md §8 as "Goodwin et al., SIGIR 2017"; full author list VERIFY — recalled,
+    not sourced. NARRATIVE.md §8 requires this be cited "first and up front, not buried in
+    related work, since zone maps are functionally identical to occ_A AND occ_B."
+
+Not used in the Introduction (reserved for Results/Methods per SECTION_SPEC.md, out of this
+file's scope): raducanu2013microadaptivity, jacobson1989rank, vigna2008rank9,
+aberger2016emptyheaded, niu2019iaspgemm. These four of the task's suggested keys belong to the
+selection-policy and rank/select material in R3/Methods, which this pass did not draft.

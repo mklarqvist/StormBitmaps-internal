@@ -1,0 +1,98 @@
+% Zone-map schematic (was Fig. 1c)
+% Extracted from the former Fig. 1; rendered as a panel of its own figure.
+\centering
+% ===========================================================================
+% Figure 1 — overview. Body only; \input inside a figure environment.
+% House idiom follows the scaffold paper's fig:planes: minipage panels with
+% bold letter labels, \resizebox per panel, and the two-saturation convention
+% (strong fill = the lanes the panel is about, faint same-hue fill = context).
+%
+% Requires simdgrid.sty and the repr* colours from storm.tex.
+% ===========================================================================
+
+% Focus / context saturations, one pair per representation.
+\colorlet{focB}{reprB!45}\colorlet{ctxB}{reprB!12}
+\colorlet{focS}{reprS!55}\colorlet{ctxS}{reprS!14}
+\colorlet{focR}{reprR!55}\colorlet{ctxR}{reprR!14}
+\colorlet{focW}{reprW!55}\colorlet{ctxW}{reprW!14}
+\colorlet{focC}{reprC!65}\colorlet{ctxC}{reprC!18}
+\colorlet{zone}{black!18}
+
+\tikzset{
+  gridcell/.style={draw=black!55, line width=0.4pt, minimum width=16.5mm,
+                   minimum height=6.6mm, inner sep=1pt, font=\scriptsize,
+                   anchor=center},
+  hdr/.style={font=\scriptsize\bfseries},
+  flowbox/.style={draw=black!60, rounded corners=1.2pt, align=left,
+                  font=\scriptsize, inner sep=3.2pt},
+  flowarrow/.style={-{Latex[length=1.8mm]}, draw=black!65, line width=0.5pt},
+}
+
+% ------------------------------------------------------------------ panel c
+\resizebox{.46\linewidth}{!}{%
+\begin{simdpicture}
+  % One verdict per bin, carried as a colour down the whole column, so the
+  % reader can trace a bin top-to-bottom: green = both sides occupy it and it
+  % must be visited; red = one side is empty there and it is skipped.
+  % Luminance differs as well as hue (dark green vs light rose), so the
+  % encoding survives greyscale, and the 0/1 digits repeat it redundantly.
+  \definecolor{visitc}{HTML}{117733}
+  \definecolor{skipc}{HTML}{CC6677}
+
+  % Each row is coloured by ITS OWN occupancy, so the AND row reads as the
+  % product of the two above it: green AND green = green, green AND red = red.
+  % Bin 1 is the instructive case -- B occupies it, A does not, so occ_B is
+  % green, occ_A is red, and the pair skips the bin.
+  \foreach \bin/\ca/\cb/\cn/\abits/\bbits/\oa/\ob/\an in {%
+      0/visitc/visitc/visitc/{0,1,0,0}/{0,0,1,0}/1/1/1,
+      1/skipc/visitc/skipc/{0,0,0,0}/{0,0,1,0}/0/1/0,
+      2/skipc/skipc/skipc/{0,0,0,0}/{0,0,0,0}/0/0/0,
+      3/visitc/visitc/visitc/{0,1,0,0}/{0,0,1,0}/1/1/1}{%
+    % operand rows: light tint of that row's own verdict, set bits at full
+    \foreach \bit [count=\k from 0] in \abits {%
+      \ifnum\bit=1\relax
+        \node[simd cell, fill=\ca, text=white, font=\tiny\ttfamily]
+          at (\bin*4+\k,3) {1};
+      \else \node[simd cell, fill=\ca!15, text=black!60, font=\tiny\ttfamily]
+          at (\bin*4+\k,3) {0};\fi}
+    \foreach \bit [count=\k from 0] in \bbits {%
+      \ifnum\bit=1\relax
+        \node[simd cell, fill=\cb, text=white, font=\tiny\ttfamily]
+          at (\bin*4+\k,0) {1};
+      \else \node[simd cell, fill=\cb!15, text=black!60, font=\tiny\ttfamily]
+          at (\bin*4+\k,0) {0};\fi}
+    % summary rows, each in its own row's colour; the AND row is the product
+    \node[simd cell, fill=\ca, text=white, font=\tiny\ttfamily,
+          minimum width=4\simdcw] at (\bin*4,-2.4) {\oa};
+    \node[simd cell, fill=\cb, text=white, font=\tiny\ttfamily,
+          minimum width=4\simdcw] at (\bin*4,-4.1) {\ob};
+    % the AND itself -- this is the mechanism, kept as bits
+    \node[simd cell, fill=\cn, text=white, font=\tiny\ttfamily,
+          minimum width=4\simdcw, line width=0.8pt, draw=black!70]
+      at (\bin*4,-5.8) {\an};
+    % and its readout, as a glyph
+    \node[simd cell, fill=\cn!12, minimum width=4\simdcw,
+          draw=\cn, line width=0.7pt] at (\bin*4,-7.5) {};
+    \ifnum\an=1\relax
+      \draw[line width=1.1pt, draw=visitc, line cap=round, line join=round]
+        (\bin*4+1.62,-7.00) -- (\bin*4+1.86,-7.28) -- (\bin*4+2.40,-6.68);
+    \else
+      \draw[line width=1.1pt, draw=skipc, line cap=round]
+        (\bin*4+1.72,-7.28) -- (\bin*4+2.28,-6.72)
+        (\bin*4+1.72,-6.72) -- (\bin*4+2.28,-7.28);
+    \fi
+  }
+
+  \node[simd label] at (-0.35,3.5) {$A$};
+  \node[simd label] at (-0.35,0.5) {$B$};
+  \node[simd label] at (-0.35,-1.9) {$\mathrm{occ}_A$};
+  \node[simd label] at (-0.35,-3.6) {$\mathrm{occ}_B$};
+  \node[simd label] at (-0.35,-5.3) {$\mathrm{occ}_A \wedge \mathrm{occ}_B$};
+  \node[simd label] at (-0.35,-7.0) {visit?};
+  \foreach \b in {0,4,8,12,16}{
+    \draw[black!45, dashed, line width=0.35pt] (\b,-7.7) -- (\b,4.35);}
+  \simdbrace{0}{16}{-8.1}{popcount $=2$: visit bins 0 and 3, skip half the universe}
+\end{simdpicture}}
+
+
+\vspace{2mm}

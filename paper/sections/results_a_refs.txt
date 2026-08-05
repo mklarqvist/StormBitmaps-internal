@@ -1,0 +1,50 @@
+Citation keys used in sections/results_a.tex
+=============================================
+
+Neither key below currently exists in references.bib (confirmed by grep for
+"raducanu|goodwin|bitfunnel|microadaptiv" -> 0 matches). NARRATIVE.md \S8 states the
+bibliography "has 37 entries and zero bitmap-compression literature" and that
+essentially all of its required citation list, including both entries below, must
+still be added. Adding the BibTeX entries themselves is out of scope for this pass
+(results_a.tex only, per the task boundary) -- both keys must be entered into
+references.bib before this file will compile against the bibliography.
+
+----------------------------------------------------------------------------------
+Key:      raducanu2013microadaptivity
+Cited at: R3 ("Selection must be hoisted, and measured rather than modelled"),
+          Approach paragraph -- first introduction of probe-and-commit, glossed as
+          "the epsilon-to-0 policy from Micro Adaptivity."
+Why:      Task instruction: cite Micro Adaptivity where probe-and-commit is
+          introduced. NARRATIVE.md \S8 ("Selection and adaptivity") independently
+          mandates this citation by name: "probe-and-commit is the ... special case
+          and must be cited by name."
+Recalled full citation (verify before entering into references.bib -- not
+independently checked against the published record in this pass):
+  Bogdan Raducanu, Peter Boncz, Marcin Zukowski. "Micro Adaptivity in Vectorwise."
+  Proceedings of the 2013 ACM SIGMOD International Conference on Management of
+  Data (SIGMOD 2013), pp. 1231-1242.
+
+----------------------------------------------------------------------------------
+Key:      goodwin2017bitfunnel
+Cited at: R2 ("Avoiding work beats accelerating it, and the gap widens with
+          working-set size"), Approach paragraph -- first introduction of the zone
+          map, glossed as "a zone-map skip."
+Why:      Task instruction: cite BitFunnel where the zone map is introduced.
+          NARRATIVE.md \S8 additionally instructs that BitFunnel be cited
+          "first and up front, not buried in related work, since zone maps are
+          functionally identical to occ_A AND occ_B" -- that Introduction-level
+          placement is out of scope here (this file starts at Results), but the
+          citation is anchored at the zone map's first mention in Results per the
+          present task's explicit instruction.
+Recalled full citation (verify before entering into references.bib -- not
+independently checked against the published record in this pass):
+  Bob Goodwin, Michael Hopcroft, Dan Luu, Alex Clemmer, Mihaela Curmei,
+  Sameh Elnikety, Yuxiong He. "BitFunnel: Revisiting Signatures for Search."
+  Proceedings of the 40th International ACM SIGIR Conference on Research and
+  Development in Information Retrieval (SIGIR 2017), pp. 605-614.
+
+----------------------------------------------------------------------------------
+Note: both citations appear exactly once each in results_a.tex (no repeat \cite
+calls in the accompanying figure captions -- Fig. 3's caption and Fig. 4's caption
+both reference the zone map / probe-and-commit by name without re-citing, since the
+citation is already anchored at first mention in the adjacent prose).

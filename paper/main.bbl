@@ -1,0 +1,302 @@
+\begin{thebibliography}{10}
+\urlstyle{rm}
+\expandafter\ifx\csname url\endcsname\relax
+  \def\url#1{\texttt{#1}}\fi
+\expandafter\ifx\csname urlprefix\endcsname\relax\def\urlprefix{URL }\fi
+\expandafter\ifx\csname doiprefix\endcsname\relax\def\doiprefix{DOI: }\fi
+\providecommand{\bibinfo}[2]{#2}
+\providecommand{\eprint}[2][]{\url{#2}}
+
+\bibitem{cray1977hrm}
+\bibinfo{author}{{Cray Research, Inc.}}
+\newblock \bibinfo{title}{{CRAY-1} computer systems hardware reference manual}.
+\newblock \bibinfo{type}{Tech. Rep.} \bibinfo{number}{2240004},
+  \bibinfo{institution}{Cray Research, Inc.} (\bibinfo{year}{1977}).
+\newblock \bibinfo{note}{Section 3-13 documents the population/leading-zero
+  count functional unit; scalar instruction 026}.
+
+\bibitem{riscv2021bitmanip}
+\bibinfo{author}{{RISC-V International}}.
+\newblock \bibinfo{title}{{RISC-V} bit-manipulation {ISA}-extensions, version
+  1.0.0}.
+\newblock \bibinfo{type}{Tech. Rep.}, \bibinfo{institution}{RISC-V
+  International} (\bibinfo{year}{2021}).
+\newblock \bibinfo{note}{Ratified; defines the Zbb extension and the cpop
+  instruction}.
+
+\bibitem{xin2015shd}
+\bibinfo{author}{Xin, H.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Shifted {Hamming} distance: A fast
+  and accurate {SIMD}-friendly filter to accelerate alignment verification in
+  read mapping}}.
+\newblock {\emph{\JournalTitle{Bioinformatics}}} \textbf{\bibinfo{volume}{31}},
+  \bibinfo{pages}{1553--1560}, \doiprefix\url{10.1093/bioinformatics/btu856}
+  (\bibinfo{year}{2015}).
+
+\bibitem{oneil1997}
+\bibinfo{author}{O'Neil, P.~E.} \& \bibinfo{author}{Quass, D.}
+\newblock \bibinfo{title}{Improved query performance with variant indexes}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 1997 ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{38--49},
+  \doiprefix\url{10.1145/253260.253268} (\bibinfo{year}{1997}).
+
+\bibitem{cubit2024}
+\bibinfo{author}{Wang, J.} \& \bibinfo{author}{Athanassoulis, M.}
+\newblock \bibinfo{journal}{\bibinfo{title}{{CUBIT}: Concurrent updatable
+  bitmap indexing}}.
+\newblock {\emph{\JournalTitle{Proceedings of the VLDB Endowment}}}
+  \textbf{\bibinfo{volume}{18}}, \bibinfo{pages}{399--412},
+  \doiprefix\url{10.14778/3705829.3705854} (\bibinfo{year}{2024}).
+
+\bibitem{weiss2008spectral}
+\bibinfo{author}{Weiss, Y.}, \bibinfo{author}{Torralba, A.} \&
+  \bibinfo{author}{Fergus, R.}
+\newblock \bibinfo{title}{Spectral hashing}.
+\newblock In \emph{\bibinfo{booktitle}{Advances in Neural Information
+  Processing Systems (NeurIPS)}} (\bibinfo{year}{2008}).
+
+\bibitem{gong2013iterative}
+\bibinfo{author}{Gong, Y.}, \bibinfo{author}{Lazebnik, S.},
+  \bibinfo{author}{Gordo, A.} \& \bibinfo{author}{Perronnin, F.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Iterative quantization: A
+  procrustean approach to learning binary codes for large-scale image
+  retrieval}}.
+\newblock {\emph{\JournalTitle{IEEE Transactions on Pattern Analysis and
+  Machine Intelligence}}} \textbf{\bibinfo{volume}{35}},
+  \bibinfo{pages}{2916--2929}, \doiprefix\url{10.1109/TPAMI.2012.193}
+  (\bibinfo{year}{2013}).
+
+\bibitem{klarqvist2019}
+\bibinfo{author}{Klarqvist, M. D.~R.}, \bibinfo{author}{Mu\l{}a, W.} \&
+  \bibinfo{author}{Lemire, D.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Efficient computation of positional
+  population counts using {SIMD} instructions}}.
+\newblock {\emph{\JournalTitle{Concurrency and Computation: Practice and
+  Experience}}} \textbf{\bibinfo{volume}{33}}, \bibinfo{pages}{e6304},
+  \doiprefix\url{10.1002/cpe.6304} (\bibinfo{year}{2021}).
+\newblock \bibinfo{note}{ArXiv:1911.02696}.
+
+\bibitem{clausecker2024}
+\bibinfo{author}{Clausecker, R.}, \bibinfo{author}{Lemire, D.} \&
+  \bibinfo{author}{Schintke, F.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Faster positional-population counts
+  for {AVX2}, {AVX-512}, and {ASIMD}}}.
+\newblock {\emph{\JournalTitle{Concurrency and Computation: Practice and
+  Experience}}} \textbf{\bibinfo{volume}{37}},
+  \doiprefix\url{10.1002/cpe.70435} (\bibinfo{year}{2025}).
+\newblock \bibinfo{note}{ArXiv:2412.16370}.
+
+\bibitem{rinfret2001}
+\bibinfo{author}{Rinfret, D.}, \bibinfo{author}{O'Neil, P.~E.} \&
+  \bibinfo{author}{O'Neil, E.~J.}
+\newblock \bibinfo{title}{Bit-sliced index arithmetic}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 2001 ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{47--57},
+  \doiprefix\url{10.1145/376284.375669} (\bibinfo{year}{2001}).
+
+\bibitem{dinklage2021}
+\bibinfo{author}{Dinklage, P.}, \bibinfo{author}{Ellert, J.},
+  \bibinfo{author}{Fischer, J.}, \bibinfo{author}{Kurpicz, F.} \&
+  \bibinfo{author}{L{\"o}bel, M.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Practical wavelet tree
+  construction}}.
+\newblock {\emph{\JournalTitle{ACM Journal of Experimental Algorithmics}}}
+  \textbf{\bibinfo{volume}{26}}, \bibinfo{pages}{1.8:1--1.8:67},
+  \doiprefix\url{10.1145/3457197} (\bibinfo{year}{2021}).
+
+\bibitem{claude2012wavelet}
+\bibinfo{author}{Claude, F.} \& \bibinfo{author}{Navarro, G.}
+\newblock \bibinfo{title}{The wavelet matrix}.
+\newblock In \emph{\bibinfo{booktitle}{String Processing and Information
+  Retrieval (SPIRE)}} (\bibinfo{year}{2012}).
+
+\bibitem{wallace1964}
+\bibinfo{author}{Wallace, C.~S.}
+\newblock \bibinfo{journal}{\bibinfo{title}{A suggestion for a fast
+  multiplier}}.
+\newblock {\emph{\JournalTitle{IEEE Transactions on Electronic Computers}}}
+  \textbf{\bibinfo{volume}{EC-13}}, \bibinfo{pages}{14--17},
+  \doiprefix\url{10.1109/PGEC.1964.263830} (\bibinfo{year}{1964}).
+
+\bibitem{dadda1965}
+\bibinfo{author}{Dadda, L.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Some schemes for parallel
+  multipliers}}.
+\newblock {\emph{\JournalTitle{Alta Frequenza}}} \textbf{\bibinfo{volume}{34}},
+  \bibinfo{pages}{349--356} (\bibinfo{year}{1965}).
+
+\bibitem{warren2007}
+\bibinfo{author}{Warren, H.~S., Jr.}
+\newblock \bibinfo{title}{The quest for an accelerated population count}.
+\newblock In \bibinfo{editor}{Oram, A.} \& \bibinfo{editor}{Wilson, G.} (eds.)
+  \emph{\bibinfo{booktitle}{Beautiful Code: Leading Programmers Explain How
+  They Think}}, \bibinfo{pages}{147--160} (\bibinfo{publisher}{O'Reilly Media},
+  \bibinfo{address}{Sebastopol, CA}, \bibinfo{year}{2007}).
+
+\bibitem{warren2013}
+\bibinfo{author}{Henry S.~Warren, J.}
+\newblock \emph{\bibinfo{title}{Hacker's Delight}}
+  (\bibinfo{publisher}{Addison-Wesley}, \bibinfo{year}{2013}),
+  \bibinfo{edition}{2nd} edn.
+
+\bibitem{Mula2016}
+\bibinfo{author}{Mu\l{}a, W.}, \bibinfo{author}{Kurz, N.} \&
+  \bibinfo{author}{Lemire, D.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Faster population counts using
+  {AVX2} instructions}}.
+\newblock {\emph{\JournalTitle{The Computer Journal}}}
+  \textbf{\bibinfo{volume}{61}}, \bibinfo{pages}{111--120},
+  \doiprefix\url{10.1093/comjnl/bxx046} (\bibinfo{year}{2018}).
+
+\bibitem{swartzlander1973}
+\bibinfo{author}{Swartzlander, E.~E., Jr.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Parallel counters}}.
+\newblock {\emph{\JournalTitle{IEEE Transactions on Computers}}}
+  \textbf{\bibinfo{volume}{C-22}}, \bibinfo{pages}{1021--1024},
+  \doiprefix\url{10.1109/T-C.1973.223639} (\bibinfo{year}{1973}).
+
+\bibitem{weinberger1981}
+\bibinfo{author}{Weinberger, A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{4-2 carry-save adder module}}.
+\newblock {\emph{\JournalTitle{IBM Technical Disclosure Bulletin}}}
+  \textbf{\bibinfo{volume}{23}}, \bibinfo{pages}{3811--3814}
+  (\bibinfo{year}{1981}).
+
+\bibitem{verma2007}
+\bibinfo{author}{Verma, A.~K.} \& \bibinfo{author}{Ienne, P.}
+\newblock \bibinfo{title}{Automatic synthesis of compressor trees: Reevaluating
+  large counters}.
+\newblock In \emph{\bibinfo{booktitle}{Design, Automation \& Test in Europe
+  Conference \& Exhibition (DATE)}}, \bibinfo{pages}{443--448}
+  (\bibinfo{year}{2007}).
+
+\bibitem{mankowitz2023alphadev}
+\bibinfo{author}{Mankowitz, D.~J.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Faster sorting algorithms
+  discovered using deep reinforcement learning}}.
+\newblock {\emph{\JournalTitle{Nature}}} \textbf{\bibinfo{volume}{618}},
+  \bibinfo{pages}{257--263}, \doiprefix\url{10.1038/s41586-023-06004-9}
+  (\bibinfo{year}{2023}).
+
+\bibitem{fawzi2022alphatensor}
+\bibinfo{author}{Fawzi, A.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Discovering faster matrix
+  multiplication algorithms with reinforcement learning}}.
+\newblock {\emph{\JournalTitle{Nature}}} \textbf{\bibinfo{volume}{610}},
+  \bibinfo{pages}{47--53}, \doiprefix\url{10.1038/s41586-022-05172-7}
+  (\bibinfo{year}{2022}).
+
+\bibitem{mlx2023}
+\bibinfo{author}{Hannun, A.}, \bibinfo{author}{Digani, J.},
+  \bibinfo{author}{Katharopoulos, A.} \& \bibinfo{author}{Collobert, R.}
+\newblock \bibinfo{title}{{MLX}: Efficient and flexible machine learning on
+  apple silicon}.
+\newblock \bibinfo{howpublished}{\url{https://github.com/ml-explore/mlx}}
+  (\bibinfo{year}{2023}).
+\newblock \bibinfo{note}{Version 0.x; accessed 1 August 2026}.
+
+\bibitem{marsaglia2003xorshift}
+\bibinfo{author}{Marsaglia, G.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Xorshift {RNG}s}}.
+\newblock {\emph{\JournalTitle{Journal of Statistical Software}}}
+  \textbf{\bibinfo{volume}{8}}, \bibinfo{pages}{1--6},
+  \doiprefix\url{10.18637/jss.v008.i14} (\bibinfo{year}{2003}).
+
+\bibitem{mouret2015mapelites}
+\bibinfo{author}{Mouret, J.-B.} \& \bibinfo{author}{Clune, J.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Illuminating search spaces by
+  mapping elites}}.
+\newblock {\emph{\JournalTitle{arXiv preprint arXiv:1504.04909}}}
+  \doiprefix\url{10.48550/arXiv.1504.04909} (\bibinfo{year}{2015}).
+
+\bibitem{demoura2008z3}
+\bibinfo{author}{de~Moura, L.} \& \bibinfo{author}{Bj{\o}rner, N.}
+\newblock \bibinfo{title}{{Z3}: An efficient {SMT} solver}.
+\newblock In \emph{\bibinfo{booktitle}{Tools and Algorithms for the
+  Construction and Analysis of Systems (TACAS)}}, \bibinfo{pages}{337--340},
+  \doiprefix\url{10.1007/978-3-540-78800-3\_24} (\bibinfo{year}{2008}).
+
+\bibitem{biere2024cadical}
+\bibinfo{author}{Biere, A.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{{CaDiCaL}, {Gimsatul}, {IsaSAT} and
+  {Kissat} entering the {SAT} competition 2024}}.
+\newblock {\emph{\JournalTitle{Proceedings of SAT Competition 2024: Solver,
+  Benchmark and Proof Checker Descriptions}}} \bibinfo{pages}{8--10}
+  (\bibinfo{year}{2024}).
+
+\bibitem{barbosa2022cvc5}
+\bibinfo{author}{Barbosa, H.} \emph{et~al.}
+\newblock \bibinfo{title}{{cvc5}: A versatile and industrial-strength {SMT}
+  solver}.
+\newblock In \emph{\bibinfo{booktitle}{Tools and Algorithms for the
+  Construction and Analysis of Systems (TACAS)}}, \bibinfo{pages}{415--442},
+  \doiprefix\url{10.1007/978-3-030-99524-9\_24} (\bibinfo{year}{2022}).
+
+\bibitem{johnsonAppleCpu}
+\bibinfo{author}{Johnson, D.}
+\newblock \bibinfo{title}{Apple microarchitecture research: Firestorm {SIMD}
+  and {FP} instructions}.
+\newblock
+  \bibinfo{howpublished}{\url{https://dougallj.github.io/applecpu/firestorm-simd.html}}
+  (\bibinfo{year}{2021}).
+\newblock \bibinfo{note}{M1/A14 Firestorm measurements; accessed 1 August
+  2026}.
+
+\bibitem{knuth2011}
+\bibinfo{author}{Knuth, D.~E.}
+\newblock \emph{\bibinfo{title}{The Art of Computer Programming, Volume 4A:
+  Combinatorial Algorithms, Part 1}} (\bibinfo{publisher}{Addison-Wesley},
+  \bibinfo{address}{Boston, MA}, \bibinfo{year}{2011}).
+
+\bibitem{soeken2018}
+\bibinfo{author}{Soeken, M.} \emph{et~al.}
+\newblock \bibinfo{title}{Practical exact synthesis}.
+\newblock In \emph{\bibinfo{booktitle}{Design, Automation \& Test in Europe
+  Conference \& Exhibition (DATE)}}, \bibinfo{pages}{309--314},
+  \doiprefix\url{10.23919/DATE.2018.8342027} (\bibinfo{year}{2018}).
+
+\bibitem{massalin1987}
+\bibinfo{author}{Massalin, H.}
+\newblock \bibinfo{title}{Superoptimizer: A look at the smallest program}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the Second International
+  Conference on Architectural Support for Programming Languages and Operating
+  Systems (ASPLOS)}}, \bibinfo{pages}{122--126},
+  \doiprefix\url{10.1145/36206.36194} (\bibinfo{publisher}{ACM},
+  \bibinfo{year}{1987}).
+
+\bibitem{sasnauskas2017souper}
+\bibinfo{author}{Sasnauskas, R.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Souper: A synthesizing
+  superoptimizer}}.
+\newblock {\emph{\JournalTitle{arXiv preprint arXiv:1711.04422}}}
+  (\bibinfo{year}{2017}).
+
+\bibitem{liu2024minotaur}
+\bibinfo{author}{Liu, Z.}, \bibinfo{author}{Mada, S.} \&
+  \bibinfo{author}{Regehr, J.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Minotaur: A {SIMD}-oriented
+  synthesizing superoptimizer}}.
+\newblock {\emph{\JournalTitle{Proceedings of the ACM on Programming
+  Languages}}} \textbf{\bibinfo{volume}{8}}, \doiprefix\url{10.1145/3689766}
+  (\bibinfo{year}{2024}).
+
+\bibitem{abel2019uops}
+\bibinfo{author}{Abel, A.} \& \bibinfo{author}{Reineke, J.}
+\newblock \bibinfo{title}{uops.info: Characterizing latency, throughput, and
+  port usage of instructions on {Intel} microarchitectures}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 24th International
+  Conference on Architectural Support for Programming Languages and Operating
+  Systems (ASPLOS)}}, \doiprefix\url{10.1145/3297858.3304062}
+  (\bibinfo{year}{2019}).
+
+\bibitem{kpcdemo}
+\bibinfo{author}{Guo, Y.}
+\newblock \bibinfo{title}{{kpc\_demo}: Reading apple silicon {CPU} performance
+  counters via the private {\texttt{kperf}} framework}.
+\newblock
+  \bibinfo{howpublished}{\url{https://gist.github.com/ibireme/173517c208c7dc333ba962c1f0d67d12}}
+  (\bibinfo{year}{2021}).
+\newblock \bibinfo{note}{Reverse-engineered interface to the undocumented
+  \texttt{kperf}/\texttt{kperfdata} frameworks; accessed 1 August 2026}.
+
+\end{thebibliography}

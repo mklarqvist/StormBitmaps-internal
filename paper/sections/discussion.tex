@@ -1,0 +1,148 @@
+\section*{Discussion}
+
+This paper has argued, and measured, that in set-intersection cardinality, choosing which
+representation pairing to evaluate --- cheaply, per operand pair or per tile, from properties
+measured online rather than modelled in advance --- dominates the return available from making any
+single kernel faster, across the density range in which anything can be skipped at all. Across
+the asymmetric cells a strategy built around avoiding work wins essentially every measurement taken,
+and the resulting selector outperforms a competitively tuned Roaring baseline on every real corpus
+tested, with no single representation pairing winning enough of that corpus set to make the pairing
+matrix itself unnecessary. The shape of this contribution is the same shape that made Roaring's own
+contribution land: array containers, bitset containers, run containers and SIMD intersection were each
+individually known before Roaring existed, and what made the format matter in practice was the
+composition of known parts into one adaptively dispatched system, evaluated and deployed as a whole
+rather than argued for container by container \cite{chambi2016roaring,lemire2018roaring}. The claim
+advanced here is structured identically: a selector over a wider representation-pairing matrix, gated
+on measured rather than modelled properties, is the contribution, not any single cell or mechanism
+inside it.
+
+Conceding this plainly matters. Roaring already performs adaptive, per-chunk representation choice,
+and the contribution reported here is not the general idea that representation should be chosen rather
+than fixed. What differs is narrower, and more precise. The representation set considered here is
+wider than Roaring's three per-chunk containers --- it adds a fill-compressed word stream and an
+explicit complement strategy for the dense tail --- and the cardinality-only setting admits a shortcut
+that a materializing container format cannot take without giving up the ability to produce the
+intersection itself: a rank index answers a run's entire contribution in constant time, independent of
+its length (Methods, ``Zone-map and rank-index construction''). The cost of \emph{deciding} is also
+treated here as a first-order quantity rather than an implementation detail. Roaring's per-chunk
+container choice is made once at ingest and never revisited, so it never has to be priced; a
+selector that chooses per operand pair and per region does, and that price scales inversely with how
+large the operation being decided about is --- negligible for one operation between two large sets,
+a substantial fraction of runtime when many small operations each pay for their own decision, which
+is what forces hoisting and probe-and-commit (Fig.~\ref{fig:selection-cost}a). The selector's own
+metadata is treated as part of the representation, built at ingest and amortised over every
+operation the set ever participates in, which is the same assumption Roaring's container choice
+already makes. The clearest concrete instance of a fixed per-chunk threshold no longer matching global density is
+read directly from Roaring's own container statistics (Table~\ref{tab:census}); it is evidence about a
+materialization-oriented format applied to a cardinality-only query, not evidence of poor engineering,
+and it does not diminish what Roaring achieved or how widely it is deployed.
+
+The mechanism behind that migration is worth stating on its own terms. Across the asymmetric
+cells, the kernels that win are consistently the ones that decide not to touch data --- a rank lookup
+that answers an entire run without reading its bits, a zone map that proves two rows disjoint from a
+fraction of their footprint, a search strategy that steps over the dense side rather than scanning it
+--- and not the ones that process the same bytes with a wider instruction
+(Fig.~\ref{fig:strategy-decay}a). The two strategies
+also respond to the memory hierarchy in opposite directions, and this is where the finding reaches past
+a single measurement. Vector throughput is a per-cycle constant that a wider core keeps buying more of,
+so its advantage is realized fully only while data stays close enough to be fed at that rate; work
+avoidance instead removes a count of memory-hierarchy crossings, a cost that widening a core does not
+by itself reduce. \spec{If core width and the ratio of cache capacity to DRAM bandwidth continue to
+diverge the way recent processor generations suggest, the boundary this paper locates should move
+further toward avoidance rather than settle where it is measured here --- a prediction about hardware
+not yet tested, not a claim about the hardware tested in this study.}
+
+Underneath every mechanism here is one way of accounting for structure, and it is worth separating
+from the artifact that carries it, because it is the part that travels. Choosing a representation,
+consulting a zone map, composing the two, pruning by prefix --- each is a bet that the data deviates
+from randomness, and each admits a closed-form null model saying what the bet is worth if it does
+not. What makes the accounting useful is that in every case the null is the \emph{worst} case rather
+than the expected one: placing elements independently at a given density maximises the number of
+maximal runs a set has, maximises the fraction of bins it occupies, and maximises the chance that
+two prefixes collide. Real data can therefore deviate only in the mechanism's favour, and the size
+of that deviation is exactly what the mechanism converts into avoided work. The null model is a
+floor, not a prediction; structure is the resource, and the mechanisms are the machinery that spends
+it. Two impossibilities follow, and together they are this paper's formal argument for measuring
+rather than modelling. A representation fixed at ingest cannot exploit the deviation, having
+committed before the deviation is knowable. A cost model whose inputs are densities or cardinalities
+cannot exploit it either, and not for want of sophistication: density is the very statistic the null
+is built from, so any function of it returns one value for every set of that density, while the
+descriptor length of the arrangement-sensitive representations ranges over orders of magnitude at
+fixed density. Both arguments rule out families of selectors without naming a winner among the
+survivors; which survivor is best is settled here by measurement, and that a mis-specified model can
+land behind making no choice at all (Fig.~\ref{fig:selection-cost}b) is the empirical form of the
+same point. The quantity that decides is cheaper to measure than to predict.
+
+Seen through that accounting the mechanisms order themselves, and the order is by what a caller
+gives up rather than by what anything costs. Representation choice and the zone map give up nothing:
+the same question returns the same answer and only the work changes, and they carry the results
+above without help. Prefix filtering and the size bound give up generality in exchange for far more,
+and are available only once a caller says which pairs they actually want --- a size bound is the
+extreme of this, discarding a pair from its two cardinalities without reading either operand, and it
+is the one mechanism here whose leverage grows as a corpus's set sizes spread further apart. That
+bound is not ours: it is the Swamidass--Baldi pruning result \cite{swamidass2007bounds} and the size
+filter of the similarity-join literature \cite{bayardo2007allpairs,xiao2008ppjoin}, and this paper
+contributes its placement rather than the bound. Batch amortisation is different again --- the
+contract is unchanged, but it needs many operations, because what it removes is repetition: metadata
+built at ingest and reused for the life of a set, a decision hoisted so one serves many pairs, a
+probe whose verdict is reused, operands loaded once and paired against many. That is a regime rather
+than a premise, it requires no particular set of pairs, and it is where this paper's selection
+measurements were taken; the single-operation regime is argued from the cost of an $O(1)$ decision
+and has not been measured to the same standard. Two cautions travel with the ordering. Placing a
+mechanism at a coarser granularity does not by itself make its saving multiply with the others: the
+size bound and everything below it all read cardinality, and sharing that statistic costs the
+composition a factor that grows with the spread of set sizes, even though the mechanisms act at
+different granularities. And the narrowing mechanisms are opt-in throughout --- nothing in the
+exact path depends on them, and a reader should not take the headline results as resting on a
+smaller question than the one they appear to answer.
+
+Stated that way the result also bounds itself, in two directions worth naming because the framing
+invites over-reading. Every mechanism here carries a two-sided liability. A summary must be declined
+when the operands are too dense, because every bin is occupied and it proves nothing; and equally
+when they are too sparse, because a summary is sized by the universe while a compressed
+representation is sized by the data, so below a crossing density consulting it costs more than the
+entire computation it was meant to shorten --- the same phenomenon that appears in the storage
+figures as universe-proportional selector metadata. And around density one half the cheapest
+descriptor is no smaller than the bitmap: cardinalities determine least there, nothing is available
+to skip, and the fixed-cost kernel is simply the correct one. That band is not a shortfall to be
+closed but the domain of the other optimization axis, and it is an axis the field has already
+carried a long way. Where work is unavoidable, what remains is to execute it at the hardware's
+throughput limit \cite{mula2018popcount}, and this paper's own dense cell is fast for precisely that
+reason rather than in spite of the argument made here. The claim is therefore narrower and more
+useful than ``avoid work'': avoid the work the analysis says can be avoided, accelerate the work it
+says cannot, and treat the boundary between them as the thing worth knowing. The analytic curves
+that locate that boundary are models of \emph{work}, not of time, and the gap between the two is
+itself instructive --- the runtime penalty for consulting a summary that removes nothing is far
+larger than its word count, because it is paid in the memory system rather than in the operation
+count, which is a third and independent reason to gate on measurement.
+
+The property doing the work throughout this paper is heterogeneity, not sparsity. A corpus in which
+every row sits at the same density has nothing for a pairing matrix to exploit, regardless of how
+sparse or dense that shared density is; what representation selection is paid for is variance in
+density across rows that share one universe and one cost model, of which sparsity is only the more
+familiar half --- the dense tail rewards exactly the same reasoning, mirrored around the complement.
+\spec{Read this way, the same argument should transfer to any workload that mixes elements of very
+different density under a shared representation and a shared cost model: sparse linear-algebra format
+selection choosing among dense, compressed-sparse-row and coordinate tiles, or a columnar query engine
+deciding which blocks a predicate can skip without scanning, are two settings where the condition
+plausibly holds.} Neither has been tested here, and the claim is offered as where the mechanism should
+generalize, not as a result obtained in either domain.
+
+Several things remain open, stated plainly. The selector is cheap relative to the saving it protects,
+but it is not close to optimal: nothing measured closes the residual gap to a bucket oracle that
+already knows the winning cell (Fig.~\ref{fig:selection-cost}b), and closing that margin is
+unfinished work rather than a property of the
+method. Every measurement reported here is single-threaded by construction; the real-corpus comparison
+ran on \nm{number and identity of microarchitectures used for the real-corpus comparison} while the
+synthetic cross-architecture comparison spans \nm{count of microarchitectures in the synthetic
+cross-architecture comparison} microarchitectures; and the tile pipeline has so far
+been evaluated on within-tile pairs only, with the cross-tile case and the transpose-build cost left
+for the end-to-end evaluation that follows this paper. Most directly: the pairing matrix, the selection
+gate and the tile pipeline described here are not currently reachable through the project's public C
+ABI. This paper reports a systematic measurement of the underlying mechanism, not a released tool, and
+the ABI and packaging work needed to close that gap is sequenced immediately after it, with a
+genome-wide linkage-disequilibrium application, Tomahawk \cite{tomahawk_github}, as the eventual, and
+strictly later, use of the mechanism rather than its motivation. What should outlast any single ratio
+in this paper is the map itself --- which representation pairing wins where, and why --- because that
+map, and the boundary between avoiding work and accelerating it that it makes visible, is transferable
+independent of the number attached to any one cell.

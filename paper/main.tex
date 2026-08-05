@@ -1,0 +1,774 @@
+\documentclass[fleqn,10pt]{wlscirep}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage{url}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage[per-mode=symbol]{siunitx}
+
+% Code/assembly listings, styled after the presentation in Clausecker et al.
+% (arXiv:2412.16370): framed, scriptsize teletype, colored keywords/comments.
+% NOTE: minted stays disabled (no Pygments/shell-escape); listings only.
+\usepackage{listings}
+\lstdefinestyle{customc}{%
+  frame=ltbr,framesep=4pt,
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  belowcaptionskip=1\baselineskip,
+  breaklines=true,
+  language=C,
+  showstringspaces=false,
+  basicstyle=\scriptsize\ttfamily,
+  keywordstyle=\bfseries\color{blue},
+  keywordstyle=[2]\bfseries\color{green!60!black},
+  numberstyle=\tiny,
+  commentstyle=\itshape\color{purple!60!black},
+  identifierstyle=\color{black},
+  stringstyle=\color{orange},
+  keywords={for,if,while},
+  morekeywords=[2]{size_t,void,int,uint64_t,uint32_t,uint16_t,uint8_t},
+  escapeinside={(*@}{@*)}
+}
+
+
+\DeclareMathOperator{\bitwiseand}{bitand}
+\DeclareMathOperator{\bitwiseor}{bitor}
+\DeclareMathOperator{\bitwisexor}{xor}
+
+\usepackage{multirow}
+\renewcommand\arraystretch{1.25} % make tables look nicer
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{simdgrid} % reusable SIMD lane/bit-layout primitives (skill: simd-lane-figures)
+\definecolor{carryone}{HTML}{FFD33D}
+\definecolor{carrytwo}{HTML}{F02C91}
+\definecolor{carryfour}{HTML}{08B45A}
+\definecolor{carryeight}{HTML}{D92B20}
+\definecolor{epochblue}{HTML}{2F80ED}
+
+\makeatletter
+\def\ps@myheadings{%
+    \let\@oddfoot\@empty\let\@evenfoot\@empty
+    \def\@evenhead{\thepage\hfil\slshape\leftmark}%
+    \def\@oddhead{{\slshape\rightmark}\hfil\thepage}%
+    \let\@mkboth\@gobbletwo
+    \let\sectionmark\@gobble
+    \let\subsectionmark\@gobble
+    }
+  \if@titlepage
+  \renewcommand\maketitle{\begin{titlepage}%
+  \let\footnotesize\small
+  \let\footnoterule\relax
+  \let \footnote \thanks
+  \null\vfil
+  \vskip 60\p@
+  \begin{center}%
+    {\LARGE \@title \par}%
+    \vskip 3em%
+    {\large
+     \lineskip .75em%
+      \begin{tabular}[t]{c}%
+        \@author
+      \end{tabular}\par}%
+      \vskip 1.5em%
+    {\large \@date \par}%       % Set date in \large size.
+  \end{center}\par
+  \@thanks
+  \vfil\null
+  \end{titlepage}%
+  \setcounter{footnote}{0}%
+}
+\else
+\renewcommand\maketitle{\par
+  \begingroup
+    \renewcommand\thefootnote{\@fnsymbol\c@footnote}%
+    \def\@makefnmark{\rlap{\@textsuperscript{\normalfont\@thefnmark}}}%
+    \long\def\@makefntext##1{\parindent 1em\noindent
+            \hb@xt@1.8em{%
+                \hss\@textsuperscript{\normalfont\@thefnmark}}##1}%
+    \if@twocolumn
+      \ifnum \col@number=\@ne
+        \@maketitle
+      \else
+        \twocolumn[\@maketitle]%
+      \fi
+    \else
+      \newpage
+      \global\@topnum\z@   % Prevents figures from going at top of page.
+      \@maketitle
+    \fi
+    \thispagestyle{plain}\@thanks
+  \endgroup
+  \setcounter{footnote}{0}%
+}
+\fi
+\makeatother
+
+\title{A minimal 5:3 compressor displaces the 3:2 carry-save adder in software population counting}
+
+\author[]{Marcus D. R. Klarqvist}
+
+\affil[]{Corresponding author: me@mdrk.io}
+
+\keywords{SIMD, vectorization, population count, popcount, positional population count, pospopcnt, 5:3 compressor, higher-order compressor, compressor tree, carry-save adder, redundant representation, exact synthesis, SAT-based synthesis, minimality lower bound, superoptimization, GPU-accelerated search, AArch64, ASIMD, NEON, AVX-512, AVX2, SSE2, Apple silicon, AWS Graviton, instruction efficiency}
+\hypersetup{
+  pdftitle={A minimal 5:3 compressor displaces the 3:2 carry-save adder in software population counting},
+  pdfauthor={Marcus D. R. Klarqvist},
+  pdfkeywords={SIMD, population count, popcount, positional population count, pospopcnt, 5:3 compressor, higher-order compressor, compressor tree, carry-save adder, exact synthesis, SAT-based synthesis, minimality, superoptimization, AArch64, ASIMD, AVX-512, AVX2, SSE2, instruction efficiency}
+}
+
+\begin{abstract}
+\noindent Positional population count returns how many words in an array set each bit position, used in bit-sliced indexes and succinct data structures. In the roughly thirty years since carry-save population counting entered software, every implementation we have found has reduced its input with the same $3{:}2$ adder, although hardware arithmetic has had higher-order compressors for fifty-three years. We searched that space on one consumer GPU and obtained a five-instruction redundant $5{:}3$ compressor, cutting an input block from $45$ to $38$ Boolean instructions. SAT-based synthesis excludes any four-instruction realization within the stated ASIMD gate library, so five is minimal there. To our knowledge this is the first non-$3{:}2$ compressor cell in any software population-count kernel---scalar or SIMD, ordinary or positional. Fixed per-width kernels built on it lower mean cycles per byte in all $48$ reported core, width and cache-tier combinations on Neoverse~V1, Neoverse~V2 and Apple~M2~Pro, with no combination favouring the published kernel, retiring $41.0$--$42.2\%$ fewer instructions per 16-bit word and raising peak 16-bit throughput by $1.80$--$2.04\times$. The circuit pays only where a three-input Boolean operator exists: ASIMD and AVX-512, not SSE2 or AVX2. Nor is $3{:}2$ settled. With that tree left unchanged, the packed accumulator alone retires $19$--$23\%$ fewer instructions on SSE2 and AVX2. Memory-bound inputs express such savings as efficiency rather than speed. Multicore contention and narrower cores remain untested.
+\end{abstract}
+
+\begin{document}
+
+\flushbottom
+\maketitle
+\thispagestyle{empty}
+
+% =====================================================================
+\section*{Introduction}
+
+The population count of a machine word is, as the name suggests, the size of the population of bits it contains: the byte $00100010_2$ has a population count of two, because two of its bits are set. Counting set bits is among the most heavily optimized primitives in computing, and the clearest evidence of its importance is that processor designers have repeatedly spent silicon on it. Dedicated population-count hardware predates the microprocessor---the Cray-1 devoted a functional unit to it in 1976 \cite{cray1977hrm}---and the instruction has since been added, one architecture at a time, to essentially every general-purpose instruction set in current production, reaching RISC-V as recently as 2021 in the ratified Zbb bit-manipulation extension \cite{riscv2021bitmanip}. It is an inner loop of sequence alignment in genomics \cite{xin2015shd}, of aggregate queries over bitmap-indexed columns \cite{oneil1997,cubit2024}, and of similarity search over binary codes \cite{weiss2008spectral,gong2013iterative}.
+
+The positional population count is the harder relative of that problem. Instead of collapsing one word to one number, it takes an arbitrary number of $w$-bit words and returns $w$ numbers: how many words set bit $0$, how many set bit $1$, and so on to bit $w-1$. It is the population count of the transpose---the columns of the bit matrix rather than its rows---evaluated for the canonical machine widths $w\in\{8,16,32,64\}$. A scalar implementation must test $w$ positions in every word, so the naive cost over $n$ words grows as $\mathcal{O}(nw)$, a factor of $w$ above the ordinary population count on the same input. Klarqvist et al.\ named the operation, reported finding no prior description of it in the literature, and introduced the first SIMD kernels for it \cite{klarqvist2019}; Clausecker, Lemire and Schintke then refined the algorithm and contributed an implementation for ARM's ASIMD \cite{clausecker2024}.
+
+The same computation had nevertheless been arrived at independently, under other names, in fields that were largely not reading one another's work. A \textsc{sum} over a bit-sliced database attribute is $\sum_j 2^j\cdot\mathrm{popcount}(s_j)$ over the bit slices $s_j$, a weighted positional count written in that form as early as 1997 \cite{oneil1997,rinfret2001} and carried into modern bitmap-index engines \cite{cubit2024}. Each level of a wavelet tree or wavelet matrix splits at $n$ minus the per-position set count over the packed symbol codes \cite{dinklage2021,claude2012wavelet}. Learning-to-hash and binary-quantized embedding methods impose a bit-balance constraint---that each bit be set in half the corpus of codes---whose evaluation is exactly a count of how many codes set each bit \cite{weiss2008spectral,gong2013iterative}. These are one operation in three vocabularies, and the connection between them has only recently begun to be drawn \cite{clausecker2024}.
+
+Fast implementations of both operations share one structure. Rather than count each word separately, they feed many words into a tree of carry-save adders---$3{:}2$ compressors, which take three equally weighted bit vectors and return two, preserving the weighted sum while reducing the number of live vectors---and materialize ordinary counters only after the tree has done most of the work. The construction descends from Wallace and Dadda's multiplier trees of the 1960s \cite{wallace1964,dadda1965}, reached software through a mid-1990s exchange between Harley and Seal that Warren later systematized \cite{warren2007,warren2013}, and was vectorized by Mu{\l}a, Kurz and Lemire, who showed that a carry-save tree evaluated in AVX2 registers roughly doubles the throughput of the dedicated population-count instruction \cite{Mula2016}. At this point the hardware and software lineages part company. Hardware arithmetic left the $3{:}2$ compressor almost immediately: generalized parallel counters appeared in 1973 \cite{swartzlander1973}, the $4{:}2$ compressor in 1981 \cite{weinberger1981}, and design flows now synthesize compressor trees automatically \cite{verma2007}. Software population counting never followed. Higher-order compressors have been available in the hardware literature for fifty-three years, and carry-save population counting has been practised in software for roughly thirty of them, yet to our knowledge not one published implementation---scalar or SIMD, ordinary or positional---has ever used a compressor other than the $3{:}2$ adder \cite{warren2007,warren2013,Mula2016,klarqvist2019,clausecker2024}.
+
+Two things follow. The first is that the compressor operator has not, to our knowledge, been treated as a search variable in this lineage: Clausecker et al.\ name the opportunity directly, observing that ``[a] variety of CSA network designs are possible and there is likely a different optimal design for each ISA,'' while noting that their own networks were selected empirically rather than exhaustively \cite{clausecker2024}---the same admission made by Mu{\l}a et al.\ \cite{Mula2016}. The second is why: the space is far beyond manual enumeration, and a single fifteen-minute run of the evaluator described here screens $7.8\times10^{10}$ seven-input candidates. One distinction matters before going further, because it is the first objection a reader fluent in AVX-512 will raise. That instruction set's \texttt{vpternlogd} computes any three-input Boolean function in one instruction and makes a $3{:}2$ compressor considerably cheaper---but it changes the gate, not the topology. The question here is whether a different topology pays.
+
+Two further limitations are practical rather than conceptual. The prior ARM evaluation characterized a single server core, leaving transfer to other AArch64 microarchitectures---including Apple M-series cores, which differ in issue width, vector resources and cache organization---unmeasured \cite{clausecker2024}. And kernels tuned for one level of the cache hierarchy need not remain fastest at another, so a library serving inputs of unknown size must either fix a per-processor policy that has to be re-validated for every target part, or benchmark at load time and impose that cost on every caller. Neither is satisfactory for a routine meant to be called as a primitive.
+
+Here we treat the compressor itself as the design variable. We built a GPU engine that enumerates and mutates candidate circuits over a target instruction set's legal Boolean gate library, admits a circuit only after independent verification over its complete truth table, and ranks exact survivors under microarchitecture-informed cost models. The search returned a five-instruction redundant $5{:}3$ compressor---five equally weighted inputs reduced to three outputs---that is minimal over the stated ASIMD gate library. To our knowledge it is the first non-$3{:}2$ bitwise-logic compressor cell used in a software population-count kernel of any kind, and the first compressor network synthesized by search against a real SIMD instruction gate library rather than derived by hand. On the three tested ARM cores it lowers mean cycles per byte in every reported combination of core, word width and cache tier, and nearly doubles sustained 16-bit throughput at its best operating point. The advantage requires a three-input Boolean operator, so it holds on ASIMD and AVX-512 but not on SSE2 or AVX2. Probing that boundary exposed a second result: the $3{:}2$ construction is not settled either. Holding Clausecker's $3{:}2$ tree fixed and changing only how partial sums are accumulated retires $19$--$23\%$ fewer instructions on SSE2 and AVX2, and the AVX-512 leaf, which carries both changes, retires $28.6\%$ fewer---savings that memory-bound inputs express as efficiency rather than speed. Both the topology and the accumulator, in other words, still had margin after three decades of use.
+
+% =====================================================================
+\section*{Results}
+
+The fastest published implementation is the ASIMD kernel of Clausecker, Lemire and Schintke~\cite{clausecker2024} (hereafter \emph{Clausecker NEON}), which reaches a plateau a few kilobytes into the input; Clausecker et al.\ interpret that plateau as approaching a memory-bandwidth limit. The same study notes that its AVX-512 software roofline falls short of hardware bandwidth because the summation loop contains a dependency, illustrating how a reference computation can retain arithmetic constraints. The carry-save reduction that converts input words into positional counts also contains loop-carried dependencies (Methods, ``Balanced roots''). We therefore tested whether reducing the work and dependency depth of intermediate accumulation could improve throughput even when inputs reside beyond cache. Clausecker NEON remains the appropriate comparator because it is fully vectorized, purpose-built for the operation and measured here on the Neoverse~V1 core for which it was tuned.
+
+To test that possibility we developed the \emph{packed-accumulator kernels}, a family of ASIMD implementations built from two changes to the reference algorithm. The first is the compressor. A compressor preserves the weighted sum of its inputs while reducing the number of live bit vectors; the Harley--Seal tree used by Clausecker NEON reduces one $256$-byte input block with fifteen $3{:}2$ carry-save adders. Substituting the searched five-input compressor, which emits two redundant carries rather than one, reduces both the instruction count of that block and its critical path (Fig.~\ref{fig:planes}c--e; Methods, ``A redundant $5{:}3$ compressor''). The second is the accumulator. Rather than materialize sixteen wide counters after every block, the kernels hold the running counts in four redundant binary vectors---\emph{planes}---and reduce them into ordinary counters only once per \emph{epoch} of many blocks, so that all per-word work is bitwise logic on resident vectors and the expensive transpose is amortized over the epoch (Fig.~\ref{fig:planes}f, Fig.~\ref{fig:accumulator}; Methods, ``Packed carry-save accumulation'' and ``Epoch merging and the drain''). Around these two changes we varied the register schedule, the number of accumulator states merged before a drain, and the cross-block load schedule; each changes cycles per word at nearly unchanged instruction count (Table~\ref{tab:leaves}). Across the family the kernels retire roughly $40\%$ fewer instructions per word than Clausecker NEON while producing bit-identical counts. From this family we select---once per word width and core family, with no input-size dispatch---the member with the best geometric mean across the cache hierarchy; we call these the \emph{fixed leaves} (Methods, ``Fixed-leaf selection and the shipped dispatch policy'').
+
+\begin{figure}[!t]\centering
+\includegraphics[width=.81\linewidth]{figures/fig_compressor_examples}
+
+\vspace{-2mm}
+\begin{minipage}[t]{.49\linewidth}
+  \textbf{c}\par\vspace{1mm}
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_csa_tree_panel}
+\end{minipage}\hfill
+\begin{minipage}[t]{.49\linewidth}
+  \textbf{d}\par\vspace{1mm}
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_topology_serial_v90_panel}
+\end{minipage}
+
+\vspace{-2mm}
+\begin{minipage}[t]{.49\linewidth}
+  \textbf{e}\par\vspace{1mm}
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_5to3_tree_panel}
+\end{minipage}\hfill
+\begin{minipage}[t]{.49\linewidth}
+  \textbf{f}\par\vspace{1mm}
+  \centering
+  \resizebox{\linewidth}{!}{%
+  \begin{simdpicture}
+    \node[simd label] at (-0.35,4.5) {$p_{\mathrm{emit}}\ (\times 16)$};
+    \foreach \lane in {0,...,15}
+      \draw[densely dashed,draw=epochblue,line width=.55pt,fill=epochblue!10]
+        (\lane,4) rectangle ++(1,1);
+    \simdstrip{3}{$p_3\ (\times 8)$}{1/carryeight!58,0/carryeight!12,1/carryeight!12,0/carryeight!12,1/carryeight!12,0/carryeight!12,1/carryeight!12,1/carryeight!58,0/carryeight!12,0/carryeight!12,1/carryeight!12,0/carryeight!12,1/carryeight!12,0/carryeight!12,1/carryeight!12,0/carryeight!12}
+    \simdstrip{2}{$p_2\ (\times 4)$}{1/carryfour!58,1/carryfour!12,0/carryfour!12,0/carryfour!12,0/carryfour!12,1/carryfour!12,0/carryfour!12,1/carryfour!58,0/carryfour!12,1/carryfour!12,1/carryfour!12,0/carryfour!12,0/carryfour!12,1/carryfour!12,1/carryfour!12,0/carryfour!12}
+    \simdstrip{1}{$p_1\ (\times 2)$}{0/carrytwo!58,1/carrytwo!12,0/carrytwo!12,1/carrytwo!12,1/carrytwo!12,0/carrytwo!12,0/carrytwo!12,1/carrytwo!58,1/carrytwo!12,1/carrytwo!12,0/carrytwo!12,0/carrytwo!12,1/carrytwo!12,0/carrytwo!12,1/carrytwo!12,0/carrytwo!12}
+    \simdstrip{0}{$p_0\ (\times 1)$}{1/carryone!58,0/carryone!12,1/carryone!12,1/carryone!12,1/carryone!12,1/carryone!12,0/carryone!12,0/carryone!58,0/carryone!12,1/carryone!12,0/carryone!12,1/carryone!12,0/carryone!12,0/carryone!12,1/carryone!12,0/carryone!12}
+    \simdlabels{-0.42}{0}{15}
+    \node[simd note, anchor=east] at (-0.35,-0.42) {lane $f$};
+    \simdbrace{0}{1}{-0.85}{$1101_2=13$}
+    \simdbrace{7}{8}{-0.85}{$1110_2=14$}
+    \draw[-{Latex[length=3mm,width=2mm]},draw=black!60,line width=.8pt]
+      (16.85,.12) -- (16.85,4.68);
+    \path (17.20,5.12);
+  \end{simdpicture}}
+\end{minipage}
+\vspace{-1mm}
+
+\caption{\textbf{Compressor arithmetic, reduction topologies and packed accumulator layout.}
+\textbf{a}, The three equal-weight inputs sum to $11+13+5=29$, and the two outputs encode the same total, $L+2H=3+2(13)=29$.
+\textbf{b}, The five equal-weight inputs sum to $3+4+5+6+7=25$, and the three outputs again preserve that total, $L+2H_0+2H_1=3+2(5)+2(6)=25$; the two high outputs share one weight.
+The worked arithmetic shows only four bit positions (one nibble) so the equality can be read directly; each compressor input and output is in fact a full 128-bit vector, on which the same identity holds independently at every bit position. In both worked examples, the blue leading result bit is the overflow beyond the four-bit low state.
+\textbf{c}, The original Clausecker Generic/Clausecker NEON network uses fifteen $3{:}2$ adders.
+\textbf{d}, The serial family uses seven $5{:}3$ compressors and one final $3{:}2$ adder, with a four-compressor $p_0$ path.
+\textbf{e}, Balanced roots shorten that path to two compressors without changing the operation count or higher-weight topology.
+\textbf{f}, The retained planes $p_0,\ldots,p_3$ hold $P_{\rm low}=p_0+2p_1+4p_2+8p_3$ modulo 16; one hue per plane encodes its place value ($1,2,4,8$), and the two saturations distinguish the braced worked lanes from the rest. For every lane and topology,
+$P_{\rm low}^{\rm in}+\operatorname{popcount}(\text{16 new inputs})
+=P_{\rm low}^{\rm out}+16p_{\mathrm{emit}}$; the updated low planes feed the next block, while the dashed weight-16 overflow plane $p_{\mathrm{emit}}$ is forwarded to the epoch accumulator.}
+\label{fig:planes}
+\end{figure}
+
+\begin{figure}[!t]\centering
+\includegraphics[width=.94\linewidth]{figures/fig_epoch_drain}
+\caption{\label{fig:accumulator}\textbf{Epoch accumulation, merging and the split drain.}
+\textbf{a}, Figure~\ref{fig:planes} returns updated low planes $p_0^{\rm out},\ldots,p_3^{\rm out}$ and one weight-16 overflow plane $p_{\mathrm{emit}}$ per block.  The low planes remain resident and feed the next block; only the sequence $p_{\mathrm{emit}}^{(0)},\ldots,p_{\mathrm{emit}}^{(61)}$ is accumulated further, into the distinct epoch planes $e_0,\ldots,e_5$.  These six $128$-bit vectors have absolute weights $16,32,64,128,256,512$, and six suffice because $62<2^6$.  Blue marks the emitted plane and the epoch state derived from it; the upward arrow shows carries advancing to the next higher-weight epoch plane.
+\textbf{b}, Pairwise merging exploits the base-2 state: two $n$-plane states ($2n$ live vectors) compact into one $(n+1)$-plane state with the same weighted sum.  The tree therefore maps $12\to7$, $14\to8$ and $16\to9$ vectors while doubling coverage from $62\to124\to248\to496$ blocks.  Longer epochs therefore cost additional live planes rather than additional drains.  Merging preserves weighted sums like the compressors in Fig.~\ref{fig:planes}, but acts between completed accumulator states rather than inside one block.
+\textbf{c}, The complete drain state recombines both outputs of Fig.~\ref{fig:planes}: the retained $p_0,p_1,p_2,p_3$ have absolute weights $1,2,4,8$, while $e_0,e_1,\ldots$ have absolute weights $16,32,\ldots$.  Thus $p_0,p_1,p_2,p_3,e_0$ form the byte-safe stack, whose worst per-position contribution stays within a byte (derived in ``Epoch merging and the drain''); the inset shows these five colored plane rows transposed and weighted into four byte-counter banks.  The narrow u8/u16 drain folds those four banks modulo 16, whereas the raw-wide u32/u64 drain retains them so distinct bit positions are not combined; $e_1$ and higher bypass the transpose and are added directly into the wide counters.  The 16-bar profile illustrates the u16 output; a width-$w$ input has $w$ positional counters in general.}
+\end{figure}
+
+\begin{table}[!t]\centering
+\caption{\label{tab:leaves}\textbf{Milestone leaves and the effect of each design step.} Retired instructions and cycles per $16$-bit word on Apple M2~Pro (cycle-accurate PMU, ${\sim}\SI{2}{\mebi\byte}$ working set, refreshed final full-grid matrix). The redundant $5{:}3$ compressor (first realized as V76, deployed with scheduling and $128$-byte alignment as V102) captures essentially the entire instruction reduction; later steps refine scheduling and drain frequency at nearly fixed instruction count. V124 is the global fixed leaf; V139 is faster at this L2 point but concedes elsewhere, and V150 retires the fewest instructions without winning the full grid.}
+\begin{tabular}{@{}l l | r r@{}}
+\toprule
+Leaf & Design step & instr./word & cycles/word\\
+\midrule
+Clausecker NEON & Harley--Seal $3{:}2$ CSA tree & 0.7078 & 0.1761\\
+V102 & redundant $5{:}3$ compressor, scheduled, $128$\,B aligned & 0.4330 & 0.0994\\
+V123 & \quad{}+ merge $2$ accumulator states & 0.4230 & 0.0963\\
+V124 & \quad{}+ merge $4$ accumulator states; global fixed leaf & 0.4176 & 0.0959\\
+V128 & \quad{}+ merge $8$ accumulator states & 0.4142 & 0.0948\\
+V136 & \quad{}+ paired \texttt{ldp} loads & 0.4141 & 0.0941\\
+V139 & balanced roots (shortest $p_0$ chain; L2 specialist) & 0.4141 & 0.0910\\
+V150 & zero-aware interleaving (retained, not selected) & 0.4065 & 0.0926\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every comparison uses a shared correctness oracle, and we distinguish PMU cycle counts from wall-clock timer ticks throughout. Unless noted, each reported tier value is a geometric mean of per-size means over the grid points falling in that tier, assigned by each host's cache capacities (Methods, ``Sampling design and aggregation''); the number of points per tier follows each host's cache geometry and is not equal across tiers or hosts. Repeated samples characterize dispersion within one host and process and are not independent machine replications. Intervals shown on a tier aggregate therefore express the spread across that tier's grid points, not uncertainty about the host, and we read differences of a few percent as near parity (Methods, ``Sampling design and aggregation'').
+
+\subsection*{A five-instruction $5{:}3$ compressor is minimal over the ASIMD gate library}
+
+Because every $3{:}2$ adder retires exactly one live signal, the $45$-instruction cost of the reference block is a property of the compressor operator rather than of the network assembled from it: no rearrangement of $3{:}2$ adders is cheaper, and a saving requires a different operator. We searched the space of in-register compressors expressible in the ASIMD Boolean gate library, and found one. A redundant five-instruction $5{:}3$ compressor---five equally weighted inputs reduced to one low and two high outputs---replaces a cascaded pair of $3{:}2$ adders, cutting one input block from $45$ to $38$ Boolean instructions and shortening the replaced sub-tree's critical path from four operation steps to three (Fig.~\ref{fig:planes}c--e; Methods, ``A redundant $5{:}3$ compressor''). SAT-based synthesis then excludes any four-instruction realization over the same gate library, so the circuit is not merely cheaper than the incumbent but minimal there (Supplementary Table~\ref{stab:sat}). The cell reduces five equally weighted inputs to one output at that weight and two at twice it; in the terminology of computer arithmetic this redundant $1,2,2$ form is a $4{:}2$ compressor \cite{weinberger1981}, and we write $5{:}3$ for its five-in, three-out shape. To our knowledge it is the first non-$3{:}2$ bitwise-logic compressor cell to appear in a software population-count kernel, in the roughly thirty years the carry-save technique has been used in software.
+
+The search screened more than $10^{12}$ candidates at up to nearly $10^{8}$ per second on one consumer GPU, admitting a circuit as exact only after independent host verification over its complete $2^{N}$-row truth table, and ranking survivors not by gate count or logical depth but under cost models calibrated to the target pipelines (Fig.~\ref{fig:search}; Methods, ``Cost models and port-pressure calibration''). The Apple proxy is derived from published Firestorm measurements and orders legal circuits without being an M2 timing calibration; every kernel ranking reported here rests on the M2~Pro measurements themselves. A single fifteen-minute enumerative run over the seven-input family evaluated $7.8\times10^{10}$ candidates and returned $941$ exact circuits (Fig.~\ref{fig:evolution}a).
+
+\begin{figure*}[!t]\centering
+\includegraphics[width=\textwidth]{figures/fig_search_procedure}
+\caption{\label{fig:search}\textbf{The topology-search procedure.} Candidate circuits are assembled from the target ISA's Boolean gate library against target compressor semantics from $3{:}2$ to $11{:}4$. Truth tables contain $2^N$ rows for an $N$-input family. The seven-input evaluator processes all $128$ rows per candidate in one GPU thread; larger drivers use wider or partitioned packed tables. More than $10^{12}$ candidate evaluations were screened across the campaign. Promising candidates are reconstructed and evaluated over the complete family-specific truth table by an independent host implementation before entering the exact archive. SAT-based synthesis supplies lower bounds for tractable instances, including exclusion of a four-instruction $5{:}3$ circuit within the stated gate library. Exact survivors are ranked under the Neoverse~V2 port-pressure model and Apple critical-path proxy, then measured as complete kernels on target hosts (Table~\ref{tab:leaves}).}
+\end{figure*}
+
+\begin{figure*}[!t]\centering
+\includegraphics[width=\textwidth]{figures/fig_search_evolution}
+\caption{\label{fig:evolution}\textbf{The search at both levels: circuit discovery and the released kernel record.} \textbf{a}, Exact $7{:}4$ circuits discovered as a function of candidate circuits evaluated in a single fifteen-minute enumerative run: $941$ exact circuits among $7.8\times10^{10}$ candidates, with discovery accelerating as the enumeration reaches denser regions of the space. \textbf{b}, Every oracle-passing SIMD u16 variant in the released kernel record ($n=134$), benchmarked on Apple M2~Pro at a ${\sim}\SI{2}{\mebi\byte}$ working set and sorted by performance (bytes per cycle, PMU cycle counts). Three discontinuities partition the ladder (dotted verticals; the open circle marks the first kernel of each stratum), and each opens a level the previous family does not reach. The first ($3.1\to10.7$ bytes/cycle) introduces bitwise carry-save accumulation on the Harley--Seal $3{:}2$ tree; the second ($12.5\to14.1$) the packed carry-save accumulator, still on the $3{:}2$ operator; the third ($17.0\to17.8$) the $5{:}3$ compressor, above which no $3{:}2$-based kernel appears. Clausecker NEON (marked, $10.9$ bytes/cycle) sits near the bottom of the first carry-save stratum, whose members reach $12.5$; the balanced-roots V139 milestone (marked, $19.5$ bytes/cycle) sits near the top of the third; the dashed line is the load/sum reference measured in the same run. Panel \textbf{b} comes from an earlier single-size screen than the refreshed full-grid matrix behind Table~\ref{tab:leaves}, so its absolute rates are not directly comparable with that table; the refreshed grid selects V124 rather than this single-size V139 specialist. \textbf{[State the number of samples per variant behind panel b.]} Variants below the baseline are released alongside the winners.}
+\end{figure*}
+
+We searched every compressor family from $6{:}3$ through $11{:}4$; among the exact circuits they returned, none ranked above the $5{:}3$ tree under the evaluated cost models. Because those models were not validated against complete-kernel throughput for every circuit, this is a conditional null result rather than evidence that higher-order compressors are generally inferior. The released kernel record shows the consequence at the level of complete kernels: across the $134$ oracle-passing u16 variants ordered by measured throughput, every kernel above the highest discontinuity contains the $5{:}3$ compressor, and no kernel built on the $3{:}2$ operator appears above it (Fig.~\ref{fig:evolution}b). The documented $3{:}2$ construction is therefore not instruction-minimal for the tested ASIMD gate library.
+
+\subsection*{The fixed kernels outperform Clausecker NEON on three ARM microarchitectures}
+
+A compressor that is minimal in isolation need not yield a faster kernel, and the prior ARM evaluation covered a single server core. We therefore benchmarked the fixed leaves against Clausecker NEON over the full size grid of three wide out-of-order cores: the server cores Neoverse~V1 (Graviton~3) and Neoverse~V2 (Graviton~4), and the consumer Avalanche core of the Apple M2~Pro. The per-width leaf selections are listed in Table~\ref{tab:fixed-kernel} and derived in Methods (``Fixed-leaf selection and the shipped dispatch policy''); each is chosen once, by the library maintainer, with no input-size dispatch and no benchmarking on the end user's machine. The fixed leaves have lower mean cycles per byte than Clausecker NEON in all $48$ combinations of three cores, four word widths and four cache tiers, with no combination favouring the published kernel (Table~\ref{tab:fixed-kernel}a, Fig.~\ref{fig:single-kernel}a--c); tier ratios span $0.517$ to $0.964$, that is, reductions in cycles per byte of $48.3\%$ down to $3.6\%$. Retired instructions per byte fall alongside the cycles: at every cache-resident tier on every core the published kernel retires $0.348$--$0.370$ instructions per byte and the fixed leaf $0.201$--$0.229$, a reduction of $38$--$42\%$ that varies little across cores because each side executes the same instruction stream on all three (Table~\ref{tab:fixed-kernel}b, Fig.~\ref{fig:single-kernel}d--f). Averaged over the four widths, the cache-resident speedup---the geometric mean over the L2, L3 and DRAM tiers---is $1.69\times$ on Neoverse~V1, $1.43\times$ on Neoverse~V2 and $1.75\times$ on Apple M2~Pro. The L1 tier, dominated by short inputs where a per-call cost common to both sides compresses every ratio toward unity, still favors the fixed kernel. Per-kernel cycle curves and the per-size speedup for every variant on every host are given in Fig.~\ref{fig:evidence}; the retired-instruction curves, and the scalar and Clausecker Generic references, are in Supplementary Fig.~\ref{sfig:evidence-full}.
+
+\begin{table*}[!t]
+\centering
+\caption{\label{tab:fixed-kernel}\textbf{Absolute cycles per byte and instructions per byte of Clausecker NEON and of the fixed per-width kernel, by cache tier.} Geometric means over the grid points falling in each tier on Neoverse~V1 (Graviton~3), Neoverse~V2 (Graviton~4) and Apple M2~Pro; lower is better, and the lower value of each pair is set in bold. \textbf{a}, Cycles per byte. \textbf{b}, Instructions retired per byte. The fixed kernel is the bold entry in all $96$ comparisons---three cores, four word widths, four cache tiers, two counters---with no tie at the printed precision. Neoverse uses V102/V356/V150/V120 for u8/u16/u32/u64 and Apple uses V124/V124/V121/V120, each chosen once with no input-size dispatch. Each Graviton main/control method has $100$ fixed Linux-PMU samples per size; Apple has $100$ cycle-accurate \texttt{kperf} PMU samples. Tiers follow each host's cache geometry, a size belonging to the first level whose capacity strictly exceeds it. Values are printed to four decimals; ratios and speedups quoted in the text are computed from the unrounded values. Tier means carry no dispersion indicator. The Apple L3 tier contains a single grid point and is a spot check rather than a mean; the other tiers hold between $8$ and $32$ points (Methods, ``Sampling design and aggregation''). The reductions plotted in Fig.~\ref{fig:single-kernel} are $1$ minus the column-pair quotients of the matching panel here. The L1 tier extends down to $2$-byte inputs, where a per-call cost carried by both methods dominates the per-byte rate; L1 absolutes should therefore be compared within a host, not across hosts.}
+\small\setlength{\tabcolsep}{3.6pt}
+\begin{tabular}{@{}c l | *{3}{S[table-format=2.4]S[table-format=2.4,detect-weight,mode=text] |}S[table-format=2.4]S[table-format=2.4,detect-weight,mode=text]@{}}
+\toprule
+ & & \multicolumn{2}{c}{L1} & \multicolumn{2}{c}{L2} & \multicolumn{2}{c}{L3} & \multicolumn{2}{c}{RAM}\\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+Host & Width & {Clausecker} & {This work} & {Clausecker} & {This work} & {Clausecker} & {This work} & {Clausecker} & {This work}\\
+\midrule
+\multicolumn{10}{l}{\textbf{a}, Cycles per byte}\\
+\multirow{4}{*}{\rotatebox{90}{Neoverse V1}} & u8  & 2.2701 & \bfseries 2.0136 & 0.1538 & \bfseries 0.0910 & 0.1520 & \bfseries 0.0819 & 0.1522 & \bfseries 0.1048\\
+ & u16 & 2.3638 & \bfseries 2.2554 & 0.1539 & \bfseries 0.0878 & 0.1519 & \bfseries 0.0785 & 0.1523 & \bfseries 0.1022\\
+ & u32 & 1.8210 & \bfseries 1.6537 & 0.1541 & \bfseries 0.0896 & 0.1524 & \bfseries 0.0797 & 0.1522 & \bfseries 0.1035\\
+ & u64 & 1.3990 & \bfseries 1.3139 & 0.1542 & \bfseries 0.0893 & 0.1524 & \bfseries 0.0799 & 0.1523 & \bfseries 0.1039\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Neoverse V2}} & u8  & 2.0907 & \bfseries 1.9418 & 0.1210 & \bfseries 0.0769 & 0.1288 & \bfseries 0.0895 & 0.1410 & \bfseries 0.1128\\
+ & u16 & 2.0665 & \bfseries 1.9924 & 0.1210 & \bfseries 0.0752 & 0.1292 & \bfseries 0.0877 & 0.1410 & \bfseries 0.1104\\
+ & u32 & 1.5549 & \bfseries 1.4962 & 0.1214 & \bfseries 0.0756 & 0.1287 & \bfseries 0.0877 & 0.1409 & \bfseries 0.1118\\
+ & u64 & 1.2465 & \bfseries 1.1780 & 0.1217 & \bfseries 0.0762 & 0.1299 & \bfseries 0.0889 & 0.1413 & \bfseries 0.1119\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Apple M2 Pro}} & u8  & 8.1102 & \bfseries 7.6734 & 0.0933 & \bfseries 0.0518 & 0.0879 & \bfseries 0.0472 & 0.0886 & \bfseries 0.0544\\
+ & u16 & 8.1575 & \bfseries 7.6923 & 0.0931 & \bfseries 0.0518 & 0.0899 & \bfseries 0.0470 & 0.0886 & \bfseries 0.0545\\
+ & u32 & 5.8751 & \bfseries 5.4752 & 0.0937 & \bfseries 0.0529 & 0.0886 & \bfseries 0.0498 & 0.0887 & \bfseries 0.0546\\
+ & u64 & 4.2203 & \bfseries 3.9724 & 0.0938 & \bfseries 0.0528 & 0.0886 & \bfseries 0.0482 & 0.0886 & \bfseries 0.0554\\
+\midrule
+\multicolumn{10}{l}{\textbf{b}, Instructions retired per byte}\\
+\multirow{4}{*}{\rotatebox{90}{Neoverse V1}} & u8  & 2.9502 & \bfseries 2.7006 & 0.3497 & \bfseries 0.2137 & 0.3478 & \bfseries 0.2102 & 0.3477 & \bfseries 0.2100\\
+ & u16 & 3.0543 & \bfseries 2.8325 & 0.3499 & \bfseries 0.2067 & 0.3478 & \bfseries 0.2010 & 0.3477 & \bfseries 0.2007\\
+ & u32 & 2.4794 & \bfseries 2.3061 & 0.3501 & \bfseries 0.2112 & 0.3479 & \bfseries 0.2062 & 0.3478 & \bfseries 0.2059\\
+ & u64 & 2.1424 & \bfseries 1.9974 & 0.3508 & \bfseries 0.2128 & 0.3480 & \bfseries 0.2068 & 0.3479 & \bfseries 0.2065\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Neoverse V2}} & u8  & 2.9523 & \bfseries 2.7006 & 0.3494 & \bfseries 0.2131 & 0.3478 & \bfseries 0.2101 & 0.3477 & \bfseries 0.2100\\
+ & u16 & 3.0543 & \bfseries 2.8325 & 0.3495 & \bfseries 0.2057 & 0.3478 & \bfseries 0.2008 & 0.3477 & \bfseries 0.2007\\
+ & u32 & 2.4794 & \bfseries 2.3061 & 0.3497 & \bfseries 0.2103 & 0.3478 & \bfseries 0.2061 & 0.3478 & \bfseries 0.2059\\
+ & u64 & 2.1440 & \bfseries 1.9969 & 0.3503 & \bfseries 0.2117 & 0.3480 & \bfseries 0.2066 & 0.3479 & \bfseries 0.2065\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Apple M2 Pro}} & u8  & 34.7538 & \bfseries 33.1909 & 0.3700 & \bfseries 0.2247 & 0.3485 & \bfseries 0.2031 & 0.3479 & \bfseries 0.2024\\
+ & u16 & 34.8058 & \bfseries 33.2515 & 0.3700 & \bfseries 0.2248 & 0.3491 & \bfseries 0.2032 & 0.3480 & \bfseries 0.2025\\
+ & u32 & 25.0050 & \bfseries 23.8585 & 0.3702 & \bfseries 0.2286 & 0.3486 & \bfseries 0.2068 & 0.3480 & \bfseries 0.2061\\
+ & u64 & 18.0702 & \bfseries 17.2203 & 0.3705 & \bfseries 0.2294 & 0.3487 & \bfseries 0.2073 & 0.3481 & \bfseries 0.2066\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]\centering
+\includegraphics[width=\textwidth]{figures/fig_fixed_kernel_tiers}
+\caption{\label{fig:single-kernel}\textbf{One fixed kernel per width lowers both cycles per byte and retired instructions per byte against Clausecker NEON at every cache tier on all three microarchitectures.} Per-tier reduction in geometric-mean cycles/byte (\textbf{a--c}, solid) and instructions/byte (\textbf{d--f}, hatched) relative to Clausecker NEON: positive values favour this work, and the zero line is the published kernel. Each platform keeps one colour throughout the manuscript. Fig.~\ref{fig:x86tiers} reports the x86 transfers in the same convention. \textbf{a},\textbf{d}, Neoverse~V1 (Graviton~3); \textbf{b},\textbf{e}, Neoverse~V2 (Graviton~4); \textbf{c},\textbf{f}, Apple M2~Pro. Within each tier the four bars are the $8$-, $16$-, $32$- and $64$-bit fixed leaves, light to dark. Neoverse~V1 and V2 use V102/V356/V150/V120, and Apple M2 uses V124/V124/V121/V120; no input-size dispatch is used. All $96$ bars are positive. Graviton bars use $100$ fixed Linux-PMU samples per main/control method-size point; Apple bars use $100$ cycle-accurate \texttt{kperf} samples. Bars are tier geometric means $\pm$ s.e.m.\ across the grid points the tier holds; the tiers hold unequal numbers of points, and the single-point Apple L3 tier admits no spread. The L1 tier reaches down to $2$-byte inputs, where a per-call cost carried by both methods compresses the reduction toward zero. Per-size means with their standard errors are given in Fig.~\ref{fig:evidence}, and the absolute rates these reductions are formed from are in Table~\ref{tab:fixed-kernel}.}
+\end{figure*}
+
+\begin{figure*}[p]\centering
+\includegraphics[width=\textwidth]{figures/fig_kernel_evidence}
+\caption{\label{fig:evidence}\textbf{Per-size evidence for the u16 NEON kernels on the three ARM cores.} Two rows per core: cycles per byte then instructions per byte, each with the measured curves on the left and the reduction of the fixed leaf over Clausecker NEON on the right. \textbf{a}--\textbf{d}, Neoverse~V1, leaf V356; \textbf{e}--\textbf{h}, Neoverse~V2, V356; \textbf{i}--\textbf{l}, Apple M2~Pro, V124. Grey is the published kernel throughout the manuscript and green is NEON; the dotted line in the right-hand panels is parity. Plotted values are mean $\pm$ s.e.m.\ over $100$ fixed PMU samples per method and size, and the ratio errors are propagated in quadrature. Each leaf is the geometric-mean-best kernel of its matrix at every cache tier on both Neoverse hosts, not the pointwise envelope. Panels begin at \SI{8}{\kibi\byte}. Dashed verticals and the ribbon beneath each panel mark cache boundaries. Supplementary Fig.~\ref{sfig:evidence-full} adds the scalar and Clausecker Generic references.}
+\end{figure*}
+
+
+The controlling comparison---the one that separates a better general kernel from a retargeting win---is Neoverse~V1, the core on which Clausecker NEON was designed and benchmarked, with both kernels run unchanged. The V1 ratios are equal to or better than the corresponding V2 ratios at every tier (u16 L3: $0.517$ vs $0.679$; DRAM: $0.671$ vs $0.783$), even though V2 is the faster core in absolute cycles/byte. Both cores execute the identical hand-written 128-bit ASIMD code and expose the same 128-bit vector resources, so the ratio difference cannot be attributed to wider vector hardware. The gain therefore reproduces on the silicon Clausecker NEON was optimized on, and is larger there than on Neoverse~V2.
+
+Apple M2~Pro is the opposite pole: a consumer core Clausecker et al.\ never measured. On this host's cache geometry the tiers hold $32/14/1/13$ grid points for the 16-bit grid, so we read the single-point L3 column as a spot check rather than a tier mean---here, and wherever that column propagates into Table~\ref{tab:absolute}. At the $\sim\!\SI{2}{\mebi\byte}$ working set the fixed u16 leaf closes most of the distance to the matching-width load-and-reduce reference while retiring markedly fewer instructions at higher IPC (Table~\ref{tab:apple}).
+
+\begin{table*}[p]
+\centering
+\caption{\label{tab:absolute}\textbf{Sustained throughput of Clausecker NEON and of the fixed per-width leaf, at the peak and by cache level.} Neoverse~V1 (Graviton~3), Neoverse~V2 (Graviton~4) and Apple M2~Pro; timer-derived rates from the same instrumented sweeps as Table~\ref{tab:fixed-kernel}, $100$ repeated samples per method and size. The higher rate of each pair is set in bold; the fixed leaf is faster in every one of the $12$ peak and $36$ tier comparisons. \textbf{a}, Peak over the whole grid, with the peak-to-peak ratio and the largest inverse mean-cycles/byte ratio at a single common input size (with that size). \textbf{b}, Geometric-mean rate within each cache-resident tier, and the speedup as a percentage increase, $100(\text{this work}/\text{Clausecker}-1)$. Panel~\textbf{b} omits L1, where the timer and the PMU cycle counter disagree (Methods, ``Counter provenance and metric definitions''). Because throughput includes the effect of clock frequency and cycles per byte does not, the panel~\textbf{b} speedups differ from the cycle ratios of Table~\ref{tab:fixed-kernel}a by up to $10$ points at Apple L2. The Apple values come from the elapsed-time field of the \texttt{kperf}-instrumented sweep, and its same-size speedups are PMU-cycle-derived. No entry carries a dispersion indicator; per-size throughput curves are in Fig.~\ref{fig:throughput} and per-size counter spread in Fig.~\ref{fig:evidence}. Peak throughput rises by $1.73$--$2.04\times$ across all widths and cores.}
+\small
+\begin{tabular}{@{}c l | r r | r r@{}}
+\multicolumn{6}{l}{\textbf{a}, Peak over the whole grid}\\
+\toprule
+Core & Width & Clausecker NEON & This work & peak & best same-size\\
+     &       & (GB/s) & (GB/s) & ratio & speedup\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Neoverse V1}} & u8  & 17.19 & \bfseries 33.65 & 1.96 & 1.97 (\SI{2}{\mebi\byte})\\
+ & u16 & 17.22 & \bfseries 35.19 & 2.04 & 2.05 (\SI{2}{\mebi\byte})\\
+ & u32 & 17.21 & \bfseries 34.57 & 2.01 & 2.03 (\SI{2}{\mebi\byte})\\
+ & u64 & 17.15 & \bfseries 34.66 & 2.02 & 2.02 (\SI{2}{\mebi\byte})\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Neoverse V2}} & u8  & 23.66 & \bfseries 40.94 & 1.73 & 1.76 (\SI{2}{\mebi\byte})\\
+ & u16 & 23.60 & \bfseries 42.44 & 1.80 & 1.81 (\SI{2}{\mebi\byte})\\
+ & u32 & 23.63 & \bfseries 41.25 & 1.75 & 1.79 (\SI{1}{\mebi\byte})\\
+ & u64 & 23.61 & \bfseries 42.34 & 1.79 & 1.83 (\SI{1}{\mebi\byte})\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Apple M2 Pro}} & u8  & 40.35 & \bfseries 77.78 & 1.93 & 1.94 (\SI{8}{\mebi\byte})\\
+ & u16 & 40.52 & \bfseries 77.35 & 1.91 & 1.91 (\SI{16}{\mebi\byte})\\
+ & u32 & 40.28 & \bfseries 75.46 & 1.87 & 1.85 (\SI{8}{\mebi\byte})\\
+ & u64 & 40.29 & \bfseries 76.07 & 1.89 & 1.87 (\SI{3}{\mebi\byte})\\
+\bottomrule
+\end{tabular}
+
+\vspace{2ex}
+
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{@{}c l | r r r | r r r | r r r@{}}
+\multicolumn{11}{l}{\textbf{b}, Geometric mean within each cache-resident tier}\\
+\toprule
+ & & \multicolumn{3}{c}{L2} & \multicolumn{3}{c}{L3} & \multicolumn{3}{c}{RAM}\\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}\cmidrule(lr){9-11}
+Core & Width & Clausecker & This work & speedup & Clausecker & This work & speedup & Clausecker & This work & speedup\\
+ & & (GB/s) & (GB/s) & (\%) & (GB/s) & (GB/s) & (\%) & (GB/s) & (GB/s) & (\%)\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Neoverse V1}} & u8  & 17.02 & \bfseries 28.99 & 70.3 & 17.03 & \bfseries 31.62 & 85.6 & 17.03 & \bfseries 24.74 & 45.2\\
+ & u16 & 17.01 & \bfseries 30.07 & 76.8 & 17.02 & \bfseries 33.01 & 93.9 & 17.03 & \bfseries 25.36 & 49.0\\
+ & u32 & 16.98 & \bfseries 29.53 & 73.9 & 16.98 & \bfseries 32.59 & 92.0 & 17.04 & \bfseries 25.04 & 47.0\\
+ & u64 & 16.96 & \bfseries 29.57 & 74.3 & 16.97 & \bfseries 32.51 & 91.5 & 17.02 & \bfseries 24.95 & 46.6\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Neoverse V2}} & u8  & 23.29 & \bfseries 36.95 & 58.6 & 21.64 & \bfseries 31.34 & 44.8 & 19.81 & \bfseries 24.73 & 24.8\\
+ & u16 & 23.28 & \bfseries 37.78 & 62.3 & 21.56 & \bfseries 31.92 & 48.1 & 19.81 & \bfseries 25.28 & 27.6\\
+ & u32 & 23.23 & \bfseries 37.64 & 62.0 & 21.65 & \bfseries 31.90 & 47.4 & 19.82 & \bfseries 24.98 & 26.0\\
+ & u64 & 23.14 & \bfseries 37.26 & 61.0 & 21.46 & \bfseries 31.55 & 47.0 & 19.78 & \bfseries 24.95 & 26.1\\
+\midrule
+\multirow{4}{*}{\rotatebox{90}{Apple M2 Pro}} & u8  & 39.77 & \bfseries 74.88 & 88.3 & 39.79 & \bfseries 74.30 & 86.7 & 39.50 & \bfseries 63.88 & 61.7\\
+ & u16 & 39.70 & \bfseries 75.31 & 89.7 & 38.48 & \bfseries 74.80 & 94.4 & 39.50 & \bfseries 63.73 & 61.3\\
+ & u32 & 39.49 & \bfseries 73.47 & 86.1 & 39.66 & \bfseries 70.30 & 77.2 & 39.45 & \bfseries 63.56 & 61.1\\
+ & u64 & 39.64 & \bfseries 73.94 & 86.5 & 39.66 & \bfseries 72.95 & 83.9 & 39.50 & \bfseries 63.28 & 60.2\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table}[!t]\centering
+\caption{\label{tab:apple}\textbf{Apple M2 Pro, cache-resident comparison point.} A single core at the ${\sim}\SI{2}{\mebi\byte}$ working set of the full-grid sweep of Table~\ref{tab:fixed-kernel}; cycles, instructions and instructions per cycle (IPC) are cycle-accurate \texttt{kperf} PMU quantities, while GB/s is timer-derived in the same instrumented run. This work's fixed kernel is set in bold. Values are means over $100$ samples at this one size and carry no dispersion indicator. The fixed kernel (the u16 V124 leaf) reduces cycles per word by $45.5\%$ ($1.84\times$) while retiring $41.0\%$ fewer instructions at higher IPC, reaching $0.79$ of the \SI{91.11}{\giga\byte\per\second} matching-width load-and-reduce reference at the same working set.}
+\begin{tabular}{@{}l | r r r r@{}}
+\toprule
+Implementation & GB/s & cycles/word & instr./word & IPC\\
+\midrule
+Clausecker Generic (non-SIMD) & 11.66 & 0.6028 & 3.586 & 5.95\\
+Clausecker NEON         & 40.52 & 0.1761 & 0.7078 & 4.02\\
+Fixed kernel (V124) & \textbf{71.95} & \textbf{0.0959} & \textbf{0.4176} & \textbf{4.36}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The margin is not uniform. The narrowest is a $3.6\%$ tier mean at Neoverse~V2, 16-bit, L1 (Fig.~\ref{fig:single-kernel}), which on the dispersion available here we read as near parity rather than as a win; every cache-resident margin is substantially larger. Across L2, L3 and DRAM, all widths and all cores, the geometric mean of the per-tier speedups is $1.62\times$---a mean of means, each tier value itself an average over that tier's grid points---and the best single width-and-tier cell reaches $1.94\times$ (Neoverse~V1, 16-bit, L3). Individual points go further: the best same-size u16 result on Neoverse~V1 reaches $2.05\times$ at \SI{2}{\mebi\byte}; Neoverse~V2 reaches $1.81\times$ at the same size; and Apple M2~Pro reaches $1.91\times$ at \SI{16}{\mebi\byte}. Peak sustained 16-bit throughput rises by $1.80$--$2.04\times$ (Table~\ref{tab:absolute}a). The gain coincides with a reduction in instruction count: at the common cache-resident comparison point the fixed kernel retires $41.0$--$42.2\%$ fewer instructions per word on all three cores (Table~\ref{tab:apple} for Apple; the Graviton values are the u16 L3 rows of Table~\ref{tab:fixed-kernel}b in per-word units).
+
+These ratios are measured against a published, purpose-built ASIMD implementation rather than a scalar reference~\cite{clausecker2024}. More informative than the peak is the recurrence of the instruction reduction across two vendors, four word widths and the measured cache hierarchy: the combination of fewer retired instructions and lower cycles per word is consistent with a reduction in both operation count and dependency depth.
+
+The advantage appears at every measured size beyond the short-input transient and persists into DRAM on all three cores (Fig.~\ref{fig:throughput}, Fig.~\ref{fig:evidence}b,d,f).
+
+\begin{figure*}[!t]\centering
+\includegraphics[width=\textwidth]{figures/fig_throughput_panels}
+\caption{\label{fig:throughput}\textbf{Raw sustained throughput from \SI{1}{\kibi\byte} onward on the three tested cores.} Sustained 16-bit positional-popcount throughput versus input size on Neoverse~V1, Neoverse~V2 and Apple M2~Pro. The fixed kernel runs above Clausecker NEON beyond the short-input transient, peaking near $35$, $42$ and $77$~GB/s against $17$, $24$ and $41$~GB/s. Each plotted point is the mean over $100$ repeated PMU-instrumented samples at that size and the shaded band is its s.e.m. Each panel uses its own throughput axis.}
+\end{figure*}
+
+\subsection*{Hardware counters implicate intermediate accumulation as a major constraint}
+
+A gain produced by reduced memory traffic should shrink as the working set leaves cache; this one does not, so we examined retired instructions and cycles per input word directly. On Apple M2~Pro the fixed kernel retires $41.0\%$ fewer instructions per word than Clausecker NEON ($0.4176$ versus $0.7078$) and sustains higher measured IPC ($4.36$ versus $4.02$); the Graviton hosts show a $42.2\%$ reduction (Tables~\ref{tab:fixed-kernel}b and~\ref{tab:apple}). On Apple, cycles per word fall by $45.5\%$ ($0.0959$ versus $0.1761$), more than the instruction count alone. These observations are consistent with, but do not uniquely identify, a shorter effective dependency path: IPC can also reflect front-end and memory-system effects.
+
+The kernel's structure supplies a counterpart to the counters. The deployed tree reduces both operation count and modeled critical-path length, and its balanced-roots sibling shortens the $p_0$ compressor path from four operation steps to two at the same instruction count; at the single Apple L2 comparison point that sibling is the faster of the two (Table~\ref{tab:leaves}). Across retained u16 variants, instruction count varies by less than $7\%$ ($0.406$--$0.433$ instructions per word) even as throughput changes, indicating that schedule and drain cadence matter in addition to operation count.
+
+A lower instruction count is nonetheless still compatible with a memory-traffic limit, so we compared the kernel with a load-and-reduce routine that issues matching-width loads and maintains a bare running sum but performs no positional accumulation (Methods, ``The load-and-reduce reference''). On Graviton~4 the fixed u16 kernel is faster than this reference throughout the DRAM-resident grid; at \SI{256}{\mebi\byte} it runs at $0.1075$ cycles/byte, compared with $0.1302$ for the reference and $0.1466$ for Clausecker NEON. On Apple M2~Pro the ordering is reversed inside cache: the fixed kernels trail the matching-width reference by about $4$--$22\%$ across L1--L3, and remain within $2.5\%$ in DRAM. On Graviton~4, therefore, a routine performing strictly less arithmetic is nonetheless slower than the fixed kernel, so byte traffic alone does not account for the earlier kernel's plateau on that host; the Apple comparison does not support that inference and we do not draw it there. Neoverse~V1 was not included in this comparison. Neither host measures a hardware bandwidth ceiling: the reference contains its own loop-carried reduction dependency and is therefore a software comparison point. Taken together with the instruction and schedule evidence, the results support intermediate accumulation as a major constraint under the tested single-thread conditions. A dependency-broken bandwidth reference and multicore scaling would be required to distinguish this interpretation from all memory-system alternatives.
+
+\subsection*{One fixed per-width leaf matches a cache-tuned portfolio across the grid}
+
+Kernels tuned to one cache level need not win at another, and our own exploratory sweeps favored a tuned portfolio for exactly that reason. We therefore asked whether a single leaf per width could match a portfolio across the whole grid. Over the specialist set carried in the final PMU matrices, V356 is the geometric-mean-best u16 leaf and V150 the geometric-mean-best u32 leaf at each of L1, L2, L3 and RAM on both Neoverse hosts (Fig.~\ref{fig:detail}). We attribute this to their private short paths and streaming schedules, which handle inside one complete kernel the regimes an earlier portfolio split across leaves; the individual contribution of each was not measured. Here ``one kernel'' refers to caller-side selection: each fixed leaf still tests its own length internally and branches to a private general body, as the reference kernels do. The specialist arm of these matrices carries $10$ samples per size against $100$ for the main leaves, and the same matrices were used both to select the leaves and to describe them, so rankings among siblings are descriptive of these data rather than out-of-sample results (Methods, ``Sampling design and aggregation'').
+
+\begin{figure*}[p]\centering
+\includegraphics[width=.86\textwidth]{figures/fig_detail_grid}
+\caption{\label{fig:detail}\textbf{Cycle-derived speedup over Clausecker NEON for each tested ARM word width and core from \SI{1}{\kibi\byte} onward.} Per-size inverse mean cycles/byte for $8$-, $16$-, $32$- and $64$-bit words (rows) on Neoverse~V1, Neoverse~V2 and Apple M2~Pro (columns); the dotted line marks $2\times$ and each panel's peak is marked. The fixed Neoverse leaves win at every size from \SI{4}{\kibi\byte} onward and settle near $1.3$--$1.5\times$ in DRAM. Each ratio is formed from per-size means over $100$ repeated PMU samples per method; the shaded band is the s.e.m.\ of that ratio, propagated in quadrature.}
+\end{figure*}
+
+That conclusion is a tier-mean statement, and it does not hold pointwise everywhere. In a separate paired head-to-head on Graviton~4---the only host on which this comparison was run---we compared the fixed leaf against the incumbent leaves an earlier dispatch policy had selected, kernels not carried in the final specialist set. V123, a shorter-epoch sibling, is faster than V356 through the middle of the L1 tier, by $2$--$9\%$ in cycles per byte at $4$--$56$~\si{\kibi\byte} depending on which of the two measurement modes is used, crossing over and losing above the \SI{64}{\kibi\byte} L1d capacity. The fixed-leaf selection is therefore best read as the best \emph{single} kernel across the whole grid rather than as the pointwise envelope, and a size-dispatch policy still recovers up to $9\%$ in that sub-band. We ship such a policy for AArch64/Linux with a three-tier u16 boundary at L1d capacity.
+
+The winning leaf per width still differs between the Neoverse and Apple core families, so no single identical binary wins on every core; what one fixed leaf per width per family removes is cache-geometry dispatch by the caller and any benchmarking on the end user's machine. Pointwise, every selected Neoverse leaf for all four word widths is faster than Clausecker NEON at every grid point at or above \SI{4}{\kibi\byte}; below that size the reported tier means still favor the fixed kernel, but individual points fall inside the setup transient. The residual dispatch question is therefore a contest between our own siblings, not with the published baseline.
+
+
+The advantage is not confined to 16-bit words or to a single favorable cache level. Figure~\ref{fig:detail} gives the per-size speedup for every word width on every core, and Supplementary Figs.~\ref{sfig:evidence-u8}, \ref{sfig:evidence-u32} and~\ref{sfig:evidence-u64} repeat the measured cycle and instruction evidence of Fig.~\ref{fig:evidence} for $8$-, $32$- and $64$-bit words. All fixed Neoverse leaves are faster than Clausecker NEON at every tested size of at least \SI{4}{\kibi\byte}; shorter inputs expose the expected setup transient.
+
+
+\subsection*{The $5{:}3$ tree pays only with a three-input Boolean operator}
+
+The redundant $5{:}3$ compressor of Eq.~\ref{eqn:fivethree} is built from three-input Boolean operations. ASIMD supplies two of them as fixed-function instructions, \texttt{eor3} and \texttt{bcax}; AVX-512 supplies the general form, \texttt{vpternlogd}, which computes any three-input Boolean function in one instruction; SSE2 and AVX2 supply none, so each such operation expands into several two-input instructions and the expansion costs more than the compressor saves. We tested that boundary by building fixed 16-bit kernels for all three x86 instruction sets on one Golden Cove core (Intel Xeon Platinum~8488C, Sapphire Rapids), each measured against the published Clausecker implementation for the same instruction set over the \SI{2}{\byte}--\SI{1}{\gibi\byte} grid ($59$ sizes; Methods, ``The x86 kernel family'').
+
+AVX-512 is the sharper of the two tests, because its baseline already starts close to the instruction-minimal form: \texttt{vpternlogd} is the ideal primitive that ASIMD's fixed-function \texttt{eor3} and \texttt{bcax} only approximate. If the searched topology's advantage were an artifact of ARM's restricted operator set, it should vanish against this baseline. It does not. The deployed AVX-512 leaf carries the searched $5{:}3$ tree and retires $26.8\%$ fewer instructions per byte at L2 and $28.6\%$ fewer at L3 and in RAM (Table~\ref{tab:x86}b, Fig.~\ref{fig:x86evidence}f). That leaf also carries the packed accumulator, so the $28.6\%$ is the joint effect of both changes rather than the circuit's alone; separating them on this instruction set would require an AVX-512 sibling carrying the accumulator with Clausecker's $3{:}2$ tree, which we did not build.
+
+\begin{table*}[!t]
+\centering
+\caption{\label{tab:x86}\textbf{Absolute cycles per byte and instructions per byte of the published Clausecker kernel and of the fixed leaf on three x86 SIMD ISAs, by cache tier.} Intel Xeon Platinum~8488C (Sapphire Rapids), 16-bit words, one core, over the \SI{2}{\byte}--\SI{1}{\gibi\byte} grid ($59$ sizes, $100$ hardware-PMU samples per method and size). Geometric means over the grid points falling in each tier; lower is better, and the lower value of each pair is set in bold. \textbf{a}, Cycles per byte. \textbf{b}, Instructions retired per byte. The fixed leaf is the bold entry in all $24$ comparisons. Each ISA is compared only with the published implementation for that same instruction set. Tiers use the host's \SI{48}{\kibi\byte}/\SI{2}{\mebi\byte}/\SI{105}{\mebi\byte} capacities and hold $29$/$11$/$12$/$7$ points; the L1 tier reaches down to $2$-byte inputs and is dominated by a per-call cost carried by both methods, which is why its two columns nearly coincide. Tier means carry no dispersion indicator. Panel~\textbf{b} is the load-invariant quantity: SSE2 and AVX2 carry Clausecker's $3{:}2$ tree unchanged and differ only in the accumulator, whereas the AVX-512 leaf carries the $5{:}3$ tree as well, so its larger reduction is the joint effect of both changes. Fig.~\ref{fig:x86tiers} plots these same data as per-tier reductions.}
+\small\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{@{}l | *{3}{S[table-format=1.4]S[table-format=1.4,detect-weight,mode=text] |}S[table-format=1.4]S[table-format=1.4,detect-weight,mode=text]@{}}
+\toprule
+ & \multicolumn{2}{c}{L1} & \multicolumn{2}{c}{L2} & \multicolumn{2}{c}{L3} & \multicolumn{2}{c}{RAM}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ISA & {Clausecker} & {This work} & {Clausecker} & {This work} & {Clausecker} & {This work} & {Clausecker} & {This work}\\
+\midrule
+\multicolumn{9}{l}{\textbf{a}, Cycles per byte}\\
+SSE2     & 4.7760 & \bfseries 4.6421 & 0.1773 & \bfseries 0.1315 & 0.1776 & \bfseries 0.1357 & 0.3497 & \bfseries 0.2899\\
+AVX2     & 4.0565 & \bfseries 4.0007 & 0.0858 & \bfseries 0.0738 & 0.1354 & \bfseries 0.1335 & 0.3566 & \bfseries 0.3495\\
+AVX-512  & 4.3725 & \bfseries 4.3533 & 0.0491 & \bfseries 0.0456 & 0.1216 & \bfseries 0.1190 & 0.3313 & \bfseries 0.3088\\
+\midrule
+\multicolumn{9}{l}{\textbf{b}, Instructions retired per byte}\\
+SSE2     & 4.7371 & \bfseries 4.5668 & 0.6670 & \bfseries 0.5213 & 0.6643 & \bfseries 0.5156 & 0.6642 & \bfseries 0.5155\\
+AVX2     & 3.0531 & \bfseries 3.0184 & 0.2604 & \bfseries 0.2105 & 0.2579 & \bfseries 0.2063 & 0.2579 & \bfseries 0.2062\\
+AVX-512  & 2.1501 & \bfseries 2.1038 & 0.0933 & \bfseries 0.0682 & 0.0909 & \bfseries 0.0650 & 0.0909 & \bfseries 0.0649\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[p]\centering
+\includegraphics[width=\textwidth]{figures/fig_kernel_evidence_x86}
+\caption{\label{fig:x86evidence}\textbf{Per-size evidence for the three x86 SIMD ISAs (Intel Xeon Platinum~8488C, Sapphire Rapids; 16-bit words).} Laid out as Fig.~\ref{fig:evidence}: two rows per instruction set, cycles per byte then instructions per byte, measured curves left and the reduction of the fixed leaf over the published Clausecker kernel for that same instruction set right. \textbf{a}--\textbf{d}, SSE2; \textbf{e}--\textbf{h}, AVX2; \textbf{i}--\textbf{l}, AVX-512, whose leaf is the Triple63 T1 kernel. Each instruction set keeps one colour throughout the manuscript and the published kernel is grey. The instruction reduction settles at roughly $1.29\times$, $1.25\times$ and $1.40\times$ and holds across the cache-resident range, while the cycle speedup falls back toward parity beyond L2: on x86 the saving is expressed as work retired rather than as elapsed time. Plotted values are mean $\pm$ s.e.m.\ over $100$ fixed PMU samples per method and size, with ratio errors propagated in quadrature. Panels begin at \SI{8}{\kibi\byte}. Tier geometric means of the same data are in Table~\ref{tab:x86} and Fig.~\ref{fig:x86tiers}.}
+\end{figure*}
+
+On SSE2 and AVX2 the $3{:}2$ tree remains the cheaper construction, and the deployed leaves for those instruction sets \emph{retain Clausecker's fifteen-adder $3{:}2$ tree unchanged}. A paired screen confirms that this is a design choice rather than an omission: the SSE2 sibling that does carry an explicit $5{:}3$ tree retires $21.8$--$22.1\%$ fewer instructions per byte across the four cache tiers, against $22.4$--$22.6\%$ for the deployed non-$5{:}3$ leaf. Adding the searched circuit did not increase the instruction saving on this instruction set, and by these point estimates reduced it slightly. The $5{:}3$ result is therefore bounded to instruction sets that provide a three-input Boolean operator, and the boundary follows from the instruction accounting rather than having been discovered after the fact.
+
+\subsection*{The accumulator transfers to the $3{:}2$ tree, but the memory system caps the conversion}
+
+The $3{:}2$ construction is not settled either. On SSE2 and AVX2 the deployed leaves retain Clausecker's fifteen-adder $3{:}2$ tree unchanged---the same operator, the same fifteen adders, the same network---and alter only how partial sums are accumulated, replacing per-block materialization of wide counters with the packed carry-save planes and their amortized epoch drain. Roughly a fifth of the instructions the published kernels retire were therefore removable without changing their compressor. Under SSE2 the fixed leaf is $1.04\times$, $1.35\times$, $1.31\times$ and $1.21\times$ faster at L1, L2, L3 and RAM while retiring $22\%$ fewer instructions per byte from L2 onward, and it is faster at all $37$ measured sizes at or above \SI{4}{\kibi\byte}. Under AVX2 the fixed leaf is at parity at L1 and improves cycles per byte by $15.5\%$ at L2, $1.4\%$ at L3 and $2.0\%$ in RAM, while retiring $19$--$20\%$ fewer instructions per byte from L2 onward (Fig.~\ref{fig:x86tiers}). The representation change developed for the $5{:}3$ kernels therefore pays on instruction sets that cannot express the circuit at all.
+
+\begin{figure*}[t]\centering
+\includegraphics[width=\textwidth]{figures/fig_x86_isa_tiers}
+\caption{\label{fig:x86tiers}\textbf{Fixed-kernel transfer across three x86 SIMD ISAs (Intel Xeon Platinum~8488C, Sapphire Rapids; 16-bit words).} Per-tier reduction in geometric-mean cycles/byte (solid) and instructions/byte (hatched) relative to the corresponding published Clausecker kernel, each instruction set in its own colour for \textbf{a}, SSE2; \textbf{b}, AVX2; and \textbf{c}, AVX-512. Each main kernel and control has $100$ repeated fixed-PMU samples per size over the $59$-point \SI{2}{\byte}--\SI{1}{\gibi\byte} grid. Positive values favor this work. Bars are tier geometric means $\pm$ s.e.m.\ across that tier's grid points; the L1 aggregates are dominated by short-input setup paths.}
+\end{figure*}
+
+What the memory system permits that saving to become is a separate question, and the answer is visible in the data. At \SI{1}{\gibi\byte} the fixed SSE2, AVX2 and AVX-512 leaves retire $0.515$, $0.206$ and $0.0649$ instructions per byte---a $7.9\times$ range---but complete in $0.319$, $0.382$ and $0.338$ cycles per byte, a range of $1.20\times$. The narrowest instruction set, retiring $7.9\times$ as many instructions per byte as AVX-512, is the fastest of the three. At this size, therefore, cycles per byte is set predominantly by the memory system rather than by the kernel's accumulation work, and most of a reduction in that work is not expressed through it. The residual $20\%$ spread across the three kernels does not track instruction count, and we do not attribute it here.
+
+The AVX-512 leaf makes the same point against its own baseline. Its instruction reduction of $28.6\%$ persists across every tier from L2 outward, but the reduction in cycles per byte is $7.2\%$ at L2, $1.6\%$ at L3 and $6.8\%$ in RAM (Table~\ref{tab:x86}); the L3 figure should be read as near parity rather than as a measured gain. At \SI{768}{\kibi\byte} sustained throughput rises from $100.2$ to \SI{109.6}{\giga\byte\per\second}, and the largest same-size cycle advantage on the grid is $1.16\times$ at \SI{512}{\kibi\byte}. At large inputs the fixed leaf settles near $0.0649$ instructions per byte against $0.0909$ for Clausecker AVX-512. A control leaf that changes only the tail and prefetch schedule, at an instruction count identical to Clausecker's, still improves RAM cycles per byte by $4.8\%$, so the streaming component of the gain cannot be assigned to the compressor circuit at all.
+
+An earlier Sapphire Rapids sweep that included a load-and-reduce reference places the remaining distance to a software ceiling: the searched AVX-512 leaf of that generation sat within $3.4\%$ of the reference at \SI{1}{\gibi\byte} ($0.3313$ against $0.3203$ cycles per byte), while the Clausecker control sat $7.7\%$ above it ($0.3450$). Those figures come from a different matrix and an earlier leaf variant than Table~\ref{tab:x86} and are not directly comparable with it. Because the reference maintains a running sum, it is not a dependency-broken bandwidth floor. We therefore report instructions per byte as an efficiency measure, without inferring unmeasured energy or power effects.
+
+That the x86 margins are smaller than the ${\approx}2\times$ on ARM follows from the same accounting rather than against it. The AVX-512 baseline started closer to the instruction-minimal form, leaving less to recover, while ARM's \texttt{eor3} and \texttt{bcax}---which realize only specific three-input functions and, on Neoverse~V2, share a single vector pipe---left far more. Across instruction sets the throughput gain need not track the instruction reduction: SSE2 converts a $22\%$ instruction reduction into a $31\%$ improvement in L3 cycles per byte, whereas AVX-512 converts $28.6\%$ into $1.6\%$ there. Which resource binds, rather than vector width alone, appears to set the conversion; we did not collect memory-controller counters and so do not identify that resource here.
+
+
+\subsection*{Where the approach does not transfer: scalable vector extensions}
+
+Although the packed accumulator transfers across every fixed-width instruction set we tested, it does not follow that it transfers to scalable-vector implementations. Graviton~3 implements SVE at $256$ bits and Graviton~4 implements SVE2 at $128$ bits, so we transcribed the deployed $5{:}3$ compressor and its epoch accumulator into SVE and SVE2 intrinsics and searched around that port (Methods, ``SVE and SVE2 ports''). Neither reached the NEON leaf. The best SVE finalist on Graviton~3 was $71.3$--$116.4\%$ slower in cycles per byte than the V102 NEON leaf across four confirmation sizes; the best SVE2 finalist on Graviton~4 was $38.2$--$67.0\%$ slower.
+
+Vector width does not explain the deficit: Graviton~4's SVE2 executes at NEON's own $128$ bits and still loses, while Graviton~3's $256$-bit SVE loses by more. The reduction primitives do. Plain SVE has neither a three-input Boolean operation nor \texttt{bdep}/\texttt{bext}, so each select in the compressor expands to three instructions and each drain extracts one bit position at a time through a predicated compare and a predicate population count; its instruction count rises $43$--$51\%$ above the NEON leaf at lower IPC. SVE2 restores \texttt{eor3}, \texttt{bsl} and \texttt{bext} and closes most of the compressor gap, but its drain remains a sequence of per-bit extractions that never amortizes into the wide byte-lane transpose the NEON drain uses; it retires roughly twice as many instructions per byte as the NEON leaf at equal or higher IPC. What limits these ports is therefore the drain primitive rather than the searched circuit. The result rests on four size points rather than the full grid, and it bounds a direct port plus a bounded search around it---not every possible scalable-vector implementation.
+
+% =====================================================================
+\section*{Discussion}
+
+A five-instruction redundant $5{:}3$ compressor replaces the $3{:}2$ carry-save adder that, for the thirty years the technique has existed in software, has been the only reduction operator used in population counting. That constant held inside one of the most heavily optimized primitives in computing: processors have carried dedicated population-count hardware since the Cray-1 in 1976 \cite{cray1977hrm}. To our knowledge the $5{:}3$ circuit is the first non-$3{:}2$ bitwise-logic compressor cell used in a software population-count kernel, ordinary or positional. The cell itself is not new---higher-order compressors have been standard in hardware arithmetic since the 1970s and appear in FPGA population counts---but we have found no software realization reported, and none was found by a dedicated search of the popcount literature, its released implementations, and the patent record (Supplementary Table~\ref{stab:survey}). Hardware arithmetic had abandoned the exclusive use of $3{:}2$ compressors by 1973 \cite{swartzlander1973}; software population counting never followed, and the operator itself was never searched. The released kernel record shows the same separation among complete kernels (Fig.~\ref{fig:evolution}b). Higher-order compressors themselves are established hardware concepts \cite{wallace1964,dadda1965,swartzlander1973}; the contribution is their ISA-constrained in-register synthesis, hardware-aware ranking and measured integration into a software kernel. To our knowledge, prior popcount and positional-popcount work has not combined these elements, although broader machine search has improved other low-level domains including sorting and matrix multiplication \cite{mankowitz2023alphadev,fawzi2022alphatensor}.
+
+Uniformity, rather than peak, is the informative feature of the performance result. A fixed leaf per word width and tested core family beats Clausecker NEON in every reported ARM core--width--cache-tier aggregate, with the instruction reduction holding steady across cache tiers where the absolute rate does not. A margin that recurs across two vendors, four word widths and the measured cache hierarchy is harder to attribute to a favorable operating point than a peak is, and the instruction reduction carrying it is load-invariant where the absolute rate is not. The comparator matters: Mu{\l}a et al.\ established the value of vectorizing the Harley--Seal tree for ordinary popcount \cite{Mula2016}, and Clausecker et al.\ reported a $53\%$ peak improvement over the Klarqvist et al.\ AVX-512 kernel \cite{klarqvist2019,clausecker2024}; the baseline used throughout this paper is the later of those implementations. Neoverse~V1 is particularly informative because it is the core used to tune and measure that comparator, reducing the likelihood that the result is solely a retargeting effect.
+
+The gain decomposes into a circuit change and a representation change, and the two have different reach. The searched $5{:}3$ circuit pays where an efficient three-input Boolean operator exists---ASIMD's \texttt{eor3} and \texttt{bcax}, or AVX-512's \texttt{vpternlogd}---and not otherwise: on SSE2 and AVX2 the deployed leaves retain Clausecker's $3{:}2$ tree, and a paired screen shows that adding an explicit $5{:}3$ tree there does not increase the instruction saving. The packed carry-save accumulator, with its amortized epoch drain, transfers to every fixed-width instruction set we tested, including those two, where it retires $19$--$23\%$ fewer instructions per byte with Clausecker's $3{:}2$ tree left unchanged. That is a second and independent finding rather than a corollary of the first: on the instruction sets where the searched circuit does not apply, the incumbent construction is still not instruction-minimal on its own terms, and the margin is recovered without touching the compressor at all. It did not transfer to the SVE and SVE2 ports, whose drain never amortizes into a wide byte-lane transpose. This decomposition is what generalizes beyond any single winning kernel: a representation change with broad but not universal reach, and a circuit change whose value is set by the available Boolean operations.
+
+Directly demonstrated are lower retired-instruction counts, lower cycles/byte on the reported grids, higher measured IPC at the Apple comparison point and matched structural reductions in operation count and modeled dependency depth. These observations support intermediate accumulation as a major constraint on the tested wide out-of-order cores. They do not uniquely identify the operation as bandwidth-independent: the load-and-reduce reference contains its own loop-carried dependency and is not a measured hardware ceiling, and on Apple M2~Pro the fixed kernels sit below that reference inside cache. A dependency-broken load reference, memory-controller counters and a one-to-many-core scaling experiment would be needed to establish where arithmetic limitation gives way to shared-memory bandwidth. The present claim is therefore single-threaded and interpretive, not a universal statement about AArch64 memory systems.
+
+Where the memory system binds, the saving changes form rather than disappearing. At the largest x86 inputs the spread in retired instructions per byte across the three instruction sets is far wider than the resulting spread in cycles per byte, so most of the reduction is not expressible as throughput there. We report that reduction as an efficiency result and draw no energy or power inference from it, since neither was measured.
+
+The practical consequence is a simpler deployment policy. Once a leaf has been chosen for a tested core family, the per-width function needs no startup benchmark and no caller-side cache-geometry dispatch, and the counts it returns are bit-identical to the baseline's. The Neoverse hosts and Apple M2~Pro prefer different siblings, so this is not one universal binary; it is a maintainer-selected leaf per width and core family. An optional size policy recovers up to $9\%$ in one Graviton~4 L1 sub-band, but every primary comparison in this paper uses a fixed leaf.
+
+Several limitations bound what these measurements can support. The load-and-reduce routines are software comparison points rather than dependency-broken bandwidth ceilings. The cost models rank exact circuits but were not validated against measured complete-kernel throughput for every survivor, so the higher-order-compressor null result is conditional on those models. The full-grid matrices were used to choose the reported fixed leaves and to describe their performance; comparisons among sibling leaves may therefore include selection bias and require a frozen, independent confirmation matrix before they can be interpreted as out-of-sample optimality. Repeated samples within a host and process characterize measurement dispersion but are not independent hardware replications, an important distinction for x86 effects of only a few percent. Apple M2~Pro contributes only one grid point to the nominal L3 tier, so that column is a spot check rather than a tier mean, and its absolute throughput is sensitive to background load. Correctness of the complete assembly kernels rests on differential testing against a scalar reference rather than on a whole-program proof; complete truth-table verification applies to the compressor circuits alone.
+
+Further limitations bound how far the result transfers. Every measurement reported here is single-threaded, and all validated ARM cores are wide out-of-order designs; multicore contention and narrow or in-order cores are untested. The x86 transfer results come from a single Sapphire Rapids core. The best fixed leaf differs between the Neoverse and Apple families, so no-runtime-calibration means that the maintainer fixes a leaf per width and core family, not that one binary wins on every processor. The SVE and SVE2 results apply only to direct ports and the bounded searches performed here, not to all scalable-vector implementations. Finally, the $32$-bit output counters limit one call to $2^{32}-1$ words; longer inputs require chunking.
+
+The broader implication is methodological. For small bit-parallel kernels on wide cores, operation count and dependency structure should be measured before a throughput plateau is attributed solely to memory traffic. The reduction circuit can be treated as a constrained search space: candidates are screened at high throughput, exact survivors are verified over complete truth tables, microarchitecture-informed models prioritize implementations, and target-host measurements decide which complete kernels survive. This paper establishes that workflow for positional-popcount compressor families only. Other in-register circuits may admit the same treatment, but whether they benefit remains an empirical question. We will release the search code, exact survivors, failed variants and measurement artifacts with the archival deposit described in ``Data and code availability'', so that both the result and its unsuccessful paths can be inspected. A constant that had held for thirty years in one of computing's most heavily optimized primitives was displaced by search. Whether the same workflow benefits other small in-register circuits remains an open, testable question.
+
+% =====================================================================
+\section*{Methods}
+
+\subsection*{Carry-save adder networks}
+The Harley--Seal algorithm~\cite{warren2007} for computing the population count~\cite{Mula2016}, or the positional population count~\cite{klarqvist2019}, is based on carry-save adder (CSA) networks used in hardware microarchitectures. A CSA converts three equal-weight operands into a sum vector and a separately weighted carry vector, deferring carry propagation until final materialization. Each invocation of the CSA operator takes three input words and produces two output words: partial-sum bits and carry bits. For three bit values ($a,b,c\in\{0,1\}$) at a given position, the sum $a+b+c$ is a 2-bit word whose least significant bit is $(a\oplus b)\oplus c$ and whose most significant bit is $(a\land b)\lor((a\oplus b)\land c)$, where $\oplus$ is bitwise exclusive disjunction. As an illustration, for the three $4$-bit words $a=1011_b$, $b=1101_b$ and $c=0101_b$ the adder returns $L=(a\oplus b)\oplus c=0011_b$ and $H=(a\land b)\lor((a\oplus b)\land c)=1101_b$, and indeed $2H+L=a+b+c$ at every position. A Harley--Seal network arranges such adders in layers so that many input words are reduced to a few weighted binary vectors---one per bit of the running count---before those vectors are unpacked into ordinary integer counters.
+
+Following Clausecker et al.\ we measure such circuits by their number of \emph{operation steps} and by their \emph{critical-path length}, the longest dependency chain from any input to any output~\cite{clausecker2024}. On ASIMD the 3:2 operator is realized in three operation steps with a critical-path length of two, because the bit-insert instruction \texttt{bit} acts as a per-bit multiplexer that produces the carry directly from the first partial sum (Eq.~\ref{eqn:csa-mux}):
+
+\noindent
+\begin{minipage}{.26\textwidth}
+\begin{equation}\label{eqn:csa-mux}
+\begin{alignedat}{3}
+\Sigma_1&=~a &\oplus &~b\\[-1mm]
+\Sigma&=~\Sigma_1 &\oplus &~c\\[-1mm]
+C&=~\Sigma_1 &\mathbin? &~c\mathbin:b\\
+\end{alignedat}
+\end{equation}
+\end{minipage}
+\hfill
+\begin{minipage}{.70\textwidth}\vspace*{4pt}
+\begin{lstlisting}[style=customc,language={[Motorola68k]Assembler},morecomment={[l]{//}},morekeywords={eor,eor3,bit}]
+// AArch64 ASIMD 3:2 carry-save adder: v0,v1,v2 -> sum in v0, carry in v1
+eor  v3.16b, v0.16b, v1.16b   // S1 = a ^ b
+eor  v0.16b, v3.16b, v2.16b   // S  = S1 ^ c
+bit  v1.16b, v2.16b, v3.16b   // C  = S1 ? c : b  (per-bit mux)
+\end{lstlisting}
+\end{minipage}
+
+\subsection*{Packed carry-save accumulation}
+The kernel keeps the sixteen positional counters of a 16-bit word packed into the byte lanes of a small set of 128-bit vectors, which we call \emph{planes}. Plane~$p_k$ carries place value~$2^k$: byte lane~$f$ of $p_k$ holds bit~$k$ of the running count for bit position~$f$. A \emph{block} of input is sixteen consecutive 128-bit loads---$256$~bytes, or $128$~packed 16-bit words---and within a block each set bit contributes one unit to its lane. Rather than materialize sixteen wide counters after every block, we hold the counts in this redundant binary form and reduce (``drain'') the planes into ordinary $16$-, $32$- or $64$-bit counters only periodically. All of the per-word work is therefore bitwise logic on a handful of resident vectors; loads and the occasional drain are the only other traffic. This packed representation is the object that the intermediate-accumulation stage must update once per block (Fig.~\ref{fig:planes}f). Every new accumulator representation was first validated in an executable dataflow model before any assembly was written (see ``Correctness oracle'').
+
+\subsection*{A redundant 5:3 compressor}
+The reference tree adds the sixteen unit-weight input vectors of a block to the persistent planes $p_0,\dots,p_3$ with fifteen 3:2 carry-save adders, at a cost of $45$ Boolean instructions. Because each $3{:}2$ adder retires exactly one live signal, no rearrangement of $3{:}2$ adders reduces this count; a saving requires a different compressor operator. We replace the tree with a redundant 5:3 compressor that maps five equal-weight inputs $a,b,c,d,e$ to one output $\ell$ at the same weight and two outputs $h_0,h_1$ at twice the weight in five operation steps with a critical-path length of three (Eq.~\ref{eqn:fivethree})---against six steps and a critical path of four for the two cascaded 3:2 adders it replaces. The two selects are the ASIMD bit-insert instruction \texttt{bit}, acting as a per-bit multiplexer, and the three-way parity is a single \texttt{eor3}:
+
+\noindent
+\begin{minipage}{.26\textwidth}
+\begin{equation}\label{eqn:fivethree}
+\begin{alignedat}{3}
+t_0&=~b &\oplus &~d\\[-1mm]
+t_1&=~c &\oplus &~e\oplus t_0\\[-1mm]
+h_0&=~t_1 &\mathbin? &~a\mathbin:c\\[-1mm]
+h_1&=~t_0 &\mathbin? &~e\mathbin:b\\[-1mm]
+\ell&=~t_1 &\oplus &~a\\
+\end{alignedat}
+\end{equation}
+\centering
+$a{+}b{+}c{+}d{+}e=\ell+2h_0+2h_1$
+\end{minipage}
+\hfill
+\begin{minipage}{.70\textwidth}\vspace*{4pt}
+\begin{lstlisting}[style=customc,language={[Motorola68k]Assembler},morecomment={[l]{//}},morekeywords={eor,eor3,bit}]
+// AArch64 ASIMD 5:3 compressor (V102 schedule): five planes v0..v4 at
+// weight w -> low in v0 at weight w; v2, v1 at weight 2w; v31 scratch
+eor   v3.16b,  v1.16b, v3.16b           // t0 = b ^ d
+eor3  v31.16b, v2.16b, v4.16b, v3.16b   // t1 = c ^ e ^ t0
+bit   v2.16b,  v0.16b, v31.16b          // h0 = t1 ? a : c
+eor   v0.16b,  v31.16b, v0.16b          // l  = t1 ^ a  (early: advances the
+                                        //   serial low chain one slot sooner)
+bit   v1.16b,  v4.16b, v3.16b           // h1 = t0 ? e : b
+\end{lstlisting}
+\end{minipage}
+
+\noindent
+The identity $a+b+c+d+e=\ell+2h_0+2h_1$ holds at every bit position independently. Four such compressors reduce the seventeen weight-one signals ($p_0$ and the sixteen inputs) to $p_0$ and eight weight-two signals; two reduce the nine weight-two signals to $p_1$ and four weight-four signals; one reduces the five weight-four signals to $p_2$ and two weight-eight signals; and a final 3:2 adder combines the three weight-eight signals into $p_3$ and a single raw carry-out. The complete tree costs $7\times5+3=38$ Boolean instructions and produces exactly the same canonical planes $p_0,\dots,p_3$ and raw carry-out as the reference tree, saving seven instructions per $128$~words. The five-input identity is verified over all $2^5$ Boolean input assignments; the complete assembly is tested separately against the scalar oracle on structured, boundary and pseudorandom arrays (see ``Correctness oracle''). Our deployed leaf, V102, realizes the tree destructively over the five live inputs plus one fixed scratch vector (\texttt{v31} in the listing) and aligns the main loop's entry point to a $128$-byte boundary for instruction fetch; it makes no alignment demand on the caller's data pointer. The retained Apple V139 specialist instead compresses the weight-one signals through three independent roots, shortening the $p_0$ compressor's modeled critical path from four operation steps to two at the same instruction count.
+
+\subsection*{Balanced roots}
+A block's four weight-one compressors can be wired together in more than one order, because a compressor's redundant carries do not depend on its own low output. The Clausecker-style tree, and our V76, threads the persistent plane~$p_0$ through all four in series, so the dependency chain from $p_0$ to the block result crosses four compressors. The \emph{balanced-roots} tree instead evaluates three roots independently and combines them (the compressor $\mathrm{C}$ is that of Eq.~\ref{eqn:fivethree}):
+
+\begin{lstlisting}[style=customc,basicstyle=\scriptsize\ttfamily,morecomment={[l]{//}}]
+// serial (V76): p0 crosses four compressors -> critical-path depth 4 on p0
+p0 = C(p0, v0, v1, v2, v3)      // then C(p0,v4..v7), C(p0,v8..v11), C(p0,v12..v15)
+
+// balanced roots (V139): three parallel roots + one combine -> depth 2 on p0
+la = C(p0, v0, v1, v2, v3)      // root A  \
+lb = C(v4, v5, v6, v7, v8)      // root B   > independent
+lc = C(v9, v10, v11, v12, v13)  // root C  /
+p0 = C(la, lb, lc, v14, v15)    // combine the three low outputs with the last inputs
+\end{lstlisting}
+
+\noindent Here \texttt{la}, \texttt{lb}, \texttt{lc} are each root's low output, and the two redundant carries per compressor feed the higher planes exactly as before. The instruction count is unchanged---seven $5{:}3$ compressors and one $3{:}2$ adder, $38$ per block---and the emitted counts are bit-identical to those of the serial wiring, checked as described in ``Correctness oracle'', but the chain from $p_0$ now crosses only two compressors (root~A, then the combine) instead of four. Which wiring a given core prefers is a measured question; the per-leaf outcome is given in Table~\ref{tab:leaves}.
+
+\subsection*{Epoch merging and the drain}
+
+Each block emits one $p_{\mathrm{emit}}$ carry plane, and rather than drain after every block we accumulate these planes online into a separate stack of epoch planes. One accumulator state, which we call an \emph{epoch}, spans $62$~blocks; because $62<64$ its emitted planes reduce to six planes $e_0,\dots,e_5$ of relative weights $1,2,\dots,32$ in units of $p_{\mathrm{emit}}$. Draining reconstructs each positional counter from the retained low planes $p_0,\dots,p_3$ and the epoch planes $e_0,e_1,\dots$, whose absolute weights begin at $16$. Because a drain is amortized over an entire epoch, lengthening the epoch lowers its per-word cost in the streaming regime; the price is additional live planes and stack state. We therefore expose the epoch length as the kernel's only structural parameter and retain three leaves that merge two, four and eight $62$-block states before a single drain: V123 ($124$~blocks, $e_0,\dots,e_6$), V124 ($248$~blocks, $e_0,\dots,e_7$) and V128 ($496$~blocks, $e_0,\dots,e_8$). Merging two $62$-block epoch states means adding their plane stacks as two binary numbers. Each state is six planes, $a_0,\dots,a_5$ and $b_0,\dots,b_5$; a half-adder on the lowest planes and a full-adder on each higher plane ripple one carry up into a new plane $e_6$ (the full-adder is the $3{:}2$ operator of Eq.~\ref{eqn:csa-mux}):
+\[
+e_0 = a_0\oplus b_0,\ \ c = a_0\land b_0;\qquad
+e_i = a_i\oplus b_i\oplus c,\ \ c \leftarrow \mathrm{maj}(a_i,b_i,c)\ \ (1\le i\le 5);\qquad
+e_6 = c,
+\]
+so that $\sum\mathrm{raw}=e_0+2e_1+4e_2+8e_3+16e_4+32e_5+64e_6$. A merge therefore costs one half-adder and five full-adders---seventeen instructions---far less than a drain, so accumulating two, four or eight states and draining once amortizes the expensive bit-transpose over that many more blocks. For the packed 16-bit accumulator the drain is split for byte safety: the retained $p_0,p_1,p_2,p_3$ and the lowest epoch plane $e_0$ are rebuilt together in byte lanes, where the worst per-position contribution is $8(1+2+4+8+16)=248<256$ and no lane wraps. The higher epoch planes---$e_1$ at absolute weight $32$, $e_2$ at weight $64$, and so on---reach byte maxima of $256$ and $512$ and are added directly into the wide counters instead. We checked each split against the corresponding sequence of single-epoch drains over zero, all-ones, alternating and random streams before the assembly was used.
+
+These bounds also fix the maximum length of a single call. Within an epoch no byte lane can wrap, by the argument above, and the drain empties the redundant planes into the wide counters, so the packed representation imposes no length limit of its own. The limit comes from the interface: the positional counters this implementation returns are $32$-bit, so one call may process at most $2^{32}-1$ words---\SI{8}{\gibi\byte} of 16-bit input---before a counter could saturate. Longer inputs are processed in chunks of at most that length, with the per-chunk counter vectors summed by the caller, at a cost of one additional drain per chunk.
+
+\subsection*{Wide words: skipping the horizontal fold}
+The drain described in ``Epoch merging and the drain'' bit-transposes the binary planes into four disjoint $16$-byte counter banks and, for $8$- and $16$-bit words, folds those banks together modulo~$16$: the positions of an $8$- or $16$-bit word repeat every $16$ byte lanes, so the four banks sum into a single set of at most sixteen counters. For $32$- and $64$-bit words this fold is incorrect, because a word now spans $32$ or $64$ distinct positions and adding the banks modulo~$16$ would combine counts belonging to different positions. The \emph{raw-wide} variant (V120 for $64$-bit words; V121, V122 and V150 for $32$-bit) therefore stops one step short: it keeps the four counter banks disjoint and commits each to the wide output counters at its place value, omitting the modulo-$16$ fold. Skipping the fold is necessary for correctness, and it also removes an in-register reduction that only the narrow layout needs. Byte safety survives without it: over a $62$-block epoch a $32$-bit counter receives at most $4\times62=248$ and a $64$-bit counter at most $2\times62=124$, each within a byte, so no lane wraps before it is committed. We check the exact lane permutation of the transpose against a scalar model for every word width before the assembly is used.
+
+\subsection*{SVE and SVE2 ports}
+Graviton~3 implements SVE at $256$ bits and Graviton~4 implements SVE2 at $128$ bits, so we tested whether either reaches the NEON frontier. We transcribed the deployed redundant $5{:}3$ compressor and its $62$-block epoch accumulator into SVE and SVE2 intrinsics, preserving the u16 signature, the arbitrary-length scalar tail and the 32-bit output counters, and searched around that port: select formulation, \texttt{ld1}/\texttt{ld2} load grouping, staggered versus all-load schedules, epoch lengths of $31$ to $255$ blocks, four drain strategies (\texttt{bext}, predicate, horizontal and hybrid) and prefetch distance. Every timed candidate first passed the scalar oracle at vector, block, epoch and tail boundaries. Both search ledgers terminated after ten consecutive non-improving measured variants, and the finalists were confirmed with $30$ samples drawn from three independent processes at strict-below L1, L2 and L3 sizes plus one streaming size.
+
+The four confirmation points are the strict-below L1, L2 and L3 sizes for each host plus one streaming size. Neither port reached the NEON leaf.
+
+\subsection*{Baselines}
+Every ratio in this paper is taken against the published implementation of Clausecker et al.~\cite{clausecker2024} for the same instruction set, built and run inside the same harness as the kernels under test. The ASIMD baseline (\emph{Clausecker NEON}) is a portability port of the upstream \texttt{kernelneon.S}: its opcode histogram is identical to upstream except for one additional \texttt{add} in the Mach-O symbol-addressing prologue, and a single shared body serves all three ARM hosts through \texttt{\#ifdef} branches, so Neoverse~V1, Neoverse~V2 and Apple M2~Pro execute the same baseline instructions. The scalar baseline (\emph{Clausecker Generic}) and the x86 baselines (\texttt{count16sse2}, \texttt{count16avx2}, \texttt{count16avx512}) are the vendored upstream bodies under private names. Both sides pay the identical per-call count adapter---a $16$-element \texttt{uint32}$\rightarrow$\texttt{uint64} widen on entry and the inverse narrow on exit---inside the timed region, so no fairness asymmetry exists; because that cost is fixed per call and common to both, it compresses every ratio toward unity at small inputs, and the L1 tier means reported here are correspondingly conservative rather than optimistic.
+
+\subsection*{The load-and-reduce reference}
+To separate the cost of moving the data from the cost of accumulating it, we compared each kernel with a routine that touches every input word and maintains a running total but performs no positional accumulation. The reference is a plain C loop over the same element type, \texttt{sum += data[i]}, whose result is written to a \texttt{volatile} sink and then added into all $w$ output counters so that neither the loads nor the reduction can be optimized away; the element type matches the kernel under test, which is what we mean by a \emph{matching-width} reference. Vectorization is left to the compiler at the same \texttt{-O3} settings used for the rest of the harness. This routine is deliberately not a hardware bandwidth ceiling: the running total is a single accumulator, so an auto-vectorized body retains a loop-carried reduction dependency, and the rate it achieves is a software comparison point rather than a measured roof. The harness also contains dependency-broken read-delivery diagnostics that use sixteen independent accumulators, but those are not positional-popcount implementations and contribute no number to this paper.
+
+\subsection*{The x86 kernel family}
+The x86 leaves reuse the packed accumulator and the epoch drain unchanged, and differ in the compressor they carry. The deployed SSE2 leaf (\texttt{sse2\_rawcarry\_epoch63\_prefetch12k\_t2\_quad}) and AVX2 leaf (\texttt{avx2\_rawcarry\_triple63\_epoch15\_loadless0\_t1\_12k\_p64\_bottomcheck}) retain Clausecker's fifteen-adder $3{:}2$ tree, because neither instruction set provides a three-input Boolean operation and expanding one into two-input instructions costs more than the $5{:}3$ compressor saves. The deployed AVX-512 leaf (\texttt{avx512\_5to3\_balanced\_roots\_rawcarry\_triple63\_prefetch12k\_t1\_p64\_single}) carries the searched $5{:}3$ tree, realized with \texttt{vpternlogd}. A fourth AVX-512 body (\texttt{avx512\_csa\_tail\_a8\_a7\_p0\_after\_csa3\_prefetch8k}) changes only the tail and prefetch schedule at an instruction count identical to Clausecker's, and serves as the schedule control. An SSE2 sibling carrying an explicit $5{:}3$ tree was built solely for the paired attribution screen and is not deployed. \textbf{[State, for each deployed x86 leaf, the epoch length, prefetch type and distance, and drain strategy, and the rule by which it was selected from its ISA's candidate set.]}
+
+\subsection*{Design principles and the kernel search}
+The redundant $5{:}3$ compressor, the packed accumulator and the epoch drain are the three levers implied by the accumulation-bound hypothesis: they reduce, respectively, the number of Boolean operations per input block, the length of the dependency chain through the block, and how often the accumulator is drained. Which combination of choices along these axes a given microarchitecture rewards is not obvious in advance, so instead of hand-tuning one kernel we generated a large family of candidate leaves and searched it empirically. The axes were the compressor topology (the redundant $5{:}3$ tree of Eq.~\ref{eqn:fivethree}, a $7{:}4$ form, and a balanced-roots form with three independent weight-one roots that shortens the $p_0$ chain); the three-input logic instruction (\texttt{eor3} and \texttt{bcax} from the SHA-3 extension versus pairs of plain \texttt{eor}s, which trade instruction count against the single cryptographic pipe on some cores); the load form (temporal \texttt{ldp} versus non-temporal \texttt{ldnp}); the input alignment ($64$, $128$ or $256$ bytes); the epoch length ($62$, $124$, $248$ or $496$ blocks between drains); the drain strategy; and the depth of software pipelining.
+
+The compressor circuits at the base of these trees were produced by the search engine described in ``The Metal topology-search engine'' below. The engine screens candidates with family-specific packed truth tables, independently verifies retained exact circuits over their complete truth tables and ranks them under microarchitecture-informed timing models. It identified the five-instruction $5{:}3$ compressor and the shorter-modeled-critical-path balanced-roots topology (Fig.~\ref{fig:search}).
+
+Each candidate entered the timing comparison only after a differential correctness check: its output was compared bit-for-bit against a scalar reference over zero, all-ones, alternating and randomized inputs at every offset and up to its maximum declared length, and candidates that failed---for instance a paired-drain variant that undercounted by a fixed amount per flag---were recorded as failures and excluded rather than silently discarded (``Correctness oracle'' below). Survivors were ranked by paired, interleaved measurement. We release the complete variant record---over one hundred kernels, spanning the deployed leaves, the superseded designs and the outright failures, each with its correctness-oracle status---rather than the winning leaves alone. The record states, for each variant, its design axes and its correctness-oracle status.
+
+The search has a clear structure (Table~\ref{tab:leaves}). Nearly the entire instruction reduction comes from the first step: replacing the Harley--Seal $3{:}2$ tree with the redundant $5{:}3$ compressor---first realized as V76 and deployed with a scratchless schedule and $128$-byte alignment as V102---drops the retired instruction count from $0.71$ to $0.43$ per $16$-bit word, about $39\%$. Later leaves retain essentially that arithmetic while changing how smoothly it issues, how often it drains and how it streams (Fig.~\ref{fig:evolution}). V356 combines the packed tree with an internal short-input body and an alternating temporal/non-temporal cross-block load cadence; the final fixed-PMU matrices select it at every cache tier on both Neoverse hosts. V102 remains the u8 leaf, raw-wide V150 and V120 serve u32 and u64, and the refreshed Apple full-grid matrix selects V124 for both u8 and u16 while retaining V139 as the u16 L2 specialist. We therefore fix one leaf per word width and core family and retain the full family so the same selection can be repeated on a new part.
+
+
+\subsection*{The Metal topology-search engine}
+To search compressor-tree topologies at the required scale, we implemented family-specific Apple Metal compute kernels driven through the MLX array framework~\cite{mlx2023}. The seven-input evaluator sustains approximately $10^{8}$ candidate circuits per second on one Apple M2~Pro (Fig.~\ref{fig:search}). A candidate is a directed acyclic graph drawn from the target ASIMD Boolean library---the two-input \texttt{eor}/\texttt{and}/\texttt{orr}/\texttt{bic}/\texttt{orn}, fixed-function three-input \texttt{eor3} and \texttt{bcax}, and the \texttt{bit} select---encoded as fixed-length (opcode, operand, operand, operand) tuples. For an $N$-input compressor, functional completeness requires $2^N$ truth-table rows: $32$ for $5{:}3$, $128$ for $7{:}4$, $256$ for eight inputs, $512$ for nine, $1{,}024$ for ten and $2{,}048$ for eleven. The seven-input evaluator packs all $128$ rows into four 32-bit words in one thread. Eight- and nine-input drivers use wider packed tables, while the larger GPU drivers score row partitions across passes to limit per-thread state. GPU scores guide the search; a candidate is designated exact only after deterministic reconstruction and independent host evaluation over all $2^N$ rows.
+
+Four search strategies use these family-specific evaluators. Uniform enumeration covers small instances. Mutation search perturbs a seed archive with bounded legal edits, one \texttt{xorshift32} random stream per thread~\cite{marsaglia2003xorshift}, and returns elite indices to the host through a partial sort. Island models exchange mutation populations periodically, and quality-diversity archives in the MAP-Elites style retain the best candidate per structural niche \cite{mouret2015mapelites}. Every prospective exact elite is reconstructed deterministically and re-evaluated by an independent complete-table host implementation before archival; no circuit is classified as exact from a partial GPU score alone. Across the campaign, more than $10^{12}$ candidate evaluations were screened, including $7.8\times10^{10}$ complete seven-input evaluations in one fifteen-minute enumerative run.
+
+We studied weighted $5{:}3$, $6{:}3$, $7{:}4$, $8{:}4$, $8{:}5$, $9{:}4$, $9{:}5$, $10{:}4$ and $11{:}4$ families. Heuristic and enumerative GPU searches approach each family from above; one pipe-aware $7{:}4$ run, for example, screened $1.5\times10^{10}$ circuits and retained $5{,}801$ exact circuits after host verification. SAT-based exact synthesis used Z3~\cite{demoura2008z3}, CaDiCaL~\cite{biere2024cadical} and cvc5~\cite{barbosa2022cvc5}; counterexample-guided synthesis reduced the initial row set for larger instances, but every printed witness was subsequently checked over the complete truth table. An UNSAT result on a row subset is a valid lower bound for the constrained normal form, whereas a solver timeout is not a proof. The result used by the deployed kernel is the tractable $5{:}3$ bound: no four-instruction circuit exists within the stated gate library, so the five-instruction realization is minimal within that scope.
+
+The property that distinguishes this search from prior circuit synthesis is its objective. Exact candidates are ranked not by gate count or logical depth but by microarchitecture-informed cost models. For Neoverse~V2 we constructed a \emph{pipe-pressure} model from a dedicated calibration harness that executes controlled mixes of the candidate gate set on Graviton~4 under hardware cycle counters; the calibration established that \texttt{eor3} and \texttt{bcax} contend for a single vector pipe while the remaining Boolean operations sustain four per cycle, and the objective charges each candidate the maximum load it places on any one port, in quarter-cycle units. For Apple we used a \emph{critical-path} scheduling proxy derived from published Firestorm (M1/A14 P-core) measurements---two-cycle latency and an aggregate four-per-cycle issue rate for the searched vector Boolean operations \cite{johnsonAppleCpu}. Firestorm is not the M2~Pro's Avalanche P-core, so this proxy ranks legal circuits but is not presented as an M2 timing calibration; all reported kernel rankings are established independently by the M2~Pro measurements. Register pressure is scored by a minimum-live-registers dynamic program, and candidates are canonicalized so that structurally identical circuits are not ranked twice. Two circuits with identical instruction counts can therefore rank differently, and did: the proxy prefers the balanced-roots topology at the same instruction count as the serial schedule, and the measured balanced-roots implementation won the Apple M2~Pro L2 tier even though the longer-epoch sibling had the better full-grid geometric mean.
+
+Each ingredient has precedent. Minimal Boolean-chain search is classical \cite{knuth2011}; SAT-based exact synthesis addresses small functions under gate-count or depth objectives \cite{soeken2018}; superoptimization searches instruction sequences directly \cite{massalin1987,sasnauskas2017souper}, including SIMD intrinsics \cite{liu2024minotaur}; and compressor-tree synthesis with delay-aware objectives is standard in hardware design \cite{verma2007}. Per-instruction port and latency measurements likewise provide microarchitectural cost information \cite{abel2019uops,johnsonAppleCpu}. The combination used here is complete-table-verified in-register compressor search, ranking by measured or published microarchitecture-specific costs, and validation of the resulting complete kernels on the target hosts.
+
+\subsection*{Correctness oracle}
+Every kernel variant was validated differentially against a scalar reference before benchmarking. The offline audit covers zero length; vector, block, epoch and tail boundaries; multiple input offsets; and zero, all-ones, alternating and seeded pseudorandom inputs, comparing all $w$ positional counters exactly. It is a boundary-focused and randomized test suite, not an exhaustive enumeration of all legal lengths or arrays. Variants that fail are recorded in a persistent exclusion registry and are not timed. The benchmark harness re-checks each admitted kernel against the scalar reference immediately before measurement. In addition, every new accumulator representation was first checked in an executable model that replays the Boolean dataflow---the $5{:}3$ tree, epoch merges and split drains---against direct summation. Complete truth-table verification applies to the small compressor circuits; correctness of the full assembly kernels is supported by differential testing rather than a formal whole-program proof.
+
+\subsection*{Fixed-leaf selection and the shipped dispatch policy}
+A fixed leaf is chosen once per word width and core family, by the library maintainer, from the candidate set carried in that host's final full-grid matrix. The objective is the geometric mean of per-size cycles/byte ratios against Clausecker NEON over the whole grid, and the leaf with the lowest value wins; where a leaf also happens to dominate every individual tier, we say so, but tier dominance is not the selection rule. Leaf numbers run as a single sequence across the whole search, not per width, so the same number can name unrelated kernels at different widths: the 32-bit raw-wide V150 deployed here is a different circuit from the 16-bit zero-aware V150 of Table~\ref{tab:leaves}, which was retained but not selected. On the Neoverse hosts selection returns V102 for 8-bit words, the mixed temporal/non-temporal V356 leaf for 16-bit words, and the raw-wide V150 and V120 leaves for 32- and 64-bit words; on Apple M2~Pro it returns V124 for both 8- and 16-bit words, with V121 and V120 for 32- and 64-bit words. The candidate set is the set of leaves retained in that matrix, which excludes the earlier incumbents used in the separate Graviton~4 paired head-to-head; that exclusion is why a non-retained sibling can beat the selected leaf inside one L1 sub-band. No tie-breaking rule was required, as no two candidates matched to the reported precision.
+
+Separately from the fixed leaves, we ship an optional size-dispatch policy for AArch64/Linux. It selects among three u16 bodies using the input length alone, with its principal boundary at the host's L1d capacity. Every primary comparison in this paper is reported for the fixed leaf, not for this policy.
+
+\subsection*{Benchmark inputs, harness and size grid}
+Each timed call reads one previously initialized array of uniformly random words. On the Linux hosts the array is filled once, before sampling, from \texttt{std::mt19937\_64} seeded with \texttt{0x9e3779b97f4a7c15} and a \texttt{uniform\_int\_distribution} spanning the full range of the word type; the same array is reused for every repeated sample at that size, and its scalar oracle is computed once outside the measured interval while each timed call still verifies its own positional counts. On the Apple host the array is refilled per iteration from \texttt{std::mt19937\_64} seeded with \texttt{0x706f73706f7063}, over the same distribution. Uniformly random input is the relevant case for the zero-aware interleaving carried by one retained leaf, which cannot benefit from a skewed density here. \textbf{[State the allocation call and the alignment of the benchmark buffer, and whether transparent huge pages were enabled on the Linux hosts; the DRAM-tier points span \SI{256}{\mebi\byte} to \SI{1.5}{\gibi\byte} and are sensitive to both.]}
+
+\subsection*{Sampling design and aggregation}
+The AArch64 size grid comprised $60$ requested points spanning \SI{2}{\byte} to \SI{1.5}{\gibi\byte}; widths larger than the requested byte count began at one complete word, which is the rule that determines whether a method--size call is legal. The final Graviton matrices were collected with fixed hardware-PMU sampling after one discarded warm-up round, pinned to CPU~0 of dedicated on-demand instances. Each main fixed leaf and Clausecker control collected $100$ repeated samples per method and size ($70{,}200$ raw main/control measurements per host), while seven retained u16/u32 specialist leaves collected $10$ samples ($4{,}140$ further measurements). These repeated samples are observations within a host and process, not independent machine replications, and no samples were discarded beyond the warm-up. The refreshed Apple matrix used the same grid and $100$ cycle-accurate \texttt{kperf} samples for all $30$ methods, yielding $174{,}800$ raw measurements over $1{,}747$ legal calls. One call---the V102 sibling at a \SI{480}{\byte} input---was sampled twice; its two batches were pooled and summarised as a single set of $200$ samples. That kernel and size enter no figure or table reported here. Sapphire Rapids truncated the final \SI{1.5}{\gibi\byte} point: main kernels and controls collected $100$ Linux-\texttt{perf} samples at each of $59$ sizes and specialists collected $10$.
+
+A per-size value is the arithmetic mean of that size's retained samples, and a ratio is formed between per-size means from the same sweep. A tier value is the geometric mean of those per-size ratios over the grid points falling in the tier. Where a figure shows dispersion, the plotted interval is the standard error of the mean of that size's retained samples. A ratio of two such means carries the standard error obtained by adding the two relative standard errors in quadrature, $\mathrm{s.e.}(r)/r=\sqrt{(\mathrm{s.e.}(a)/a)^2+(\mathrm{s.e.}(b)/b)^2}$ for $r=a/b$. The bars on a tier aggregate are instead the standard error of the tier geometric mean, computed over the logarithms of that tier's per-size values and carried back to the linear scale, so they express the spread across grid points rather than the sampling error within any one of them; a tier holding a single point admits no such spread and carries no bar. We report the standard error rather than the minimum--maximum range the summaries also carry, because that range is a span of extremes fixed by the most disturbed sample and widens with the sample count instead of narrowing. Tiers follow each host's cache capacities, listed in ``Hardware and toolchain''. A size belongs to the first level whose capacity strictly exceeds it, so a working set sitting exactly on a capacity is assigned to the next tier up; two Sapphire grid points, \SI{48}{\kibi\byte} and \SI{2}{\mebi\byte}, fall on capacities and are placed this way. Under that rule the 16-bit grid places $30/8/10/12$ points in L1/L2/L3/RAM on Neoverse~V1, $30/10/9/11$ on Neoverse~V2, $32/14/1/13$ on Apple M2~Pro and $29/11/12/7$ on Sapphire Rapids. Because tiers hold unequal numbers of points, a tier mean is not an average over equal amounts of data, and the single Apple L3 point is reported as a spot check rather than a mean.
+
+Two measurement modes appear in this paper. In a \emph{paired and interleaved} comparison both bodies are timed inside one process at one size with the execution order alternating from sample to sample; the tier matrices instead use one process per method and size, and their ratios are formed post hoc between per-size means. Every tier table and figure in this paper uses the second mode; the paired mode is used only for the Graviton~4 sibling head-to-head, where the two modes bracket the effect at $2$ and $9\%$. The same full-grid matrices were used to select fixed leaves and to report their performance; sibling-leaf rankings are therefore descriptive of these data rather than independent confirmation results.
+
+\subsection*{Counter provenance and metric definitions}
+On the Graviton hosts all counters were read through Linux \texttt{perf}, so cycles, retired instructions and IPC are hardware PMU quantities. On Apple silicon two counter paths exist and are reported separately: with \texttt{sudo}, Apple's undocumented \texttt{kperf} framework exposes the fixed cycle and instruction counters on the current thread through the reverse-engineered interface described in~\cite{kpcdemo}, and only measurements taken on this path are labeled CPU cycles; without \texttt{sudo}, the only portable clock is the \SI{24}{\mega\hertz} \texttt{CNTVCT} architectural timer, whose ticks are \emph{not} cycles, and such earlier screens are labeled timer-relative. Every Apple cycles/byte, instructions/byte and IPC result in this paper comes from the cycle-accurate \texttt{kperf} path under \texttt{sudo}. Absolute GB/s is derived separately from the benchmark's elapsed-time field in those same instrumented runs; timer-only exploratory screens contribute no number to this paper.
+
+\subsection*{Hardware and toolchain}
+Table~\ref{tab:hardware} lists the evaluation hosts. CPU identity was confirmed from the CPU part number (\texttt{0xd40} = Neoverse~V1, \texttt{0xd4f} = Neoverse~V2); both execute the identical hand-written 128-bit ASIMD kernels. The Neoverse hosts ran Amazon Linux~2023 (kernel \texttt{6.1.176}) and the final harness was built with AWS Clang~15.0.7 at \texttt{-O3 -march=native+sha3}; \texttt{+sha3} enables \texttt{eor3} and \texttt{bcax}. The Apple M2~Pro host (part \texttt{T6020}) ran macOS (Darwin kernel \texttt{25.3.0}) with Apple~Clang~21.0.0 at \texttt{-O3}. Sapphire Rapids ran Amazon~Linux~2023 and AWS Clang~15.0.7 at \texttt{-O3 -march=native}. The kernels under comparison are hand-written assembly, so the compiler affects the harness, drain and wrappers but not their inner loops. Cache tiers follow host geometry: Neoverse~V1 uses \SI{64}{\kibi\byte}/\SI{1}{\mebi\byte}/\SI{32}{\mebi\byte}; Neoverse~V2 uses \SI{64}{\kibi\byte}/\SI{2}{\mebi\byte}/\SI{36}{\mebi\byte}; Apple uses \SI{128}{\kibi\byte}/\SI{16}{\mebi\byte}/\SI{24}{\mebi\byte}; and Sapphire uses \SI{48}{\kibi\byte}/\SI{2}{\mebi\byte}/\SI{105}{\mebi\byte}.
+
+\begin{table}[!t]
+\centering
+\caption{\label{tab:hardware}\textbf{Evaluation hardware and counter paths.} Each host is named by its core microarchitecture and its machine, since every quantity reported in this paper is a per-core one; the figures use the machine as a short label. The first column is the core microarchitecture and the second the machine it ships in; Arm and Intel publish their core names, whereas Avalanche is the name established in die analyses rather than by Apple. AArch64 kernels are hand-written 128-bit ASIMD; x86 transfers target SSE2, AVX2 and AVX-512. Graviton, Apple and Sapphire main/control matrices use $100$ fixed hardware-PMU samples per method and size after a discarded warm-up, pinned to one core; specialist leaves use $10$. AArch64 runs the \SI{2}{\byte}--\SI{1.5}{\gibi\byte} grid, while Sapphire stops at \SI{1}{\gibi\byte}.}
+\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l | l l p{0.42\textwidth}@{}}
+\toprule
+Core & Machine & CPU part & Counter path\\
+\midrule
+Neoverse V1 & AWS Graviton 3 & \texttt{0xd40} & Linux \texttt{perf} (cycles, instructions, IPC)\\
+Neoverse V2 & AWS Graviton 4 & \texttt{0xd4f} & Linux \texttt{perf} (cycles, instructions, IPC)\\
+Avalanche & Apple M2 Pro & \texttt{T6020} & \texttt{kperf} PMU (cycles, \texttt{sudo}); else \SI{24}{\mega\hertz} timer (ticks)\\
+Golden Cove & Intel Xeon Platinum 8488C (Sapphire Rapids) & fam.\ 6 & Linux \texttt{perf} (cycles, instructions, IPC)\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Data and code availability}
+Source code is maintained at \url{https://github.com/mklarqvist/faster-pospopcount} under the Apache~2.0 license. A versioned archival release accompanying publication will include the exact manuscript commit, retained assembly variants and oracle status, representation models, GPU search code, search logs and exact-circuit archives, port-contention calibration data, solver commands and proof transcripts, raw PMU samples, manifests, and scripts that regenerate the reported tables and figures. Until that release is deposited, claims that depend on unarchived search, proof or benchmark artifacts should be regarded as pending artifact verification.
+
+% =====================================================================
+\bibliography{references}
+
+\section*{Funding}
+The author declares no funding.
+
+\section*{Author contributions statement}
+MDRK conceived the research, performed the experiments, and wrote the paper.
+
+\section*{Additional information}
+\noindent\textbf{Competing interests.} MDRK declares no competing interests.
+
+\clearpage
+\section*{Supplementary Information}
+
+Supplementary figures and tables are numbered independently of the main text.
+Each is cited from the section it supports.
+
+\setcounter{figure}{0}
+\renewcommand{\thefigure}{S\arabic{figure}}
+\captionsetup[figure]{name=Supplementary Figure}
+\setcounter{table}{0}
+\renewcommand{\thetable}{S\arabic{table}}
+\captionsetup[table]{name=Supplementary Table}
+
+\subsection*{The reduction operator in published population-count implementations}
+
+\begin{table}[!ht]
+\centering
+\small\setlength{\tabcolsep}{5pt}
+\caption{\label{stab:survey}\textbf{Reduction operator used by the published software population-count implementations we surveyed.} The literature sweep behind the claim that the $3{:}2$ carry-save adder has been the only reduction operator used in software population counting. Each row names an implementation, what it counts, and the compressor its reduction network is built from. The sweep covered the population-count literature, its released implementations and the patent record; it is a literature and web search, so the uniqueness claim it supports is stated throughout as ``to our knowledge'' rather than as an exhaustive negative. Hardware precedent is not tabulated: higher-order compressors have been standard there since Swartzlander's generalized parallel counters~\cite{swartzlander1973} and Weinberger's $4{:}2$ module~\cite{weinberger1981}.}
+\begin{tabular}{@{}l l | l l l@{}}
+\toprule
+Implementation & Year & Target & Counts & Reduction operator\\
+\midrule
+Warren, \emph{Hacker's Delight}~\cite{warren2007,warren2013} & 2007, 2013 & scalar & ordinary & $3{:}2$ carry-save (Harley--Seal)\\
+Mu{\l}a, Kurz \& Lemire~\cite{Mula2016} & 2018 & AVX2 & ordinary & $3{:}2$ carry-save\\
+Klarqvist, Mu{\l}a \& Lemire~\cite{klarqvist2019} & 2021 & SSE, AVX2, AVX-512 & positional & $3{:}2$ carry-save\\
+Clausecker, Lemire \& Schintke~\cite{clausecker2024} & 2025 & ASIMD, AVX2, AVX-512 & positional & $3{:}2$ carry-save\\
+\midrule
+This work & 2026 & ASIMD, AVX-512 & positional & redundant $5{:}3$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Exact synthesis of the $5{:}3$ compressor}
+
+\begin{table}[!ht]
+\centering
+\small\setlength{\tabcolsep}{5pt}
+\caption{\label{stab:sat}\textbf{Exact-synthesis instances behind the minimality claim.} Whether a redundant $5{:}3$ compressor---five unit-weight inputs reduced to one weight-one and two weight-two outputs, with only the \emph{sum} of the two high outputs prescribed---can be realized in a given number of vector Boolean instructions. The gate library is the one Advanced SIMD provides: \texttt{eor}/\texttt{eor3}, \texttt{and}/\texttt{bic}, \texttt{orr}/\texttt{orn}, \texttt{bcax}, and the \texttt{bit}/\texttt{bsl}/\texttt{bif} select family, with free all-zero and all-one vectors. \texttt{eon} is excluded because Advanced SIMD has no 128-bit vector form of it. The encoding uses a relaxed select primitive that does not impose destructive-register aliasing, so UNSAT is a genuine lower bound on instruction count, whereas SAT still requires a separate physical-register allocation before it yields deployable code. Reproduce with \texttt{scripts/prove\_redundant\_5to3.py -{}-inputs 5 -{}-gates N}. Times are wall-clock on Apple M2~Pro.}
+\begin{tabular}{@{}c | l l r l@{}}
+\toprule
+Gates & Solver & Outcome & Time (s) & Consequence\\
+\midrule
+$4$ & Z3 $4.16.0$ & \textsc{unsat} & $9.5$ & no four-instruction realization exists\\
+$5$ & Z3 $4.16.0$ & \textsc{sat} & $14.8$ & witness below; five is therefore minimal\\
+\bottomrule
+\end{tabular}
+
+\vspace{1ex}
+\noindent The five-gate witness, in the solver's own numbering, with inputs $0$--$4$ and outputs $(\text{weight-}1, \text{weight-}2, \text{weight-}2) = (10, 11, 8)$:
+\begin{center}
+\small\ttfamily
+7 = bcax(4,3,5)\quad 8 = bit(4,0,7)\quad 9 = eor3(0,2,7)\quad 10 = eor(1,9,5)\quad 11 = bit(2,1,9)
+\end{center}
+\end{table}
+
+\subsection*{Per-size evidence for the remaining word widths}
+
+\begin{figure*}[!ht]\centering
+\includegraphics[width=\textwidth]{figures/fig_kernel_evidence_supp}
+\caption{\label{sfig:evidence-full}\textbf{The u16 NEON kernels against the non-SIMD baselines and the load-and-reduce reference.} The measured panels of Fig.~\ref{fig:evidence} with three series the main figure omits: the scalar loop, Clausecker Generic, and the matching-width load-and-reduce reference. \textbf{a},\textbf{b}, Neoverse~V1; \textbf{c},\textbf{d}, Neoverse~V2; \textbf{e},\textbf{f}, Apple M2~Pro. Left column, cycles per byte; right column, instructions retired per byte. Colours follow Fig.~\ref{fig:evidence}---grey for the published kernel, green for the NEON fixed leaf---and the baselines are told apart by marker and line style. On Apple the scalar loop retires $28$--$30\times$ as many instructions per byte as the fixed leaf. Only the Apple matrix carries all three baselines; the Neoverse matrices carry Clausecker Generic alone. Plotted values are mean $\pm$ s.e.m.; sampling and cache-boundary marks follow Fig.~\ref{fig:evidence}.}
+\end{figure*}
+
+\begin{figure*}[p]\centering
+\includegraphics[width=\textwidth]{figures/fig_kernel_evidence_u8}
+\caption{\label{sfig:evidence-u8}\textbf{Per-size evidence for the 8-bit NEON kernels on the three ARM cores.} Fig.~\ref{fig:evidence} for 8-bit words: two rows per core, cycles per byte then instructions per byte, with the measured curves on the left and the reduction of the fixed leaf over Clausecker NEON on the right. \textbf{a}--\textbf{d}, Neoverse~V1, leaf V102; \textbf{e}--\textbf{h}, Neoverse~V2, V102; \textbf{i}--\textbf{l}, Apple M2~Pro, V124. Colours, sampling, error bars and cache-boundary marks follow Fig.~\ref{fig:evidence}: grey dashed is the published kernel, each platform keeps its own colour, and plotted values are mean $\pm$ s.e.m.\ over $100$ fixed PMU samples per method and size, with the ratio errors propagated in quadrature.}
+\end{figure*}
+
+\begin{figure*}[p]\centering
+\includegraphics[width=\textwidth]{figures/fig_kernel_evidence_u32}
+\caption{\label{sfig:evidence-u32}\textbf{Per-size evidence for the 32-bit NEON kernels on the three ARM cores.} Fig.~\ref{fig:evidence} for 32-bit words: two rows per core, cycles per byte then instructions per byte, with the measured curves on the left and the reduction of the fixed leaf over Clausecker NEON on the right. \textbf{a}--\textbf{d}, Neoverse~V1, leaf V150; \textbf{e}--\textbf{h}, Neoverse~V2, V150; \textbf{i}--\textbf{l}, Apple M2~Pro, V121. Colours, sampling, error bars and cache-boundary marks follow Fig.~\ref{fig:evidence}: grey dashed is the published kernel, each platform keeps its own colour, and plotted values are mean $\pm$ s.e.m.\ over $100$ fixed PMU samples per method and size, with the ratio errors propagated in quadrature.}
+\end{figure*}
+
+\begin{figure*}[p]\centering
+\includegraphics[width=\textwidth]{figures/fig_kernel_evidence_u64}
+\caption{\label{sfig:evidence-u64}\textbf{Per-size evidence for the 64-bit NEON kernels on the three ARM cores.} Fig.~\ref{fig:evidence} for 64-bit words: two rows per core, cycles per byte then instructions per byte, with the measured curves on the left and the reduction of the fixed leaf over Clausecker NEON on the right. \textbf{a}--\textbf{d}, Neoverse~V1, leaf V120; \textbf{e}--\textbf{h}, Neoverse~V2, V120; \textbf{i}--\textbf{l}, Apple M2~Pro, V120. Colours, sampling, error bars and cache-boundary marks follow Fig.~\ref{fig:evidence}: grey dashed is the published kernel, each platform keeps its own colour, and plotted values are mean $\pm$ s.e.m.\ over $100$ fixed PMU samples per method and size, with the ratio errors propagated in quadrature.}
+\end{figure*}
+
+\end{document}

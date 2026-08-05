@@ -1,0 +1,367 @@
+@article{klarqvist2019,
+  author  = {Marcus D. R. Klarqvist and Wojciech Mu\l{}a and Daniel Lemire},
+  title   = {Efficient Computation of Positional Population Counts Using {SIMD} Instructions},
+  journal = {Concurrency and Computation: Practice and Experience},
+  volume  = {33},
+  number  = {17},
+  pages   = {e6304},
+  year    = {2021},
+  doi     = {10.1002/cpe.6304},
+  note    = {arXiv:1911.02696}
+}
+
+@article{clausecker2024,
+  author  = {Robert Clausecker and Daniel Lemire and Florian Schintke},
+  title   = {Faster Positional-Population Counts for {AVX2}, {AVX-512}, and {ASIMD}},
+  journal = {Concurrency and Computation: Practice and Experience},
+  volume  = {37},
+  number  = {27--28},
+  year    = {2025},
+  doi     = {10.1002/cpe.70435},
+  note    = {arXiv:2412.16370}
+}
+
+@article{Mula2016,
+  author  = {Wojciech Mu\l{}a and Nathan Kurz and Daniel Lemire},
+  title   = {Faster Population Counts Using {AVX2} Instructions},
+  journal = {The Computer Journal},
+  volume  = {61},
+  number  = {1},
+  pages   = {111--120},
+  year    = {2018},
+  doi     = {10.1093/comjnl/bxx046}
+}
+
+% Harley--Seal has no primary publication: a 1997 newsgroup posting by Seal,
+% building on Harley, canonized by Warren. Cite the Beautiful Code chapter
+% (the source Mula et al. cite) and Hacker's Delight 2nd ed.
+@incollection{warren2007,
+  author    = {Warren, Jr., Henry S.},
+  title     = {The Quest for an Accelerated Population Count},
+  booktitle = {Beautiful Code: Leading Programmers Explain How They Think},
+  editor    = {Andy Oram and Greg Wilson},
+  publisher = {O'Reilly Media},
+  address   = {Sebastopol, CA},
+  pages     = {147--160},
+  year      = {2007}
+}
+
+@book{warren2013,
+  author    = {Henry S. Warren, Jr.},
+  title     = {Hacker's Delight},
+  publisher = {Addison-Wesley},
+  edition   = {2nd},
+  year      = {2013},
+  isbn      = {978-0-321-84268-8}
+}
+
+@article{wallace1964,
+  author  = {Christopher S. Wallace},
+  title   = {A Suggestion for a Fast Multiplier},
+  journal = {IEEE Transactions on Electronic Computers},
+  volume  = {EC-13},
+  number  = {1},
+  pages   = {14--17},
+  year    = {1964},
+  doi     = {10.1109/PGEC.1964.263830}
+}
+
+@article{dadda1965,
+  author  = {Luigi Dadda},
+  title   = {Some Schemes for Parallel Multipliers},
+  journal = {Alta Frequenza},
+  volume  = {34},
+  pages   = {349--356},
+  year    = {1965}
+}
+
+@article{swartzlander1973,
+  author  = {Swartzlander, Jr., Earl E.},
+  title   = {Parallel Counters},
+  journal = {IEEE Transactions on Computers},
+  volume  = {C-22},
+  number  = {11},
+  pages   = {1021--1024},
+  year    = {1973},
+  doi     = {10.1109/T-C.1973.223639}
+}
+
+@book{knuth2011,
+  author    = {Donald E. Knuth},
+  title     = {The Art of Computer Programming, Volume 4A: Combinatorial Algorithms, Part 1},
+  publisher = {Addison-Wesley},
+  address   = {Boston, MA},
+  year      = {2011},
+  isbn      = {978-0-201-03804-0}
+}
+
+@inproceedings{verma2007,
+  author    = {Ajay K. Verma and Paolo Ienne},
+  title     = {Automatic Synthesis of Compressor Trees: Reevaluating Large Counters},
+  booktitle = {Design, Automation \& Test in Europe Conference \& Exhibition (DATE)},
+  pages     = {443--448},
+  year      = {2007}
+}
+
+@misc{aptroot2024,
+  author       = {Harold Aptroot},
+  title        = {Histogramming Bytes with Positional Population Count ({GF2P8AFFINEQB} Edition)},
+  howpublished = {\url{http://bitmath.blogspot.com/2024/11/histogramming-bytes-with-positional.html}},
+  year         = {2024},
+  note         = {Blog post}
+}
+
+@article{sasnauskas2017souper,
+  author  = {Raimondas Sasnauskas and Yang Chen and Peter Collingbourne and Jeroen Ketema and Gratian Lup and Jubi Taneja and John Regehr},
+  title   = {Souper: A Synthesizing Superoptimizer},
+  journal = {arXiv preprint arXiv:1711.04422},
+  year    = {2017}
+}
+
+@article{liu2024minotaur,
+  author  = {Zhengyang Liu and Stefan Mada and John Regehr},
+  title   = {Minotaur: A {SIMD}-Oriented Synthesizing Superoptimizer},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {8},
+  number  = {OOPSLA2},
+  year    = {2024},
+  doi     = {10.1145/3689766}
+}
+
+@inproceedings{abel2019uops,
+  author    = {Andreas Abel and Jan Reineke},
+  title     = {uops.info: Characterizing Latency, Throughput, and Port Usage of Instructions on {Intel} Microarchitectures},
+  booktitle = {Proceedings of the 24th International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS)},
+  year      = {2019},
+  doi       = {10.1145/3297858.3304062}
+}
+
+@inproceedings{oneil1997,
+  author    = {Patrick E. O'Neil and Dallan Quass},
+  title     = {Improved Query Performance with Variant Indexes},
+  booktitle = {Proceedings of the 1997 ACM SIGMOD International Conference on Management of Data},
+  pages     = {38--49},
+  year      = {1997},
+  doi       = {10.1145/253260.253268}
+}
+
+@inproceedings{rinfret2001,
+  author    = {Denis Rinfret and Patrick E. O'Neil and Elizabeth J. O'Neil},
+  title     = {Bit-sliced Index Arithmetic},
+  booktitle = {Proceedings of the 2001 ACM SIGMOD International Conference on Management of Data},
+  pages     = {47--57},
+  year      = {2001},
+  doi       = {10.1145/376284.375669}
+}
+
+@article{cubit2024,
+  author  = {Junchang Wang and Manos Athanassoulis},
+  title   = {{CUBIT}: Concurrent Updatable Bitmap Indexing},
+  journal = {Proceedings of the VLDB Endowment},
+  volume  = {18},
+  number  = {2},
+  pages   = {399--412},
+  year    = {2024},
+  doi     = {10.14778/3705829.3705854}
+}
+
+@article{dinklage2021,
+  author    = {Patrick Dinklage and Jonas Ellert and Johannes Fischer and Florian Kurpicz and Marvin L{\"o}bel},
+  title     = {Practical Wavelet Tree Construction},
+  journal   = {ACM Journal of Experimental Algorithmics},
+  volume    = {26},
+  number    = {1.8},
+  pages     = {1.8:1--1.8:67},
+  year      = {2021},
+  doi       = {10.1145/3457197},
+  publisher = {ACM}
+}
+
+@inproceedings{claude2012wavelet,
+  author    = {Francisco Claude and Gonzalo Navarro},
+  title     = {The Wavelet Matrix},
+  booktitle = {String Processing and Information Retrieval (SPIRE)},
+  year      = {2012}
+}
+
+@inproceedings{weiss2008spectral,
+  author    = {Yair Weiss and Antonio Torralba and Rob Fergus},
+  title     = {Spectral Hashing},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2008}
+}
+
+@article{gong2013iterative,
+  author  = {Yunchao Gong and Svetlana Lazebnik and Albert Gordo and Florent Perronnin},
+  title   = {Iterative Quantization: A Procrustean Approach to Learning Binary Codes for Large-Scale Image Retrieval},
+  journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  volume  = {35},
+  number  = {12},
+  pages   = {2916--2929},
+  year    = {2013},
+  doi     = {10.1109/TPAMI.2012.193}
+}
+
+@inproceedings{massalin1987,
+  author    = {Massalin, Henry},
+  title     = {Superoptimizer: A Look at the Smallest Program},
+  booktitle = {Proceedings of the Second International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS)},
+  pages     = {122--126},
+  year      = {1987},
+  publisher = {ACM},
+  doi       = {10.1145/36206.36194}
+}
+
+@inproceedings{soeken2018,
+  author    = {Soeken, Mathias and Haaswijk, Winston and Testa, Eleonora and Mishchenko, Alan and Amar\`{u}, Luca G. and Brayton, Robert K. and De Micheli, Giovanni},
+  title     = {Practical Exact Synthesis},
+  booktitle = {Design, Automation \& Test in Europe Conference \& Exhibition (DATE)},
+  pages     = {309--314},
+  year      = {2018},
+  doi       = {10.23919/DATE.2018.8342027}
+}
+
+@misc{johnsonAppleCpu,
+  author       = {Dougall Johnson},
+  title        = {Apple Microarchitecture Research: Firestorm {SIMD} and {FP} Instructions},
+  year         = {2021},
+  howpublished = {\url{https://dougallj.github.io/applecpu/firestorm-simd.html}},
+  note         = {M1/A14 Firestorm measurements; accessed 1 August 2026}
+}
+
+@article{mankowitz2023alphadev,
+  author  = {Mankowitz, Daniel J. and Michi, Andrea and Zhernov, Anton and Gelmi, Marco and Selvi, Marco and Paduraru, Cosmin and Leurent, Edouard and Iqbal, Shariq and Lespiau, Jean-Baptiste and Ahern, Alex and K{\"o}ppe, Thomas and Millikin, Kevin and Gaffney, Stephen and Elster, Sophie and Broshear, Jackson and Gamble, Chris and Milan, Kieran and Tung, Robert and Hwang, Minjae and Cemgil, Taylan and Barekatain, Mohammadamin and Li, Yujia and Mandhane, Amol and Hubert, Thomas and Schrittwieser, Julian and Hassabis, Demis and Kohli, Pushmeet and Riedmiller, Martin and Vinyals, Oriol and Silver, David},
+  title   = {Faster sorting algorithms discovered using deep reinforcement learning},
+  journal = {Nature},
+  volume  = {618},
+  number  = {7964},
+  pages   = {257--263},
+  year    = {2023},
+  doi     = {10.1038/s41586-023-06004-9}
+}
+
+@article{fawzi2022alphatensor,
+  author  = {Fawzi, Alhussein and Balog, Matej and Huang, Aja and Hubert, Thomas and Romera-Paredes, Bernardino and Barekatain, Mohammadamin and Novikov, Alexander and Ruiz, Francisco J. R. and Schrittwieser, Julian and Swirszcz, Grzegorz and Silver, David and Hassabis, Demis and Kohli, Pushmeet},
+  title   = {Discovering faster matrix multiplication algorithms with reinforcement learning},
+  journal = {Nature},
+  volume  = {610},
+  number  = {7930},
+  pages   = {47--53},
+  year    = {2022},
+  doi     = {10.1038/s41586-022-05172-7}
+}
+
+@inproceedings{demoura2008z3,
+  author    = {de Moura, Leonardo and Bj{\o}rner, Nikolaj},
+  title     = {{Z3}: An Efficient {SMT} Solver},
+  booktitle = {Tools and Algorithms for the Construction and Analysis of Systems (TACAS)},
+  pages     = {337--340},
+  year      = {2008},
+  doi       = {10.1007/978-3-540-78800-3\_24}
+}
+
+@article{biere2024cadical,
+  author  = {Biere, Armin and Faller, Tobias and Fazekas, Katalin and Fleury, Mathias and Froleyks, Nils and Pollitt, Florian},
+  title   = {{CaDiCaL}, {Gimsatul}, {IsaSAT} and {Kissat} Entering the {SAT} Competition 2024},
+  journal = {Proceedings of SAT Competition 2024: Solver, Benchmark and Proof Checker Descriptions},
+  pages   = {8--10},
+  year    = {2024}
+}
+
+@inproceedings{barbosa2022cvc5,
+  author    = {Barbosa, Haniel and Barrett, Clark and Brain, Martin and Kremer, Gereon and Lachnitt, Hanna and Mann, Makai and Mohamed, Abdalrhman and Mohamed, Mudathir and Niemetz, Aina and N{\"o}tzli, Andres and Ozdemir, Alex and Preiner, Mathias and Reynolds, Andrew and Sheng, Ying and Tinelli, Cesare and Zohar, Yoni},
+  title     = {{cvc5}: A Versatile and Industrial-Strength {SMT} Solver},
+  booktitle = {Tools and Algorithms for the Construction and Analysis of Systems (TACAS)},
+  pages     = {415--442},
+  year      = {2022},
+  doi       = {10.1007/978-3-030-99524-9\_24}
+}
+
+@article{mouret2015mapelites,
+  author  = {Mouret, Jean-Baptiste and Clune, Jeff},
+  title   = {Illuminating search spaces by mapping elites},
+  journal = {arXiv preprint arXiv:1504.04909},
+  year    = {2015},
+  doi     = {10.48550/arXiv.1504.04909}
+}
+
+@article{marsaglia2003xorshift,
+  author  = {Marsaglia, George},
+  title   = {Xorshift {RNG}s},
+  journal = {Journal of Statistical Software},
+  volume  = {8},
+  number  = {14},
+  pages   = {1--6},
+  year    = {2003},
+  doi     = {10.18637/jss.v008.i14}
+}
+
+@article{williams2009roofline,
+  author  = {Williams, Samuel and Waterman, Andrew and Patterson, David},
+  title   = {Roofline: An Insightful Visual Performance Model for Multicore Architectures},
+  journal = {Communications of the ACM},
+  volume  = {52},
+  number  = {4},
+  pages   = {65--76},
+  year    = {2009},
+  doi     = {10.1145/1498765.1498785}
+}
+
+@misc{mlx2023,
+  author       = {Hannun, Awni and Digani, Jagrit and Katharopoulos, Angelos and Collobert, Ronan},
+  title        = {{MLX}: Efficient and Flexible Machine Learning on Apple Silicon},
+  year         = {2023},
+  howpublished = {\url{https://github.com/ml-explore/mlx}},
+  note         = {Version 0.x; accessed 1 August 2026}
+}
+
+@misc{kpcdemo,
+  author       = {Yaoyuan Guo},
+  title        = {{kpc\_demo}: Reading Apple Silicon {CPU} Performance Counters via the Private {\texttt{kperf}} Framework},
+  year         = {2021},
+  howpublished = {\url{https://gist.github.com/ibireme/173517c208c7dc333ba962c1f0d67d12}},
+  note         = {Reverse-engineered interface to the undocumented \texttt{kperf}/\texttt{kperfdata} frameworks; accessed 1 August 2026}
+}
+
+@techreport{cray1977hrm,
+  author       = {{Cray Research, Inc.}},
+  title        = {{CRAY-1} Computer Systems Hardware Reference Manual},
+  institution  = {Cray Research, Inc.},
+  number       = {2240004},
+  edition      = {Rev.\ C},
+  year         = {1977},
+  note         = {Section 3-13 documents the population/leading-zero count
+                  functional unit; scalar instruction 026}
+}
+
+@techreport{riscv2021bitmanip,
+  author       = {{RISC-V International}},
+  title        = {{RISC-V} Bit-Manipulation {ISA}-extensions, Version 1.0.0},
+  institution  = {RISC-V International},
+  year         = {2021},
+  month        = nov,
+  note         = {Ratified; defines the Zbb extension and the cpop instruction}
+}
+
+@article{weinberger1981,
+  author  = {Weinberger, Arnold},
+  title   = {4-2 Carry-Save Adder Module},
+  journal = {IBM Technical Disclosure Bulletin},
+  volume  = {23},
+  number  = {8},
+  pages   = {3811--3814},
+  year    = {1981}
+}
+
+@article{xin2015shd,
+  author  = {Xin, Hongyi and Greth, John and Emmons, John and Pekhimenko,
+             Gennady and Kingsford, Carl and Alkan, Can and Mutlu, Onur},
+  title   = {Shifted {Hamming} Distance: A Fast and Accurate {SIMD}-Friendly
+             Filter to Accelerate Alignment Verification in Read Mapping},
+  journal = {Bioinformatics},
+  volume  = {31},
+  number  = {10},
+  pages   = {1553--1560},
+  year    = {2015},
+  doi     = {10.1093/bioinformatics/btu856}
+}

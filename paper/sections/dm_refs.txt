@@ -1,0 +1,95 @@
+Citation ledger for sections/discussion.tex and sections/methods.tex
+====================================================================
+
+Every \cite{} key used in these two files, with a full citation. None of these
+entries currently exist in references.bib (per NARRATIVE.md section 8: the
+existing 37-entry references.bib belongs to the unrelated paper the LaTeX
+scaffold was copied from and contains zero bitmap-compression literature).
+They must be added to references.bib before the document compiles cleanly.
+Two keys already used elsewhere in the paper by other sections are reused
+here rather than duplicated (chambi2016roaring, lemire2018roaring) --
+confirm against whatever bib entries the Introduction/Results drafters
+created and reconcile author-supplied fields (page numbers, DOIs) if they
+differ from what is given below.
+
+chambi2016roaring
+  Samy Chambi, Daniel Lemire, Owen Kaser, Robert Godin. "Better bitmap
+  performance with Roaring bitmaps." Software: Practice and Experience,
+  46(5):709-719, 2016. (Also released as arXiv:1402.6407; the paper's own
+  arXiv preprint used elsewhere in the project for the census1881
+  loader-correctness check is arXiv:1603.06549, a later revision -- verify
+  which arXiv id the loader-check citation should point to before final
+  submission.) DOI: 10.1002/spe.2325.
+  Used in: discussion.tex (P1, P2), methods.tex (SS2 orientation, SS5
+  census1881 loader-correctness check).
+
+lemire2018roaring
+  Daniel Lemire, Gregory Ssi-Yan-Kai, Owen Kaser. "Consistently faster and
+  smaller compressed bitmaps with Roaring." Software: Practice and
+  Experience, 46(11):1547-1569, 2016 -- NOTE: NARRATIVE.md SS8 cites this as
+  "Lemire et al., SPE 2018"; the SPE 46(11) issue is dated 2016 in the
+  publisher record. Verify the correct year/venue against the final
+  reference the Introduction drafter used (there may be a second, 2018
+  Roaring paper -- "Roaring Bitmaps: Implementation of an Optimized
+  Software Library" -- that this key is intended to point to instead;
+  reconcile before submission so only one Roaring-implementation paper is
+  cited under this key).
+  Used in: discussion.tex (P1).
+
+jacobson1989succinct
+  Guy Jacobson. "Space-efficient static trees and graphs." Proceedings of
+  the 30th Annual Symposium on Foundations of Computer Science (FOCS),
+  pp. 549-554, 1989. DOI: 10.1109/SFCS.1989.63533.
+  Used in: methods.tex (SS3, rank/select lineage).
+
+clark1996compact
+  David R. Clark. "Compact Pat Trees." PhD thesis, University of Waterloo,
+  1996.
+  Used in: methods.tex (SS3, rank/select lineage).
+
+vigna2008broadword
+  Sebastiano Vigna. "Broadword implementation of rank/select queries."
+  Experimental Algorithms (WEA 2008), Lecture Notes in Computer Science
+  vol. 5038, pp. 154-168, Springer, 2008. DOI: 10.1007/978-3-540-68552-4_12.
+  (Introduces the rank9 structure.)
+  Used in: methods.tex (SS3, rank/select lineage).
+
+goodwin2017bitfunnel
+  Bob Goodwin, Michael Hopcroft, Dan Luu, Alex Clemmer, Mihaela Curmei,
+  Sameh Elnikety, Yuxiong He. "BitFunnel: Revisiting Signatures for
+  Search." Proceedings of the 40th International ACM SIGIR Conference on
+  Research and Development in Information Retrieval (SIGIR 2017),
+  pp. 605-614, 2017. DOI: 10.1145/3077136.3080789.
+  Used in: methods.tex (SS3, zone-map prior art).
+
+raducanu2013microadaptivity
+  Bogdan Raducanu, Peter Boncz, Marcin Zukowski. "Micro adaptivity in
+  Vectorwise." Proceedings of the 2013 ACM SIGMOD International Conference
+  on Management of Data (SIGMOD 2013), pp. 1231-1242, 2013.
+  DOI: 10.1145/2463676.2465292.
+  Used in: methods.tex (SS4, probe-and-commit named as the
+  epsilon-to-0 special case).
+
+tomahawk_github
+  Marcus D. R. Klarqvist. Tomahawk: fast calculation of LD and genotype
+  correlation in large-scale cohorts. Software repository,
+  github.com/mklarqvist/Tomahawk (created 2017-07-17). No associated
+  paper or preprint has been found (LANDSCAPE.md section on Tomahawk
+  prior art, entry dated verification 2026); cite as a software
+  repository (@misc in BibTeX), not as a peer-reviewed reference, unless
+  a paper is published before this manuscript is submitted.
+  Used in: discussion.tex (P5, follow-on application, explicitly not
+  motivating this paper).
+
+---
+
+Not used in these two files but referenced by name in NARRATIVE.md/
+SECTION_SPEC.md as required elsewhere in the paper (Introduction, Results) --
+listed here only as a cross-check that this drafting pass did not need to
+duplicate them, not as part of this ledger's deliverable:
+  Mula2016 (Muia/Kurz/Lemire, Computer Journal 2018) -- already present in
+    references.bib; popcount credited as solved, belongs to Introduction/
+    Methods SS1 orientation if the drafter of that section wants it there.
+  klarqvist2019 (positional popcount, CCPE 2021) -- already present in
+    references.bib; NOT the Tomahawk citation (see tomahawk_github above)
+    -- do not conflate the two.

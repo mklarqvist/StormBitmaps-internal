@@ -1,0 +1,80 @@
+Computing the cardinality of a set intersection, $|A \cap B|$, over a shared universe of possible
+elements is a core primitive in similarity search and near-duplicate detection
+\cite{bayardo2007allpairs,xiao2008ppjoin}, in chemical fingerprint screening
+\cite{swamidass2007bounds,haque2011tanimoto,dalke2019chemfp}, in graph co-occurrence analysis, and
+in the boolean query evaluation underneath inverted and bitmap indexes. It is a single-operation
+primitive: whatever the surrounding workload, what a system pays is the cost of one operation
+between two sets, and that cost is fixed by how each of the two is represented before the operation
+is ever issued.
+
+The default way to compute $|X_i \cap X_j|$ represents each set as a dense bitmap over a shared
+universe of $m$ possible elements and evaluates \texttt{popcount(A AND B)} with the widest
+available vector instruction. This costs $\Theta(m)$ irrespective of the cardinality of either set
+or of their intersection --- every one of the $m$ bits is read and combined regardless of how many
+are set --- and the underlying AND-then-popcount kernel is itself a solved problem, engineered
+close to the throughput limit of the hardware \cite{mula2018popcount}. For a single pair, or for
+sets that occupy a substantial fraction of the universe, this is exactly the right way to compute
+the answer.
+
+Real degree and frequency distributions are rarely uniform: a small number of categories carry
+most of the mass while a long tail is rare. The canonical form of this skew --- the $i$-th most
+common category scaling as $\theta/i$ --- was derived for population-genetic allele-frequency
+spectra \cite{fu1995} and recurs, in shape if not in constant, in item popularity, node degree, and
+category-membership counts across many other kinds of data. Under such skew, row density in the
+shared-universe representation spans orders of magnitude within a single corpus, so most rows are
+sparse and most pairs have at least one near-empty side --- yet the $\Theta(m)$ bitmap kernel pays
+the same fixed cost regardless, spending most of that cost combining zeros against zeros.
+
+That waste is not an anecdote about one kind of data; it is a property of the fixed cost itself, and
+its size can be settled before any kernel is written. Every alternative encoding of the same set ---
+a sorted array of its elements, a list of its maximal runs, a fill-compressed word stream, or any of
+these applied to its complement --- is exact and interconvertible with the bitmap, and each is sized
+by the set rather than by the universe. The cheapest of them is smaller than the bitmap by a factor
+that grows without bound as either operand moves away from density one half, so a flat cost provably
+leaves headroom at every density but the middle of the range, for a single operation as much as for
+a workload of them. Assuming nothing about the data beyond its density gives a floor on that
+headroom rather than an estimate of it: independently placed elements are the worst case for every
+encoding whose cost depends on how a set is arranged, so real structure moves those encodings
+further below the bitmap and never above it. What this paper optimizes is therefore not how fast a
+kernel runs but how much of the computation is never entered. The same analysis says where that is
+not possible. Around density one half no encoding is smaller than the bitmap and nothing can be
+skipped; there the fixed-cost kernel is the right one, and the return comes from executing it as
+fast as the hardware allows --- which is what two decades of vectorized \texttt{AND}-and-popcount
+engineering already deliver \cite{mula2018popcount}. Avoid the work where it can be avoided,
+accelerate it where it cannot: this paper contributes the first axis, and a cheap way of knowing
+which of the two applies.
+
+Roaring is the state of the art for exactly this problem, and it already dispatches, per
+fixed-width chunk, among an array, a bitset, and a run container
+\cite{chambi2016roaring,lemire2018roaring} --- the same coarse-grained skip toward a cheaper
+structure that inverted-index systems such as BitFunnel apply to disjointness testing
+\cite{goodwin2017bitfunnel}. It is excellent, it is deployed at scale, and this paper does not
+attempt to out-engineer it at its own data structure. Its adaptivity is nonetheless fixed in
+granularity and static in time: which container a chunk receives is decided by a compile-time
+cardinality threshold applied to that chunk alone, chosen once at ingest for a workload built
+around a single pairwise operation (Methods). That same fixed commitment prices a run container
+against a bitset by iterating every run and charging for its length --- a cost a
+length-independent index would remove.
+
+All of that leaves the caller's question untouched, and a caller willing to narrow it can be given
+more. If only pairs above a similarity threshold are wanted, or only operands inside a band of set
+sizes, then the two cardinalities alone cap the similarity a pair can reach, so most pairs are
+discarded before either operand is read \cite{swamidass2007bounds,bayardo2007allpairs} --- knowing
+what is being looked for is itself a way of not doing work, and it is the cheapest one available.
+
+Two questions follow directly. Given that popcount is a solved problem and Roaring already
+dispatches on container type per chunk, is there anything left for representation choice to buy?
+And if a wider representation matrix does buy something, can the choice itself be made cheaply
+enough --- for one operation between two large sets, and for a batch of many small ones --- that
+the saving survives the deciding?
+
+Here we treat the representation pairing itself as the object of choice. We define a pairing
+matrix of \nm{count of representation-pairing cells evaluated} cells over dense-bitmap,
+sorted-array, run, and fill-compressed representations and their complements, and we measure, per
+cell, which pairing is fastest across the full density range, on \nm{count of microarchitectures
+tested} microarchitectures, and on \nm{count of real corpora tested} real corpora drawn from graph,
+text, and tabular sources. A throughput-optimized kernel wins none of \nm{count of asymmetric
+measurement points tested} asymmetric measurement points tested, while selecting among
+representation pairings wins on every real corpus tested, at a selection cost that stays within a
+small, budgeted fraction of runtime. We also report where the approach does not pay: a
+mid-density band in which the plain bitmap kernel is, and remains, the right choice.

@@ -1,0 +1,19 @@
+Computing the intersection cardinality between every pair among $N$ sets --- the inner loop of
+similarity search, record linkage, and graph analytics --- is normally done by representing each
+set as a dense bitmap and evaluating \texttt{popcount(A AND B)} with the widest available vector
+instruction. This costs $\Theta(m)$, the size of the shared universe, regardless of either set's
+cardinality; on real, skewed data most pairs have at least one near-empty side, so most of that
+fixed cost is spent ANDing zeros against zeros. State-of-the-art compressed bitmaps already adapt
+to this, dispatching per fixed-size chunk among array, bitset, and run containers chosen once at
+ingest --- adaptive in structure, but fixed in granularity, so a corpus that is dense in aggregate
+can still receive almost no bitset containers. Here we show that treating the representation
+pairing itself as the object of choice --- among dense, array, run, and fill-compressed
+representations and their complements, selected from measured rather than modelled properties and
+hoisted above the innermost loop --- recovers most of that fixed cost. A throughput-optimized
+kernel wins none of \nm{count of asymmetric measurement points tested} asymmetric measurement
+points tested; the resulting selector beats a tuned reference implementation on every one of
+\nm{count of real corpora tested} real corpora, at a selection cost of \nm{selection cost as
+percent of runtime under the hoisted selection policy} of runtime, while no single representation
+pairing wins a plurality of those corpora. What carries the result is the mechanism rather than
+any single ratio: avoiding work, not accelerating it, is what wins once row densities within one
+universe are heterogeneous.

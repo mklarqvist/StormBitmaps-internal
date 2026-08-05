@@ -1,0 +1,335 @@
+% references.bib for the StormBitmaps "representation pairing" manuscript
+% (storm.tex). Every entry below was verified against a publisher record,
+% DBLP, or arXiv during this pass -- see sections/BIB_STATUS.md for the
+% source URL and verification status of each key. This file replaces the
+% scaffold references.bib (preserved as references_scaffold.bib.bak), which
+% belonged to an unrelated paper and contained zero bitmap-compression
+% literature (NARRATIVE.md \S8).
+
+% ---------------------------------------------------------------------------
+% Roaring bitmaps -- THREE distinct papers, kept separate on purpose. Do not
+% merge or cross-attribute their author lists / volume-issue-pages.
+% ---------------------------------------------------------------------------
+
+@article{chambi2016roaring,
+  author  = {Chambi, Samy and Lemire, Daniel and Kaser, Owen and Godin, Robert},
+  title   = {Better Bitmap Performance with {Roaring} Bitmaps},
+  journal = {Software: Practice and Experience},
+  volume  = {46},
+  number  = {5},
+  pages   = {709--719},
+  year    = {2016},
+  doi     = {10.1002/spe.2325},
+  note    = {arXiv:1402.6407}
+}
+
+@article{lemire2016roaring,
+  author  = {Lemire, Daniel and Ssi-Yan-Kai, Gregory and Kaser, Owen},
+  title   = {Consistently Faster and Smaller Compressed Bitmaps with {Roaring}},
+  journal = {Software: Practice and Experience},
+  volume  = {46},
+  number  = {11},
+  pages   = {1547--1569},
+  year    = {2016},
+  doi     = {10.1002/spe.2402},
+  note    = {arXiv:1603.06549}
+}
+
+@article{lemire2018roaring,
+  author  = {Lemire, Daniel and Kaser, Owen and Kurz, Nathan and Deri, Luca
+             and O'Hara, Chris and Saint-Jacques, Fran\c{c}ois
+             and Ssi-Yan-Kai, Gregory},
+  title   = {Roaring Bitmaps: Implementation of an Optimized Software Library},
+  journal = {Software: Practice and Experience},
+  volume  = {48},
+  number  = {4},
+  pages   = {867--895},
+  year    = {2018},
+  doi     = {10.1002/spe.2560},
+  note    = {arXiv:1709.07821}
+}
+
+% ---------------------------------------------------------------------------
+% Popcount / AND+popcount -- credited as solved, not re-claimed.
+% ---------------------------------------------------------------------------
+
+@article{mula2018popcount,
+  author  = {Mu\l{}a, Wojciech and Kurz, Nathan and Lemire, Daniel},
+  title   = {Faster Population Counts Using {AVX2} Instructions},
+  journal = {The Computer Journal},
+  volume  = {61},
+  number  = {1},
+  pages   = {111--120},
+  year    = {2018},
+  doi     = {10.1093/comjnl/bxx046},
+  note    = {arXiv:1611.07612}
+}
+
+% ---------------------------------------------------------------------------
+% Zone maps / skip structures.
+% ---------------------------------------------------------------------------
+
+@inproceedings{goodwin2017bitfunnel,
+  author    = {Goodwin, Bob and Hopcroft, Michael and Luu, Dan and Clemmer, Alex
+               and Curmei, Mihaela and Elnikety, Sameh and He, Yuxiong},
+  title     = {{BitFunnel}: Revisiting Signatures for Search},
+  booktitle = {Proceedings of the 40th International ACM SIGIR Conference on
+               Research and Development in Information Retrieval (SIGIR)},
+  pages     = {605--614},
+  year      = {2017},
+  doi       = {10.1145/3077136.3080789}
+}
+
+% ---------------------------------------------------------------------------
+% Selection / adaptivity and related-system prior art.
+% ---------------------------------------------------------------------------
+
+@inproceedings{raducanu2013microadaptivity,
+  author    = {R\u{a}ducanu, Bogdan and Boncz, Peter and \.{Z}ukowski, Marcin},
+  title     = {Micro Adaptivity in {Vectorwise}},
+  booktitle = {Proceedings of the 2013 ACM SIGMOD International Conference on
+               Management of Data (SIGMOD)},
+  pages     = {1231--1242},
+  year      = {2013},
+  doi       = {10.1145/2463676.2465292}
+}
+
+@inproceedings{aberger2016emptyheaded,
+  author    = {Aberger, Christopher R. and Tu, Susan and Olukotun, Kunle
+               and R\'e, Christopher},
+  title     = {{EmptyHeaded}: A Relational Engine for Graph Processing},
+  booktitle = {Proceedings of the 2016 International Conference on Management
+               of Data (SIGMOD)},
+  pages     = {431--446},
+  year      = {2016},
+  doi       = {10.1145/2882903.2915213}
+}
+
+@article{aberger2017emptyheaded,
+  author  = {Aberger, Christopher R. and Lamb, Andrew and Tu, Susan
+             and N\"otzli, Andres and Olukotun, Kunle and R\'e, Christopher},
+  title   = {{EmptyHeaded}: A Relational Engine for Graph Processing},
+  journal = {ACM Transactions on Database Systems},
+  volume  = {42},
+  number  = {4},
+  pages   = {20:1--20:44},
+  year    = {2017},
+  doi     = {10.1145/3129246}
+}
+
+@inproceedings{niu2019iaspgemm,
+  author    = {Xie, Zhen and Tan, Guangming and Liu, Weifeng and Sun, Ninghui},
+  title     = {{IA-SpGEMM}: An Input-Aware Auto-Tuning Framework for Parallel
+               Sparse Matrix-Matrix Multiplication},
+  booktitle = {Proceedings of the ACM International Conference on
+               Supercomputing (ICS)},
+  pages     = {94--105},
+  year      = {2019},
+  doi       = {10.1145/3330345.3330354}
+}
+
+@article{vuduc2005oski,
+  author  = {Vuduc, Richard and Demmel, James W. and Yelick, Katherine A.},
+  title   = {{OSKI}: A Library of Automatically Tuned Sparse Matrix Kernels},
+  journal = {Journal of Physics: Conference Series},
+  volume  = {16},
+  number  = {1},
+  pages   = {521--530},
+  year    = {2005},
+  doi     = {10.1088/1742-6596/16/1/071}
+}
+
+% ---------------------------------------------------------------------------
+% Rank/select lineage.
+% ---------------------------------------------------------------------------
+
+@inproceedings{jacobson1989succinct,
+  author    = {Jacobson, Guy},
+  title     = {Space-Efficient Static Trees and Graphs},
+  booktitle = {Proceedings of the 30th Annual Symposium on Foundations of
+               Computer Science (FOCS)},
+  pages     = {549--554},
+  year      = {1989},
+  doi       = {10.1109/SFCS.1989.63533}
+}
+
+@phdthesis{clark1996compact,
+  author = {Clark, David R.},
+  title  = {Compact {Pat} Trees},
+  school = {University of Waterloo},
+  year   = {1996}
+}
+
+@inproceedings{vigna2008broadword,
+  author    = {Vigna, Sebastiano},
+  title     = {Broadword Implementation of Rank/Select Queries},
+  booktitle = {Experimental Algorithms (WEA 2008)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {5038},
+  pages     = {154--168},
+  publisher = {Springer},
+  year      = {2008},
+  doi       = {10.1007/978-3-540-68552-4_12}
+}
+
+@inproceedings{zhou2013poppy,
+  author    = {Zhou, Dong and Andersen, David G. and Kaminsky, Michael},
+  title     = {Space-Efficient, High-Performance Rank and Select Structures
+               on Uncompressed Bit Sequences},
+  booktitle = {Experimental Algorithms (SEA 2013)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {7933},
+  publisher = {Springer},
+  year      = {2013},
+  doi       = {10.1007/978-3-642-38527-8_15}
+}
+
+% ---------------------------------------------------------------------------
+% All-pairs similarity search / prior tiling and pruning.
+% ---------------------------------------------------------------------------
+
+@inproceedings{bayardo2007allpairs,
+  author    = {Bayardo, Roberto J. and Ma, Yiming and Srikant, Ramakrishnan},
+  title     = {Scaling Up All Pairs Similarity Search},
+  booktitle = {Proceedings of the 16th International Conference on World Wide
+               Web (WWW)},
+  pages     = {131--140},
+  year      = {2007},
+  doi       = {10.1145/1242572.1242591}
+}
+
+@inproceedings{xiao2008ppjoin,
+  author    = {Xiao, Chuan and Wang, Wei and Lin, Xuemin and Yu, Jeffrey Xu},
+  title     = {Efficient Similarity Joins for Near Duplicate Detection},
+  booktitle = {Proceedings of the 17th International Conference on World Wide
+               Web (WWW)},
+  pages     = {131--140},
+  year      = {2008},
+  doi       = {10.1145/1367497.1367516}
+}
+
+@article{haque2011tanimoto,
+  author  = {Haque, Imran S. and Pande, Vijay S. and Walters, W. Patrick},
+  title   = {Anatomy of High-Performance {2D} Similarity Calculations},
+  journal = {Journal of Chemical Information and Modeling},
+  volume  = {51},
+  number  = {9},
+  pages   = {2345--2351},
+  year    = {2011},
+  doi     = {10.1021/ci200235e}
+}
+
+@article{dalke2019chemfp,
+  author  = {Dalke, Andrew},
+  title   = {The Chemfp Project},
+  journal = {Journal of Cheminformatics},
+  volume  = {11},
+  pages   = {76},
+  year    = {2019},
+  doi     = {10.1186/s13321-019-0398-8}
+}
+
+@article{swamidass2007bounds,
+  author  = {Swamidass, S. Joshua and Baldi, Pierre},
+  title   = {Bounds and Algorithms for Fast Exact Searches of Chemical
+             Fingerprints in Linear and Sublinear Time},
+  journal = {Journal of Chemical Information and Modeling},
+  volume  = {47},
+  number  = {2},
+  pages   = {302--317},
+  year    = {2007},
+  doi     = {10.1021/ci600358f}
+}
+
+% ---------------------------------------------------------------------------
+% Domain anchor: population genetics site-frequency spectrum and PLINK.
+% ---------------------------------------------------------------------------
+
+@article{fu1995,
+  author  = {Fu, Yun-Xin},
+  title   = {Statistical Properties of Segregating Sites},
+  journal = {Theoretical Population Biology},
+  volume  = {48},
+  number  = {2},
+  pages   = {172--197},
+  year    = {1995},
+  doi     = {10.1006/tpbi.1995.1025}
+}
+
+@article{purcell2007plink,
+  author  = {Purcell, Shaun and Neale, Benjamin and Todd-Brown, Kathe
+             and Thomas, Lori and Ferreira, Manuel A. R. and Bender, David
+             and Maller, Julian and Sklar, Pamela and de Bakker, Paul I. W.
+             and Daly, Mark J. and Sham, Pak C.},
+  title   = {{PLINK}: A Tool Set for Whole-Genome Association and
+             Population-Based Linkage Analyses},
+  journal = {American Journal of Human Genetics},
+  volume  = {81},
+  number  = {3},
+  pages   = {559--575},
+  year    = {2007},
+  doi     = {10.1086/519795}
+}
+
+@article{chang2015plink2,
+  author  = {Chang, Christopher C. and Chow, Carson C. and Tellier, Laurent C. A. M.
+             and Vattikuti, Shashaank and Purcell, Shaun M. and Lee, James J.},
+  title   = {Second-Generation {PLINK}: Rising to the Challenge of Larger and
+             Richer Datasets},
+  journal = {GigaScience},
+  volume  = {4},
+  pages   = {7},
+  year    = {2015},
+  doi     = {10.1186/s13742-015-0047-8}
+}
+
+% ---------------------------------------------------------------------------
+% Compressed bitmap lineage (RLE family Roaring displaced).
+% ---------------------------------------------------------------------------
+
+@article{wu2006wah,
+  author  = {Wu, Kesheng and Otoo, Ekow J. and Shoshani, Arie},
+  title   = {Optimizing Bitmap Indices with Efficient Compression},
+  journal = {ACM Transactions on Database Systems},
+  volume  = {31},
+  number  = {1},
+  pages   = {1--38},
+  year    = {2006},
+  doi     = {10.1145/1132863.1132864}
+}
+
+@article{colantonio2010concise,
+  author  = {Colantonio, Alessandro and Di Pietro, Roberto},
+  title   = {{CONCISE}: Compressed 'n' Composable Integer Set},
+  journal = {Information Processing Letters},
+  volume  = {110},
+  number  = {16},
+  pages   = {644--650},
+  year    = {2010},
+  doi     = {10.1016/j.ipl.2010.05.018}
+}
+
+@article{lemire2010ewah,
+  author  = {Lemire, Daniel and Kaser, Owen and Aouiche, Kamel},
+  title   = {Sorting Improves Word-Aligned Bitmap Indexes},
+  journal = {Data \& Knowledge Engineering},
+  volume  = {69},
+  number  = {1},
+  pages   = {3--28},
+  year    = {2010},
+  doi     = {10.1016/j.datak.2009.08.006},
+  note    = {arXiv:0901.3751}
+}
+
+% ---------------------------------------------------------------------------
+% Software repository (no associated paper/preprint).
+% ---------------------------------------------------------------------------
+
+@misc{tomahawk_github,
+  author = {Klarqvist, Marcus D. R.},
+  title  = {{Tomahawk}: Fast Calculation of {LD} and Genotype Correlation in
+            Large-Scale Cohorts},
+  year   = {2017},
+  note   = {Software repository, created 2017-07-17},
+  howpublished = {\url{https://github.com/mklarqvist/Tomahawk}}
+}
