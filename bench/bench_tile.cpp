@@ -735,6 +735,11 @@ int main(int argc, char** argv) {
     {
         double sh = 0; for (uint32_t t = 0; t < ntiles; ++t) sh += (double)multi[t].size();
         double su = 0; for (uint32_t t = 0; t < ntiles; ++t) su += (double)multiU[t].size();
+        { double ml=0; for (uint32_t t=0;t<ntiles;++t) ml += multi[t].size()*8.0;
+          std::printf("# MEMORY dense transpose %.0f kB/tile, multi list %.1f kB/tile (%.0fx less) "
+                      "-- the dense array is only needed to BUILD the list and can be freed\n",
+                      allT[0].size()*8.0/1024.0, ml/ntiles/1024.0,
+                      (allT[0].size()*8.0)/(ml/ntiles)); }
         std::printf("# multi-occupancy buckets: %.0f of %zu per tile (%.2f%%), "
                     "distinct %.0f (%.1f%% of multi)\n",
                     sh/ntiles, allT[0].size(), 100.0*sh/ntiles/(double)allT[0].size(),
@@ -1032,6 +1037,80 @@ int main(int argc, char** argv) {
             for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_rr(rows[b+i].R(), rows[b+j].R());
             return a; });
     }
+
+    /* ---- 18. HIERARCHICAL ZONE MAP -----------------------------------------
+     * A hierarchy on the POSITION axis, not the row axis -- so C21a's
+     * saturation argument does not apply: coarse buckets are unions over
+     * positions within one row, not over rows.
+     *
+     * Motivation is memory. The flat 1M-bucket transpose is 8 MB per tile, the
+     * largest cost in the pipeline and limitation 4 of results/ALLPAIRS.md.
+     * Scanning a coarse transpose first and descending only into coarse buckets
+     * that actually have two or more rows should cut both the scan and the
+     * resident footprint.
+     *
+     * Correctness: a fine bucket can only be shared if its enclosing coarse
+     * bucket is shared, so descending only into multi-occupancy coarse buckets
+     * loses nothing. The coarse level is a pure superset filter.
+     */
+    const uint32_t CSHIFT = 8;                       // 256 fine buckets per coarse
+    const uint32_t ncoarse = (occ_nw*64 + (1u<<CSHIFT) - 1) >> CSHIFT;
+    std::vector<std::vector<uint64_t>> coarseT(ntiles);
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        coarseT[t].assign(ncoarse, 0ull);
+        const uint32_t b = t*T;
+        for (uint32_t i = 0; i < T; ++i) {
+            const uint64_t* w = occ[b+i].w.data();
+            for (uint32_t k = 0; k < occ_nw; ++k) {
+                uint64_t v = w[k];
+                while (v) {
+                    const uint32_t bit=(uint32_t)__builtin_ctzll(v); v&=v-1;
+                    coarseT[t][((k*64+bit) >> CSHIFT)] |= 1ull << i;
+                }
+            }
+        }
+    }
+    {
+        double cm = 0, fm = 0;
+        for (uint32_t t = 0; t < ntiles; ++t) { cm += ncoarse*8.0; fm += allT[t].size()*8.0; }
+        uint64_t cmulti = 0;
+        for (uint32_t t = 0; t < ntiles; ++t)
+            for (uint64_t w : coarseT[t]) if (__builtin_popcountll(w) >= 2) ++cmulti;
+        std::printf("# HIER coarse=%u buckets (%.0f kB/tile) vs flat %.0f kB/tile (%.0fx less); "
+                    "coarse multi-buckets %.0f/tile\n",
+                    ncoarse, cm/ntiles/1024.0, fm/ntiles/1024.0, fm/cm,
+                    (double)cmulti/ntiles);
+    }
+    bench("hierarchical (coarse->fine)", [&](uint32_t t){
+        const uint32_t b = t*T;
+        if (!use_filter) { uint64_t a=0;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bs(rows[b+i].B(), rows[b+j].S());
+            return a; }
+        std::fill(cand.begin(), cand.end(), 0ull);
+        const uint64_t* ct = coarseT[t].data();
+        const uint64_t* ft = allT[t].data();
+        for (uint32_t c = 0; c < ncoarse; ++c) {
+            if (__builtin_popcountll(ct[c]) < 2) continue;      // no pair possible below
+            const uint32_t lo_b = c << CSHIFT;
+            const uint32_t hi_b = std::min<uint32_t>(lo_b + (1u<<CSHIFT), (uint32_t)allT[t].size());
+            for (uint32_t bkt = lo_b; bkt < hi_b; ++bkt) {
+                const uint64_t w = ft[bkt];
+                if (__builtin_popcountll(w) < 2) continue;
+                uint64_t r = w;
+                while (r) { const uint32_t i=(uint32_t)__builtin_ctzll(r); r&=r-1; cand[i]|=w; }
+            }
+        }
+        uint64_t a = 0;
+        for (uint32_t i = 0; i < T; ++i) {
+            uint64_t m = cand[i] & ~((i==63)?~0ull:((1ull<<(i+1))-1));
+            if (!m) continue;
+            const uint32_t li=lo[b+i], hii=hi[b+i];
+            while (m) { const uint32_t j=(uint32_t)__builtin_ctzll(m); m&=m-1;
+                if (use_range && (hii < lo[b+j] || hi[b+j] < li)) continue;
+                a += gated(b+i, b+j); }
+        }
+        return a;
+    });
 
     // --- report ---------------------------------------------------------------
     std::printf("# %s universe=%u rows=%zu tiles=%u pairs=%u filter=%u bits\n",

@@ -1996,3 +1996,70 @@ not consulting it.
 **Correction to my own suggestion:** I proposed routing these corpora to the
 galloping cells. That was wrong and the existing per-cell matrix already said so;
 galloping loses badly at high density. The dense cells are the answer.
+
+### 15.21 Hierarchical zone maps fail; the memory limitation dissolves (C22)
+
+#### Hierarchical zone map on the position axis — FAILED
+
+A hierarchy over *positions* rather than rows, so C21a's saturation argument does
+not apply: coarse buckets union positions within one row, not rows. Motivation
+was memory — the flat 1M-bucket transpose is ~8 MB/tile, limitation 4 of
+`results/ALLPAIRS.md`. Coarse level of 256 fine buckets each, descending only
+into coarse buckets with two or more rows (correct, since a fine bucket can only
+be shared if its enclosing coarse bucket is):
+
+| corpus | flat | hierarchical | change |
+|---|---:|---:|---:|
+| soc-Pokec | 0.101 | 17.568 | **0.01x** |
+| dimension_003 | 0.012 | 1.651 | **0.01x** |
+| com-LiveJournal | 0.218 | 7.285 | 0.03x |
+| com-Orkut | 2.760 | 54.084 | 0.05x |
+| as-skitter | 0.413 | 4.264 | 0.10x |
+| wiki-Talk | 11.530 | 27.868 | 0.41x |
+
+**2.4x to 100x slower.** The cause: the flat path iterates a precomputed
+*compact list* of multi-occupancy buckets, while the hierarchy dense-scans all
+~4,096-30,000 coarse buckets per tile. **The compact list is already the
+hierarchy's benefit** — it has eliminated every empty and singleton bucket, so a
+coarse level has nothing left to prune and only adds a dense scan and a level of
+indirection.
+
+**C22a: once occupancy is stored as a compact list, no bucket hierarchy can
+help.** A hierarchy exists to avoid visiting empty regions; a list of occupied
+entries never visits them in the first place.
+
+#### The memory limitation was mis-stated
+
+The 8 MB is the *dense* transpose array, which exists only to BUILD the multi
+list and can be discarded afterwards:
+
+| corpus | dense transpose | multi list | reduction |
+|---|---:|---:|---:|
+| dimension_003 | 7,552 kB/tile | 0.02 kB | **396,603x** |
+| soc-Pokec | 6,378 kB/tile | 0.05 kB | **128,070x** |
+| com-LiveJournal | 7,884 kB/tile | 0.15 kB | **54,183x** |
+| as-skitter | 6,627 kB/tile | 0.19 kB | **34,187x** |
+| com-Orkut | 6,002 kB/tile | 0.82 kB | **7,347x** |
+
+**C22b: retaining only the compact list cuts resident transpose memory by
+7,000-400,000x at zero runtime cost.** Limitation 4 of `results/ALLPAIRS.md` was
+measuring peak build memory and reporting it as resident memory. The remaining
+real cost is the per-row zone maps (128 kB/row at 1M buckets), not the transpose.
+
+#### SIMD Huffman-style variable-resolution buckets — predicted to fail, untested
+
+Allocating bucket resolution by local density (fine where dense, coarse where
+sparse), decoded with a k-ary SIMD compare rather than a shift, fails on two
+independently sufficient grounds:
+
+1. **The compact list is already the optimal variable-resolution encoding.** It
+   spends exactly zero space on empty regions, which is what an adaptive scheme
+   is for. C22a applies unchanged.
+2. **Probe cost dominates selectivity here.** C14 measured a hashed Bloom losing
+   9/10 to a size-matched positional map *despite better selectivity*, purely
+   because its probe cost two multiplies and two loads against a shift and a
+   load. A k-ary SIMD descent is 5-10 operations against the current 2.
+
+Labelled **tier 1 (prediction)**. It would only become interesting if the probe
+path were ever memory-bound rather than arithmetic-bound, which it is not at
+these bucket widths.
