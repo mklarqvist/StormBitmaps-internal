@@ -78,11 +78,34 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
     // it. Approximation, and flagged as one.
     const double wa = 2.0 * ra + 1.0, wb = 2.0 * rb + 1.0;
 
+    /* Which side the asymmetric cells actually iterate.
+     *
+     * allpairs_sum orients every pair by CARDINALITY -- the denser row supplies
+     * the bitmap, the sparser row supplies the list, runs or EWAH stream -- so
+     * B x R costs the sparser row's RUN count, whatever that happens to be.
+     *
+     * This used min(ra, rb), which is a different quantity and not a bound on
+     * it: run count and cardinality are not co-monotone. A dense row of a few
+     * long runs has FEWER runs than a sparse row of isolated bits, so the min
+     * returns the run count of the side the kernel will not iterate, and B x R
+     * gets priced as though it were reading the wrong row. On dimension_008
+     * that steered 58.9% of pairs to B x S when B x R applied to everything was
+     * faster than the tile policy's whole mixture (7.34 vs 8.10 ns/pair).
+     *
+     * min() was correct for B x S only by accident: the sparser side is the one
+     * with smaller cardinality by definition, so there min IS the sparse side. */
+    const bool a_sparse = sa <= sb;
+    const double s_card = a_sparse ? sa : sb;      // sparser side
+    const double s_runs = a_sparse ? ra : rb;
+    const double s_ewah = a_sparse ? wa : wb;
+    const double d_runs = a_sparse ? rb : ra;      // denser side
+    const double d_ewah = a_sparse ? wb : wa;
+
     switch (p) {
         case Pairing::BB: return bb_expected_bins(a, b);
-        case Pairing::BS: return std::min(sa, sb);
-        case Pairing::BR: return std::min(ra, rb);
-        case Pairing::BW: return std::min(wa, wb);
+        case Pairing::BS: return s_card;
+        case Pairing::BR: return s_runs;
+        case Pairing::BW: return s_ewah;
         // Integer log2, NOT std::log2. The first version of this called the
         // libm double routine inside the selection loop and selection cost
         // measured 24 ns/pair -- 36% of runtime against a 2% gate. Standing
@@ -92,8 +115,11 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
             const uint32_t mx = (uint32_t)std::max(2.0, std::max(sa, sb));
             return std::min(sa, sb) * (double)(32 - __builtin_clz(mx));
         }
-        case Pairing::SR: return std::min(sa + rb, sb + ra);
-        case Pairing::SW: return std::min(sa + wb, sb + wa);
+        // Both merge kernels walk the sparse side's list against the dense
+        // side's runs/stream -- again the orientation the driver imposes, not
+        // the cheaper of the two orderings.
+        case Pairing::SR: return s_card + d_runs;
+        case Pairing::SW: return s_card + d_ewah;
         case Pairing::RR: return ra + rb;
         case Pairing::RW: return std::min(ra + wb, rb + wa);
         case Pairing::WW: return wa + wb;

@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
     // that pays for the corpus being cold.
     uint64_t roar_sum = roaring_pass();
     for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
-                     Policy::Probe, Policy::Fixed})
+                     Policy::Oracle, Policy::Probe, Policy::Fixed})
         (void)allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
 
     double roar_ns = 0;
@@ -212,9 +212,10 @@ int main(int argc, char** argv) {
         return best;
     };
 
-    AllPairsStats ref, kept[(int)Policy::Probe + 1];
+    AllPairsStats ref, kept[(int)Policy::Probe + 1];  // Probe is the last enumerator
     double base = 0;
-    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe, Policy::Fixed}) {
+    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
+                     Policy::Oracle, Policy::Probe, Policy::Fixed}) {
         AllPairsStats s = timed(p);
         kept[(int)p] = s;   // Gate 1 below reports on THESE runs rather than
                             // re-timing everything a second time.

@@ -248,11 +248,54 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
     const Kernels K;
     const uint32_t n = (uint32_t)rows.size();
 
+    /* Oracle's decisions are made BEFORE the clock starts.
+     *
+     * The policy is documented as "the model's choice with a zero-cost
+     * decision, the upper bound a perfect free selector could reach", but it
+     * called select_pairing() inside the timed loop and merely declined to
+     * attribute the time to ns_selection. So it reported the cost of per-pair
+     * selection as though it were kernel time: on dimension_008, 49.10 ns/pair
+     * against the tile policy's 6.60 for byte-identical decisions, ~42 ns of
+     * which was the hidden decision. A regret denominator larger than the
+     * policy it bounds is not a bound.
+     *
+     * Precomputing costs O(N^2) bytes, which is why this stays a diagnostic
+     * policy and not a shipping one -- the whole point of M3 is that a real
+     * system cannot afford the per-pair decision, in time OR in space. */
+    std::vector<uint8_t> oracle_plan;
+    if (policy == Policy::Oracle) {
+        oracle_plan.assign((size_t)n * n, (uint8_t)Pairing::BB);
+        for (uint32_t i = 0; i < n; ++i)
+            for (uint32_t j = i + 1; j < n; ++j) {
+                const bool id = rows[i].meta.cardinality >= rows[j].meta.cardinality;
+                oracle_plan[(size_t)i * n + j] = (uint8_t)select_pairing(
+                    model, rows[id ? i : j].meta, rows[id ? j : i].meta);
+            }
+    }
+
     // The sort is part of the cost and is timed with everything else
     // (RESEARCH_PLAN.md 5.2: "costs to account for honestly: the sort itself").
+    /* Oracle traverses in density order too.
+     *
+     * It did not, and that made it useless as the regret denominator: on
+     * dimension_008 the oracle and the tile policy reached byte-identical
+     * decisions -- same cell for 100% of pairs -- and measured 40.72 against
+     * 8.10 ns/pair. The whole 5x was row ORDER. An "unattainable upper bound"
+     * that loses 5x to the policy it bounds is measuring the sort, not the
+     * selection, and would have reported negative regret everywhere.
+     *
+     * Worth stating on its own: with the decisions held fixed, density-sorted
+     * traversal is worth 5x on dimension_008. Sec 5.2 justified the sort as what
+     * makes tile hoisting sound -- homogeneous tiles, so one decision fits every
+     * pair in it. This says it also pays for itself in locality, independently
+     * of whether anything is being hoisted.
+     *
+     * PerPair keeps identity order deliberately: it is the "decide everything
+     * from scratch, arrange nothing" reference. */
     const uint64_t t0 = now_ns();
     const std::vector<uint32_t> ord =
-        (policy == Policy::PerTile || policy == Policy::Probe) ? density_order(rows) : [&]{
+        (policy == Policy::PerTile || policy == Policy::Probe ||
+         policy == Policy::Oracle) ? density_order(rows) : [&]{
             std::vector<uint32_t> o(n); std::iota(o.begin(), o.end(), 0u); return o; }();
 
     double sel_ns = 0;
@@ -325,11 +368,14 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                         sel_ns += (double)(now_ns() - s0);
                         ++decisions;
                     } else if (policy == Policy::Oracle) {
-                        // Cheapest cell by predicted cost is NOT the oracle; the
-                        // oracle must time them. Approximated here by the model's
-                        // choice with a zero-cost decision, which is the upper
-                        // bound a perfect free selector could reach.
-                        p = select_pairing(model, d.meta, s.meta);
+                        // Table lookup only -- the decision was made above, off
+                        // the clock. Still not a true oracle: it is the model's
+                        // choice, so it bounds free PERFECT-MODEL selection, not
+                        // free perfect selection. A true oracle would have to
+                        // time every cell on every pair.
+                        const uint32_t ri = ord[i], rj = ord[j];
+                        p = (Pairing)oracle_plan[ri < rj ? (size_t)ri * n + rj
+                                                         : (size_t)rj * n + ri];
                     }
                     ++st.cell_pairs[(int)p];
                     if (p == Pairing::Empty) { ++skipped; continue; }
