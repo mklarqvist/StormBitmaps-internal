@@ -334,6 +334,76 @@ void calibrate(CostModel& m, uint32_t universe, double density) {
     time_cell(Pairing::RW, [&](const Row& a, const Row& b) { return f_rw(b.R(), a.W()); });
     time_cell(Pairing::WW, [&](const Row& a, const Row& b) { return f_ww(a.W(), b.W()); });
 
+    /* The two constants calibrate() never measured.
+     *
+     * ns_fixed and ns_per_occ_word were left at their default_model() values --
+     * one host's numbers, hardcoded -- while m.calibrated was set to true. Ten
+     * of twelve constants were measured and two were asserted, and nothing said
+     * which was which.
+     *
+     * It matters most exactly where the model is hardest: ns_fixed is added to
+     * EVERY cell's prediction, so at 2.0 ns it is larger than the entire cost
+     * of a pair on dimension_003 (1.7 ns/pair measured). A fixed term that
+     * dominates every candidate equally makes all candidates look equal, which
+     * is the selector deciding by tie-break rather than by cost. And
+     * ns_per_occ_word is the term C36 added to price B x B's mandatory zone-map
+     * scan, so an unmeasured value there reintroduces the mis-pricing C36 was
+     * written to remove.
+     *
+     * ns_fixed is the per-pair floor: loop, orientation, dispatch and the two
+     * metadata reads, with the kernel's own work as close to nothing as the
+     * harness can make it. Timed on the pair set's cheapest possible call
+     * rather than derived as a regression intercept, because an intercept
+     * extrapolated from two work levels is a fit, and this is directly
+     * observable.
+     *
+     * ns_per_occ_word is exactly occ_overlap()'s rate: the same loop the B x B
+     * kernels run before they can skip anything, over a known number of words. */
+    {
+        double best = 1e300;
+        for (int rep = 0; rep < 3; ++rep) {
+            volatile uint64_t sink = 0;
+            const uint64_t t0 = cost_now_ns();
+            for (int it = 0; it < 16; ++it) {
+                uint64_t acc = 0;
+                for (const Pair& q : pairs) {
+                    // Everything allpairs_sum does per pair except the kernel.
+                    const Row& d = c.rows[q.d];
+                    const Row& s = c.rows[q.s];
+                    acc += d.meta.cardinality + s.meta.n_runs +
+                           (d.meta.last_set < s.meta.first_set);
+                }
+                sink += acc;
+            }
+            const double dt = (double)(cost_now_ns() - t0);
+            (void)sink;
+            best = std::min(best, dt);
+        }
+        m.ns_fixed = best / (16.0 * (double)pairs.size());
+    }
+    {
+        double words = 0;
+        for (const Pair& q : pairs)
+            words += (double)std::min(c.rows[q.d].occ.size(), c.rows[q.s].occ.size());
+        if (words > 0) {
+            double best = 1e300;
+            for (int rep = 0; rep < 3; ++rep) {
+                volatile uint64_t sink = 0;
+                const uint64_t t0 = cost_now_ns();
+                for (int it = 0; it < 16; ++it) {
+                    uint64_t acc = 0;
+                    for (const Pair& q : pairs)
+                        acc += occ_overlap(c.rows[q.d].B(), c.rows[q.s].B());
+                    sink += acc;
+                }
+                const double dt = (double)(cost_now_ns() - t0);
+                (void)sink;
+                best = std::min(best, dt);
+            }
+            m.ns_per_occ_word = best / (16.0 * words);
+        }
+    }
+
     m.calibrated = true;
 }
 
