@@ -14,15 +14,57 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <vector>
 
 using namespace storm;
+
+/* Load a STORMBIN corpus so the selection policies can be measured on REAL data.
+ *
+ * Until now this benchmark generated its own corpus, which meant the selector was
+ * only ever tested on distributions we chose. The interesting case is a corpus
+ * that is genuinely BIMODAL -- gnomAD and UShER both have a median variant deep
+ * inside the sparse regime and a small common-variant tail that dominates the
+ * mean. That is exactly the shape where one global representation choice must be
+ * wrong for one side or the other, and it cannot be constructed convincingly by
+ * a generator. */
+static bool load_stormbin(Corpus& c, const char* path, uint32_t want_rows,
+                          uint32_t stride)
+{
+    FILE* f = std::fopen(path, "rb");
+    if (!f) return false;
+    char mg[8]; uint32_t ver, nr, nb, pad;
+    if (std::fread(mg,1,8,f)!=8 || std::memcmp(mg,"STORMBIN",8) ||
+        std::fread(&ver,4,1,f)!=1 || std::fread(&nr,4,1,f)!=1 ||
+        std::fread(&nb,4,1,f)!=1  || std::fread(&pad,4,1,f)!=1) { std::fclose(f); return false; }
+    c.spec.universe = nb; c.rows.clear();
+    std::vector<uint32_t> pos; uint32_t seen = 0;
+    double sum_card = 0;
+    while (c.rows.size() < want_rows) {
+        uint32_t n; if (std::fread(&n,4,1,f)!=1) break;
+        pos.resize(n); if (n && std::fread(pos.data(),4,n,f)!=n) break;
+        if (seen % stride == 0 && n > 0) {
+            c.rows.emplace_back();
+            build_row(c.rows.back(), pos.data(), pos.size(), nb);
+            sum_card += n;
+        }
+        ++seen;
+    }
+    std::fclose(f);
+    if (c.rows.size() < 2) return false;
+    c.spec.n_rows = (uint32_t)c.rows.size();
+    c.mean_card = sum_card / c.rows.size();
+    c.spec.density = c.mean_card / (double)nb;
+    return true;
+}
 
 int main(int argc, char** argv) {
     CorpusSpec spec;
     spec.n_rows = 512; spec.universe = 65536; spec.density = 0.01;
     std::string structure = "clustered", spectrum = "inverse", tag = "host";
     uint32_t tile = 64;
+    const char* infile = nullptr; uint32_t in_stride = 1;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -33,13 +75,21 @@ int main(int argc, char** argv) {
         else if (a == "--spectrum")  spectrum      = nx();
         else if (a == "--tile")      tile          = (uint32_t)atoi(nx());
         else if (a == "--tag")       tag           = nx();
+        else if (a == "--file")      infile        = nx();
+        else if (a == "--in-stride") in_stride     = (uint32_t)atoi(nx());
     }
     spec.structure = structure == "uniform" ? Structure::Uniform
                    : structure == "runs"    ? Structure::Runs : Structure::Clustered;
     spec.spectrum  = spectrum  == "uniform" ? Spectrum::Uniform
                    : spectrum  == "bimodal" ? Spectrum::Bimodal : Spectrum::Inverse;
 
-    Corpus c; generate(c, spec);
+    Corpus c;
+    if (infile) {
+        c.spec = spec;
+        if (!load_stormbin(c, infile, spec.n_rows, in_stride ? in_stride : 1)) {
+            std::printf("FATAL: cannot load %s\n", infile); return 1; }
+        spec = c.spec; structure = "real"; spectrum = "real";
+    } else generate(c, spec);
     CostModel m; calibrate(m);
 
     std::printf("# host=%s %s/%s d=%g rows=%u universe=%u tile=%u  (%zu pairs)\n",

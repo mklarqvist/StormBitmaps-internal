@@ -2717,3 +2717,81 @@ corpora) by a `git add -A` I ran while the agent was still writing it. The file
 is legitimate work and nothing was lost, but it is mis-attributed to an unrelated
 commit. Flagged by the agent; recorded rather than rewritten, since history
 rewriting mid-session is worse than the mis-attribution.
+
+---
+
+## 20. The overlap filter is OPTIONAL — every corpus run both ways (C29)
+
+`bench/filter_ablation.sh`, 25 corpora, filter width 1,048,576 bits, 9
+interleaved repeats, every result correctness-checked. Three columns per corpus:
+the unfiltered kernel, the filtered kernel, and the gated choice between them.
+
+| | geomean | worst | best | corpora harmed (<0.98x) |
+|---|---:|---:|---:|---:|
+| **always filter** | 0.763 | **0.09x** | 3.09x | **11 of 25** |
+| **gated (filter optional)** | **1.816** | **1.00x** | **4.84x** | **0 of 25** |
+
+**Applying the filter unconditionally is a net LOSS** — geomean 0.763, and it is
+11x *slower* than not filtering on `msprime_10k`. Making it optional more than
+doubles the geomean and eliminates every regression.
+
+### 20.1 Where it helps and where it does not
+
+| helps (gate uses it) | filter alone | gated |
+|---|---:|---:|
+| usher_sarscov2 | **3.09x** | 2.62x |
+| livejournal-groupmemberships | 1.88x | **4.84x** |
+| wikipedia_link_en | 1.74x | 3.68x |
+| uscensus2000 | 1.98x | 4.47x |
+| com-Orkut | 1.63x | 3.69x |
+| dbpedia-link | 1.61x | 1.72x |
+| census1881_srt | 1.57x | 2.09x |
+| dimension_003 | 1.53x | 2.08x |
+| as-skitter | 1.50x | 4.13x |
+| com-LiveJournal | 1.48x | 4.78x |
+| gnomad_chr21 (AF<1e-3) | 1.42x | 3.62x |
+| soc-Pokec | 1.37x | 3.74x |
+| wikileaks-noquotes_srt | 1.27x | 1.91x |
+| wikileaks-noquotes | 1.09x | 1.03x |
+
+| hurts (gate bypasses) | filter alone | gated |
+|---|---:|---:|
+| msprime_10k | **0.09x** | 1.00x |
+| msprime_100k | 0.12x | 1.00x |
+| msprime_1M | 0.15x | 1.00x |
+| census-income | 0.18x | 1.00x |
+| weather_sept_85 | 0.21x | 1.00x |
+| census1881 | 0.27x | 1.00x |
+| dimension_008 | 0.49x | 1.00x |
+| census-income_srt | 0.50x | 1.00x |
+| weather_sept_85_srt | 0.62x | 1.00x |
+| wiki-Talk | 0.67x | 1.00x |
+| dimension_033 | 0.84x | 1.00x |
+
+The msprime corpora are the clearest case: at density 0.068-0.094 the filter
+rejects almost nothing and costs a probe per element, so it runs 7-11x slower
+than the plain kernel. They are also the corpora a generator would never have
+produced, which is why the coalescent set earns its place despite failing the
+regime test itself.
+
+**C29: the filter is not a component of the design, it is a decision the design
+makes.** Reporting only the filtered configuration would have inverted the
+verdict on 11 of 25 corpora.
+
+### 20.2 Two places the gate leaves value on the table
+
+- `usher_sarscov2`: filter-always 3.09x vs gated 2.62x. The gate picks
+  w=16,384 where the unconditional run used 1,048,576; on this corpus the wider
+  filter is better and the width heuristic misses it. **-15%.**
+- `wikileaks-noquotes`: 1.09x vs 1.03x, within noise.
+
+Both are width-selection errors, not use/bypass errors — the gate is right about
+*whether* to filter on all 25 and wrong about *how wide* on one. Consistent with
+§15.18, where a universe-derived width rule recovered only 42-102% of the tuned
+optimum. Width remains the weakest part of the selector.
+
+### 20.3 Note on presentation
+
+Every corpus in this project should be reported both ways from here on. The
+with/without pair is the honest unit: a single filtered number is not a result
+about the filter, it is a result about the corpora chosen.
