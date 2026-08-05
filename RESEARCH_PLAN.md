@@ -2870,3 +2870,102 @@ needed, and the `cl_type` enum (`'page'|'subcat'|'file'`) anchors the tail
 unambiguously, so a non-greedy match from `(` to that anchor extracts both
 without interpreting the binary middle. Validated on a 40 MB prefix by printing
 parsed pairs beside the raw tuples they came from before running the full dump.
+
+---
+
+## 22. The genomics angle, assembled (C31) — and do NOT filter
+
+This supersedes the scattered and partly contradictory genomic claims in C8,
+C25, C28 and §19.4. Three corrections were issued along the way; the coherent
+account is here.
+
+### 22.1 Two layouts, opposite regimes
+
+| layout | one row is | universe | \|Xi\| |
+|---|---|---|---|
+| **variant-major** | a variant site | cohort size in haplotypes | allele count |
+| haplotype-major | one haplotype | number of sites | that sample's variant count |
+
+Most of the confusion in C8/C25/C28 traces to conflating these. In
+variant-major — the natural framing and the one all recent work uses —
+**density per row IS that site's allele frequency**.
+
+| corpus | layout | universe | density | verdict |
+|---|---|---:|---:|---|
+| 1KGP3 chr20 | variant-major | 5,008 | 3.5e-02 | fails **universe** |
+| 1KGP3 chr20 | haplotype-major | ~1.05e6 | 3.1e-02 | fails **density** |
+| msprime x3 | variant-major | 2e4–2e6 | 6.8e-02 | fails density (C25) |
+| UShER SARS-CoV-2 | variant-major | 8,451,771 | 1.87e-03 | fails density *on the mean* |
+| gnomAD chr21, AF<1e-3 | variant-major | 1,461,894 | 1.93e-05 | **qualifies** |
+
+**The universe was never the obstacle for modern cohorts** — gnomAD is 1.46M
+haplotypes, UShER 8.45M. It was only an obstacle for 1KGP3-era data, and C8
+generalised from exactly that.
+
+### 22.2 Density is a distribution, not a number
+
+| statistic (gnomAD v4.1 chr21) | value | vs the 1e-3 bar |
+|---|---:|---|
+| **median AF** | **2.06e-06** | **500x under** |
+| sites with AF < 1e-3 | **97.4%** | in-regime |
+| sites with AF > 0.1 | 0.75% | out |
+| mean AF | 3.33e-03 | 3.3x over |
+
+The typical variant sits 500x inside the regime. The mean is outside only
+because 0.75% of sites carry 95.7% of the AF mass. **Characterising this corpus
+by its mean is the same error as characterising UShER by its mean of 15,769 when
+its median is 404** — and it is the error §19.4 made when it concluded genomics
+"reaches the regime only under an explicit rare-variant filter".
+
+Genomic variant data is **bimodal**: a vast rare bulk deep in the sparse regime,
+a thin common tail deep in the dense one.
+
+### 22.3 C31: do not filter — the bimodality IS the result
+
+`bench_allpairs` with real corpora (loader added for this):
+
+| corpus | shape | per-tile | **probe** | selection cost |
+|---|---|---:|---:|---:|
+| usher_sarscov2 | **bimodal** | 1.51x | **5.67x** | 0.36% |
+| gnomad chr21 AF<1e-3 | homogeneous | 1.24x | **1.29x** | 0.39% |
+
+**Selection is worth 5.67x on the bimodal corpus and 1.29x on the filtered one.**
+Measured selection also beats model-based selection by 3.75x on the bimodal
+corpus (probe 5.67x vs per-tile 1.51x) — a gap that essentially vanishes on the
+homogeneous one (1.29 vs 1.24), because there is nothing left to choose between.
+
+**Filtering to rare variants destroys the demonstration.** It converts a
+heterogeneous corpus into a homogeneous one. The rare-variant subset is a fine
+*workload* and it qualifies for the regime, but as *evidence for this project's
+thesis* the unfiltered corpus is strictly more valuable.
+
+Gate 1 holds on both: per-tile 0.02–1.19%, probe 0.36–0.39%, against the 2%
+budget. Per-pair selection fails it on both (7.39%, 40.15%), as it has
+throughout.
+
+### 22.4 What genomics is FOR, in the paper
+
+Not the motivating application, and not a limitation to be scoped around. It is
+**the best available natural example of a corpus where no single representation
+is right** — real, public, at 1.46M–8.45M universe, with a 39x mean/median gap
+that arises from population genetics rather than from a generator.
+
+The line to take: *the pairing matrix exists because real corpora are not
+homogeneous, and human variation is the clearest case — 97% of sites belong in
+the sparse cells, 0.75% belong in the dense ones, and choosing per pair is worth
+5.67x over choosing once.*
+
+### 22.5 Correction record
+
+Three successive genomic claims were too strong, in alternating directions:
+- **C8**: "no public dataset has both large universe and sparsity" — refuted by
+  uscensus2000 and the graph corpora, and by gnomAD within genomics.
+- **C25**: "no achievable cohort can reach the regime" — true for a constant-Ne
+  neutral coalescent, false for real demography (C28: 20.3x better than neutral).
+- **§19.4**: "reaches the regime only under an explicit rare-variant filter" —
+  misleading, since the filter retains 97.4% of sites and the median is already
+  500x inside the regime; and actively counterproductive, per C31.
+
+Each was corrected only when a new measurement forced it. The common failure was
+reasoning from a summary statistic (one dataset, one model, the mean) about a
+distribution that is strongly skewed.
