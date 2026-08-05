@@ -5,6 +5,7 @@
 #include "kernels/storm_cells.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <numeric>
 #include <time.h>
 
@@ -163,11 +164,12 @@ std::vector<uint32_t> density_order(const std::vector<Row>& rows) {
  * Used two ways: probe_tile() times both and commits the winner, and
  * Policy::Refine keeps both and lets each pair pick between them. Uncalibrated
  * cells are excluded, the same rule select_pairing() applies. */
-struct Top2 { Pairing first = Pairing::BB, second = Pairing::BB; };
+struct Top2 { Pairing first = Pairing::BB, second = Pairing::BB; double ratio = 1e300; };
 
 Top2 tile_top2(const CostModel& model, const RowMeta& ta, const RowMeta& tb) {
     Top2 t;
-    t.first = select_pairing(model, ta, tb);
+    double best1 = 0.0;
+    t.first = select_pairing(model, ta, tb, &best1);
     if (t.first == Pairing::Empty) { t.second = Pairing::Empty; return t; }
     double best2 = 1e300;
     t.second = t.first;
@@ -177,7 +179,72 @@ Top2 tile_top2(const CostModel& model, const RowMeta& ta, const RowMeta& tb) {
         const double c = predict(model, p, ta, tb);
         if (c < best2) { best2 = c; t.second = p; }
     }
+    t.ratio = best1 > 0.0 ? best2 / best1 : 1e300;
     return t;
+}
+
+/* When is per-pair refinement worth its own cost?
+ *
+ * Refine evaluates two candidates per pair, which is ~2 ns. That is free
+ * against census1881's ~50 ns/pair and ruinous against dimension_008's ~6:
+ * measured, refine costs dimension_008 6.1 -> 9.5 ns/pair and turns a 1.19x
+ * win into 0.75x.
+ *
+ * Worse, on dimension_008 the per-pair decision is not merely expensive, it is
+ * WORSE: the free-decision Oracle measures 7.4-9.6 against the tile policy's
+ * 6.1. A tile aggregate is a smoothed estimate, and when the rows in a tile are
+ * genuinely alike the smoothing removes noise the per-pair metadata still
+ * carries. So refining is not a strictly-better-but-costlier option; it is a
+ * trade, and it has to be gated on something.
+ *
+ * The gate is the tile's own top-two RATIO. If the runner-up is predicted many
+ * times more expensive than the winner, no pair in that tile will flip -- the
+ * within-tile spread of metadata cannot span that gap -- and evaluating both
+ * per pair buys nothing. Refine only where the two candidates are close enough
+ * that the choice is genuinely in doubt. O(1) per tile, zero per pair when it
+ * declines.
+ *
+ * --- SWEPT, AND THE ANSWER IS "DO NOT REFINE" -------------------------------
+ *
+ * bench/refine_gate.sh, 14 corpora, medians of three. k=1 never refines and so
+ * collapses exactly to PerTile; larger k refines more:
+ *
+ *                    k=1    k=2    k=3    k=5   k=inf
+ *   census1881      0.88x  0.95x  1.09x  1.08x  0.96x   <- refine WINS
+ *   weather_sept_85 1.05x  1.27x  1.34x  1.25x  1.30x   <- refine WINS
+ *   dimension_008   1.08x  0.73x  0.70x  0.63x  0.66x
+ *   dimension_033   3.15x  2.82x  1.81x  2.47x  3.01x
+ *   soc-Pokec       2.29x  2.28x  1.90x  2.00x  1.93x
+ *   com-LiveJournal 1.51x  1.35x  1.24x  1.20x  1.22x
+ *   wiki-Talk       1.98x  1.68x  1.67x  1.47x  1.77x
+ *   census1881_srt  2.86x  2.63x  2.13x  2.08x  2.48x
+ *   wikileaks       5.14x  4.12x  4.84x  4.52x  3.30x
+ *   as-skitter      1.01x  0.95x  0.94x  0.91x  0.91x
+ *   gnomad_chr21    2.49x  2.31x  2.24x  2.13x  2.20x
+ *   usher_sarscov2  1.72x  1.77x  1.62x  1.88x  1.34x
+ *   census-income   1.72x  1.75x  1.71x  1.73x  1.72x
+ *   dimension_003   1.80x  1.75x  1.80x  1.78x  1.73x
+ *
+ * k=1 is best or tied on 10 of 14. Refinement buys two corpora and costs most
+ * of the rest, so it is OFF by default. Nor does a better gate rescue it: the
+ * two it wins are the two with the highest per-pair cost (~50 and ~1300 ns,
+ * where 2 ns of decision is free), but gating on predicted per-pair cost also
+ * catches wikileaks (~85 ns, 5.14x -> 4.84x) and usher (~560 ns, 1.72x ->
+ * 1.62x), where it loses. The benefit does not track any O(1) signal available
+ * at tile time.
+ *
+ * Kept, gated, off. It is the right mechanism for a corpus whose tiles are
+ * genuinely heterogeneous and whose pairs are expensive, and census1881 is
+ * that corpus -- but "helps 2 of 14" is not a default. */
+double refine_ratio() {
+    static const double v = [] {
+        if (const char* e = std::getenv("STORM_REFINE_RATIO")) {
+            const double d = std::atof(e);
+            if (d > 0.0) return d;
+        }
+        return 1.0;   // never refine: Refine == PerTile unless asked otherwise
+    }();
+    return v;
 }
 
 /* Probe-and-commit: turn a PREDICTED decision into a MEASURED one.
@@ -329,7 +396,11 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                     tp = probe_tile(K, model, rows, ord, i0, i1, j0, j1, a, b);
                 } else if (policy == Policy::Refine) {
                     const Top2 t = tile_top2(model, a, b);
-                    tp = t.first; tp2 = t.second;
+                    tp = t.first;
+                    // Decline to refine when the runner-up is far behind: no
+                    // pair in this tile can flip, so the per-pair evaluation
+                    // would be pure overhead. Collapses to PerTile exactly.
+                    tp2 = (t.ratio <= refine_ratio()) ? t.second : t.first;
                 } else {
                     tp = select_pairing(model, a, b);
                 }
