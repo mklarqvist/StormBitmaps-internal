@@ -424,6 +424,32 @@ Three sub-theses hang off it, in decreasing order of how load-bearing they are:
 3. **Work avoidance dominates work acceleration in this regime, and the boundary between them is
    locatable.** This is a positive, transferable design principle, and it is stated as one.
 
+**On incrementality, and the tone to take about it.** Every component here has prior art, and the
+paper says so. That is not a weakness to be managed — it is the normal shape of the field, and
+Roaring is the proof: array containers, bitset containers, run containers and SIMD intersection were
+all known, and what landed was the composition and the packaging.
+
+**Write it confidently, not apologetically.** The defensive form — *"we do not claim these mechanisms
+are new"* — appears several times in this document because it is true, but it must not become the
+manuscript's register. The confident form is: **these mechanisms are known; what is new is knowing
+when each one pays, and that is the part nobody has written down.**
+
+**The standard this paper is actually held to is not novelty but boundedness.** A weak incremental
+paper reports a speedup. A strong one states the opportunity, proves when it exists, proves when it
+does not, and shows why it cannot be had another way. Nearly every result assembled here is of the
+second kind, and the drafters should present them as such:
+
+- the null model is a *floor*, so real data can only deviate favourably;
+- the mid-band about density one half is where the method correctly gets out of the way, with a
+  stated reason (the metadata determines least there);
+- every mechanism carries a two-sided liability, with both sides derived;
+- the composition rule says when mechanisms multiply and when they substitute;
+- and the incumbent is *repaired first* ([GAP 14]) and only then compared.
+
+That last one is the strongest item in the paper, and it is strong precisely because the work is
+incremental. Beating a mis-tuned baseline is an artifact. Beating a baseline you fixed yourself, and
+explaining why the gap survives the fix, is a result.
+
 **On negative results.** This project accumulated a large number of them — refuted optimizations,
 losing variants, ablations that went nowhere. **They do not go in the paper.** A finding earns a
 place only if it *contributes to the argument*, and the test is whether removing it would leave a
