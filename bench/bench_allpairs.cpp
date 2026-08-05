@@ -117,32 +117,71 @@ int main(int argc, char** argv) {
      * Pairs here are ALL pairs of the loaded rows, matching the policies below
      * exactly; bench_baseline samples a capped subset and is therefore not
      * directly comparable. */
-    double roar_ns = 0; uint64_t roar_sum = 0;
-    {
-        std::vector<roaring_bitmap_t*> rb(c.rows.size());
-        for (size_t i = 0; i < c.rows.size(); ++i) {
-            rb[i] = roaring_bitmap_create();
-            roaring_bitmap_add_many(rb[i], c.rows[i].list.size(), c.rows[i].list.data());
-            roaring_bitmap_run_optimize(rb[i]);
-            roaring_bitmap_shrink_to_fit(rb[i]);
+    /* TIMING PROTOCOL, applied identically to Roaring and to every Storm policy.
+     *
+     * Roaring was timed best-of-3 first, on a clean machine, and each Storm
+     * policy ran once afterwards -- after all-bitmap had moved gigabytes. Two
+     * separate biases, both against Storm:
+     *
+     *   ORDERING. Roaring measured a warm TLB and an untouched cache; the
+     *   policies measured whatever the previous policy left behind.
+     *
+     *   WINDOW LENGTH. A fast policy on a small corpus finishes in ~700
+     *   microseconds. One scheduler tick or page fault inside that window is a
+     *   multiple, not a percent, and it showed: per-tile on dimension_008
+     *   spanned 6.38 to 42.35 ns/pair across seven runs -- a 6.6x spread --
+     *   while Roaring over the same pairs held 9.07 to 10.35.
+     *
+     * So: one untimed warm-up pass for every contestant before any of them is
+     * timed, then repeat each until it has accumulated MIN_NS of wall clock (or
+     * hits MAX_REPS), and take the minimum. The floor is what makes a fast
+     * policy's measurement as trustworthy as a slow one's; the minimum is the
+     * standard estimator for "the machine was not interrupted this time".
+     */
+    constexpr double MIN_NS   = 100e6;   // 100 ms of accumulated wall clock
+    constexpr int    MAX_REPS = 15;
+
+    std::vector<roaring_bitmap_t*> rb(c.rows.size());
+    for (size_t i = 0; i < c.rows.size(); ++i) {
+        rb[i] = roaring_bitmap_create();
+        roaring_bitmap_add_many(rb[i], c.rows[i].list.size(), c.rows[i].list.data());
+        roaring_bitmap_run_optimize(rb[i]);
+        roaring_bitmap_shrink_to_fit(rb[i]);
 #ifdef STORM_CROARING_MODIFIED
-            roaring_bitmap_storm_promote_arrays(rb[i], STORM_CTOR_BITSET_THRESHOLD);
+        roaring_bitmap_storm_promote_arrays(rb[i], STORM_CTOR_BITSET_THRESHOLD);
 #endif
-        }
-        const uint32_t n = (uint32_t)c.rows.size();
-        double best = 1e30;
-        for (int r = 0; r < 3; ++r) {
-            uint64_t acc = 0;
-            const uint64_t t0 = bench_ns();
-            for (uint32_t i = 0; i < n; ++i)
-                for (uint32_t j = i + 1; j < n; ++j)
-                    acc += roaring_bitmap_and_cardinality(rb[i], rb[j]);
-            const double dt = (double)(bench_ns() - t0);
-            if (dt < best) { best = dt; roar_sum = acc; }
-        }
-        roar_ns = best / (double)((uint64_t)n * (n - 1) / 2);
-        for (auto* b : rb) roaring_bitmap_free(b);
     }
+    const uint32_t nrows = (uint32_t)c.rows.size();
+    const uint64_t npairs = (uint64_t)nrows * (nrows - 1) / 2;
+
+    auto roaring_pass = [&]() {
+        uint64_t acc = 0;
+        for (uint32_t i = 0; i < nrows; ++i)
+            for (uint32_t j = i + 1; j < nrows; ++j)
+                acc += roaring_bitmap_and_cardinality(rb[i], rb[j]);
+        return acc;
+    };
+
+    // Warm-up: every contestant runs once, untimed, so none of them is the one
+    // that pays for the corpus being cold.
+    uint64_t roar_sum = roaring_pass();
+    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
+                     Policy::Probe, Policy::Fixed})
+        (void)allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
+
+    double roar_ns = 0;
+    {
+        double best = 1e30, spent = 0;
+        for (int r = 0; r < MAX_REPS && spent < MIN_NS; ++r) {
+            const uint64_t t0 = bench_ns();
+            roar_sum = roaring_pass();
+            const double dt = (double)(bench_ns() - t0);
+            spent += dt;
+            if (dt < best) best = dt;
+        }
+        roar_ns = best / (double)npairs;
+    }
+    for (auto* b : rb) roaring_bitmap_free(b);
 
 
     std::printf("# host=%s %s/%s d=%g rows=%u universe=%u tile=%u  (%zu pairs)\n",
@@ -161,28 +200,24 @@ int main(int argc, char** argv) {
 #endif
                 roar_ns, "-", "-", "-", (unsigned long long)roar_sum, "");
 
-    /* BEST OF 3, matching the Roaring loop above exactly.
-     *
-     * Roaring was timed best-of-3 while every Storm policy ran once, cold. The
-     * first pass over a corpus pays the page faults and TLB fills for rows that
-     * were built moments earlier and never touched since; Roaring's repeats 2 and
-     * 3 do not. That is not a small correction at these working-set sizes -- a
-     * 256-row corpus at universe 3.9e6 is 124 MB of bitmap against a 16 MiB L2 --
-     * and it ran the wrong way for us in every "fixed Roaring vs our best"
-     * comparison reported so far. Same repetition count, same min, both sides. */
-    auto best_of_3 = [&](Policy p) {
-        AllPairsStats best = allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
-        for (int r = 1; r < 3; ++r) {
+    // Same protocol as the Roaring loop above: accumulate to MIN_NS, take the min.
+    auto timed = [&](Policy p) {
+        AllPairsStats best; best.ns_total = 1e30;
+        double spent = 0;
+        for (int r = 0; r < MAX_REPS && spent < MIN_NS; ++r) {
             AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
+            spent += s.ns_total;
             if (s.ns_total < best.ns_total) best = s;
         }
         return best;
     };
 
-    AllPairsStats ref;
+    AllPairsStats ref, kept[(int)Policy::Probe + 1];
     double base = 0;
     for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe, Policy::Fixed}) {
-        AllPairsStats s = best_of_3(p);
+        AllPairsStats s = timed(p);
+        kept[(int)p] = s;   // Gate 1 below reports on THESE runs rather than
+                            // re-timing everything a second time.
         const double nsp = s.ns_total / (double)s.pairs;
         const double sel = s.ns_selection / (double)s.pairs;
         if (p == Policy::AllBitmap) { ref = s; base = nsp; }
@@ -205,7 +240,7 @@ int main(int argc, char** argv) {
     }
     std::printf("\nGATE 1 (P2: selection <= 2%% of runtime)\n");
     for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = best_of_3(p);
+        const AllPairsStats& s = kept[(int)p];
         const double pct = 100.0 * s.ns_selection / s.ns_total;
         std::printf("  %-10s %6.2f%%  %s\n", name_of(p), pct, pct <= 2.0 ? "PASS" : "FAIL");
     }

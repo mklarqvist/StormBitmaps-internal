@@ -171,10 +171,23 @@ std::vector<uint32_t> density_order(const std::vector<Row>& rows) {
  * pairs against 3 candidates is 9 kernel calls, ~0.2% of the tile, and it
  * replaces model error with measurement.
  *
- * Candidates are the model's top pick plus B x B, always. Including B x B
- * unconditionally is what makes this safe: the policy can never do worse than
- * all-bitmap by more than the probe cost, which bounds the downside that the
- * pure-model policy did not.
+ * Candidates are the model's TOP TWO by predicted cost.
+ *
+ * They were "the model's top pick plus B x B, always", on the argument that an
+ * unconditional B x B bounds the downside: the policy could never do worse than
+ * all-bitmap by more than the probe cost. That bound is vacuous, because the
+ * probe cost IS all-bitmap. Timing three B x B pairs at universe 1.3e8 is three
+ * passes over 32 MB, ~500 microseconds each, per tile -- and on
+ * enwiki-categorylinks it took the probe policy to 1481 ns/pair against the
+ * tile policy's 12.29, a 120x loss produced entirely by measuring a candidate
+ * the model had already ranked four orders of magnitude behind.
+ *
+ * Top-two keeps what probing is for. Probing exists to correct model error, and
+ * model error is a factor, not an ordering catastrophe: when the model is close
+ * enough to be wrong it is close enough to have ranked the true winner second.
+ * When it puts B x B second, B x B still gets probed -- on the dense corpora
+ * where that matters (weather_sept_85, census-income) it is second on merit.
+ * What no longer happens is paying for it where the model is certain.
  */
 Pairing probe_tile(const Kernels& K, const CostModel& model,
                    const std::vector<Row>& rows, const std::vector<uint32_t>& ord,
@@ -182,7 +195,19 @@ Pairing probe_tile(const Kernels& K, const CostModel& model,
                    const RowMeta& ta, const RowMeta& tb)
 {
     const Pairing predicted = select_pairing(model, ta, tb);
-    if (predicted == Pairing::BB || predicted == Pairing::Empty) return Pairing::BB;
+    if (predicted == Pairing::Empty) return Pairing::BB;
+
+    // Runner-up by predicted cost. Uncalibrated cells are not candidates, the
+    // same rule select_pairing() applies.
+    Pairing second = predicted;
+    double  second_c = 1e300;
+    for (int i = 0; i < (int)Pairing::Empty; ++i) {
+        const Pairing p = (Pairing)i;
+        if (p == predicted || model.ns_per_unit[i] <= 0.0) continue;
+        const double c = predict(model, p, ta, tb);
+        if (c < second_c) { second_c = c; second = p; }
+    }
+    if (second == predicted) return predicted;
 
     // Up to 3 representative pairs from the tile.
     uint32_t pi[3], pj[3];
@@ -194,9 +219,9 @@ Pairing probe_tile(const Kernels& K, const CostModel& model,
     }
     if (np == 0) return predicted;
 
-    const Pairing cand[2] = {predicted, Pairing::BB};
+    const Pairing cand[2] = {predicted, second};
     double best_t = 1e300;
-    Pairing best = Pairing::BB;
+    Pairing best = predicted;
     for (Pairing p : cand) {
         const uint64_t t0 = now_ns();
         volatile uint64_t sink = 0;
