@@ -164,6 +164,18 @@ int main(int argc, char** argv) {
     }
 
     const auto f_bs = pick(cell_bs(), "ilp8");
+    /* Alternative cells for the BYPASS path.
+     *
+     * When the gate rejects the zone map, the tile pipeline currently falls back
+     * to B x S ilp8 -- but B x S is not the right cell on those corpora. The
+     * pairing matrix already measured the answer: on weather_sept_85 and
+     * census-income, B x B runs 10.75x and 12.82x over tuned CRoaring while S x S
+     * runs 0.37x and 0.14x. The bypass path was defaulting to a cell the project
+     * had already shown to lose there. */
+    const auto f_bb = pick(cell_bb(), "occ_sel");
+    const auto f_bbd = pick(cell_bb(), "dense");
+    const auto f_ss = pick(cell_ss(), "adaptive2");
+    const auto f_rr = pick(cell_rr(), "adaptive2");
     const uint32_t occ_nw = occ[0].nw;
 
     // exact per-pair kernel with the coarse filter in front (the incumbent)
@@ -1003,6 +1015,23 @@ int main(int argc, char** argv) {
                 a += gated(b+i, b+j); } }
         return a;
     });
+
+    /* ---- 17. BYPASS-PATH CELL ROUTING --------------------------------------
+     * Race the candidate cells on the tiles the gate bypasses. */
+    if (!use_filter) {
+        bench("bypass: B x B zonemap", [&](uint32_t t){ uint64_t a=0; const uint32_t b=t*T;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bb(rows[b+i].B(), rows[b+j].B());
+            return a; });
+        bench("bypass: B x B dense", [&](uint32_t t){ uint64_t a=0; const uint32_t b=t*T;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_bbd(rows[b+i].B(), rows[b+j].B());
+            return a; });
+        bench("bypass: S x S", [&](uint32_t t){ uint64_t a=0; const uint32_t b=t*T;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_ss(rows[b+i].S(), rows[b+j].S());
+            return a; });
+        bench("bypass: R x R", [&](uint32_t t){ uint64_t a=0; const uint32_t b=t*T;
+            for (uint32_t i=0;i<T;++i) for (uint32_t j=i+1;j<T;++j) a += f_rr(rows[b+i].R(), rows[b+j].R());
+            return a; });
+    }
 
     // --- report ---------------------------------------------------------------
     std::printf("# %s universe=%u rows=%zu tiles=%u pairs=%u filter=%u bits\n",

@@ -1935,3 +1935,64 @@ genuine all-pairs; only within-tile pairs are measured; bucket width is still a
 tuned parameter and iteration 15 could not derive it, so this is not yet
 deployable on unknown data; and at 1M buckets the side structure is 128 kB/row.
 One microarchitecture throughout.
+
+### 15.20 Row hierarchies saturate; and the bypass path was using the wrong cell (C21)
+
+#### Skip lists / dual-tree over rows — measured, and it is a dead end
+
+Skip pointers over *elements* (Moffat & Zobel 1996) are already subsumed: the
+zone map skips at O(1) per element, which O(log n) cannot beat, and the sparse
+cells already gallop (`sr_search_runs`, `ss_adaptive2`).
+
+The idea worth testing was a **dual-tree traversal over rows** (Gray & Moore):
+recurse on node pairs, prune all |A|x|B| pairs when two nodes' union filters are
+disjoint. The `group` angle was this at one level and showed alpha (13.45x on
+uscensus2000). Measured at depth, with 1M buckets:
+
+| node size | fill | node-pairs prunable |
+|---:|---:|---:|
+| 16 rows | 0.02-0.04% | **75-89%** |
+| 64 rows | 0.08-0.14% | 14-41% |
+| 256 rows | 0.3-0.6% | **0.0%** |
+| 1024 rows | 1.2-2.2% | **0.0%** |
+
+**C21a: union filters saturate quadratically and the hierarchy dies at ~256
+rows.** Pruning needs two union sets disjoint; union size grows linearly in node
+size k while collision probability follows a birthday argument,
+P(disjoint) ~ exp(-n^2/NB) with n ~ 15k. At k=256 that is exp(-14.7) ~ 4e-7 --
+exactly the measured 0.0%. A dual-tree therefore has at most two useful levels,
+and the second prunes only 14-41%. **The existing 64-row tile already sits at the
+saturation limit: the tile structure IS the hierarchy, and nothing can be built
+above it.** Widening buckets pushes saturation out only as sqrt(NB) -- 4x deeper
+nodes need 16x the memory, which is not a trade worth making.
+
+Note also that the output-sensitive algorithm a hierarchy would provide is
+already present: the transpose + multi-occupancy resolve iterates BUCKETS and
+emits the pairs sharing one, at cost sum of popcount^2 over occupied buckets
+rather than N^2. That is why only 0.08-5.6% of buckets do any work.
+
+#### C21b: the bypass path was defaulting to a losing cell
+
+When the gate rejects the zone map, the tile pipeline fell back to `B x S ilp8`.
+The pairing matrix had already measured that B x S is the wrong cell on exactly
+those corpora -- on weather_sept_85 and census-income, B x B runs 10.75x and
+12.82x over tuned CRoaring while S x S runs 0.37x and 0.14x. Racing the
+candidate cells on the tiles that bypass:
+
+| corpus | B x S (was) | **B x B zonemap** | gain |
+|---|---:|---:|---:|
+| dimension_033 | 2522.1 | **47.8** | **52.8x** |
+| census-income | 2382.8 | **323.9** | **7.4x** |
+| weather_sept_85 | 4613.7 | **1115.0** | **4.1x** |
+
+S x S and R x R are 6-25x *worse* than B x S there, confirming the density map:
+above ~1e-2 density the dense cells win and every sparse representation loses.
+
+This closes the one region where the all-pairs machinery contributed nothing.
+The gate decides *whether* to filter; it must also decide *which cell* to run --
+and the pairing matrix already contains that answer. The tile harness simply was
+not consulting it.
+
+**Correction to my own suggestion:** I proposed routing these corpora to the
+galloping cells. That was wrong and the existing per-cell matrix already said so;
+galloping loses badly at high density. The dense cells are the answer.
