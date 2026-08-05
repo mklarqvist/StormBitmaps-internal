@@ -1620,3 +1620,90 @@ bypassed a 3x win; and the sample was sized in *pairs* when at |S|=6 that is
 inside the noise band; as-skitter's survival varies 0.050-0.137 against a 0.15
 threshold and is the closest to flipping; filter *build* cost is still not
 charged, as with `build_occ`.
+
+### 15.14 Exploiting the all-pairs structure — width pass then depth (C17)
+
+Everything through 15.13 optimises a single pair. The workload is all-pairs and
+95-100% of pairs are empty (C13), so the dominant cost is proving disjointness
+N^2/2 times. `bench/bench_tile.cpp` works on tiles of T=64 rows and all 2,016
+pairs within, which is the shape M3 tile hoisting already assumes.
+
+#### Width pass — five angles, measured before choosing
+
+Speedup over unfiltered `bs_ilp8`, per-tile build charged:
+
+| corpus | gated (incumbent) | range | hoist | matrix | group |
+|---|---:|---:|---:|---:|---:|
+| com-LiveJournal | 5.89 | 5.92 | 6.19 | 7.61 | **7.78** |
+| com-Orkut | 4.10 | 4.44 | 4.23 | 4.11 | **4.66** |
+| soc-Pokec | 6.18 | 6.23 | 6.16 | **7.38** | 5.74 |
+| as-skitter | **3.96** | 3.52 | 3.40 | 3.79 | 3.58 |
+| uscensus2000 | 6.73 | 7.02 | 6.60 | 12.53 | **13.45** |
+| wiki-Talk | 2.25 | 2.17 | **2.50** | 2.17 | 1.89 |
+| dimension_003 | 1.22 | **48.44** | 1.24 | 13.62 | 2.40 |
+
+**`range` -- two integer comparisons on stored [min,max] -- gives 48x on
+dimension_003**, the largest single number in this project, because Druid
+dimension columns are positionally clustered so most row extents cannot meet.
+`matrix` and `group` roughly double the incumbent on uscensus2000. `hoist` is
+marginal and was dropped.
+
+#### Depth — five iterations, three improvements and two failures
+
+1. **Naive composition FAILED.** range x matrix ran 13.8x on dimension_003 where
+   range alone ran 38.5x: the transpose was built even after range had already
+   eliminated nearly every pair. Prunes are not free and must be ordered by cost.
+2. **Cascade** (range, then matrix only if >25% survive) fixed it — geomean
+   8.21 vs 7.24 for the naive combo.
+3. **Adaptive cascade** measures each stage's pruning power on the first tile and
+   enables only stages that earn their cost — geomean 9.61.
+4. **Within-tile sort by minimum element** makes range monotone, so the scan
+   breaks at the first non-overlapping j. Improved absolute time on all six
+   corpora. It also changed the *baseline* by up to 22x, which is why absolute
+   ns/pair replaced "vs ilp8" as the reported metric from here on.
+5. **Global sort FAILED, and instructively.** Sorting the whole corpus by
+   minimum before tiling was expected to concentrate range pruning; it is
+   geomean 0.89 and drops dimension_003 to 0.47x. Sorting by `lo` clusters
+   *similar* extents into a tile, which maximises overlap and destroys exactly
+   the pruning it was meant to create. The prediction was backwards.
+
+#### The accounting error that dominated everything
+
+Each variant above rebuilds a tile's transpose per visit and charges it to that
+tile's 2,016 pairs. In real all-pairs, tile i pairs with every other tile, so its
+transpose is built once and reused N/T times — 15,625 times at a million rows.
+**The benchmark was overcharging the build by four orders of magnitude.**
+
+With correct accounting (`amortised transpose`, absolute ns/pair):
+
+| corpus | ilp8 | adaptive | **amortised** | amort speedup |
+|---|---:|---:|---:|---:|
+| dimension_003 | 56.68 | 0.91 | **0.13** | **436.0x** |
+| com-LiveJournal | 42.60 | 7.29 | **1.70** | **25.0x** |
+| soc-Pokec | 55.80 | 10.10 | **2.25** | **24.8x** |
+| as-skitter | 42.82 | 6.62 | **2.14** | **20.0x** |
+| com-Orkut | 149.13 | 37.06 | **22.93** | 6.5x |
+| uscensus2000 | 6.02 | 5.00 | **1.09** | 5.5x |
+| wiki-Talk | 69.18 | 31.70 | **22.53** | 3.1x |
+| census-income | 2483.48 | 2597.71 | 2485.60 | 1.00x |
+| weather_sept_85 | 4010.66 | 4452.77 | 4484.55 | 0.89x |
+
+**C17: geomean 9.32x with the transpose amortised, against 3.66x charging it per
+tile and 1.53x for the pair-level gated map of C16.** The C16 gate is retained
+in front of the whole pipeline — without it the dense corpora regress to
+0.39-0.42x exactly as before, because every prune here is built on the coarse
+zone map and inherits its failure when it is not selective.
+
+#### Limitations
+
+- **T is hardwired to 64** by the 64-bit candidate words; larger tiles amortise
+  the transpose better and are untested.
+- The harness computes only **within-tile** pairs, the block diagonal of a real
+  all-pairs run. Cross-tile blocks are where global ordering would matter, and
+  are not measured.
+- `weather_sept_85` sits at 0.89x under bypass where it should be 1.00x; that is
+  noise, but it means worst case is not yet demonstrably par.
+- Filter and transpose **build** costs are excluded from the amortised figure by
+  construction — that is the point of the variant, but it makes the number an
+  upper bound for workloads where each tile is visited once.
+- One microarchitecture.
