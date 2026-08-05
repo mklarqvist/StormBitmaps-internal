@@ -1,18 +1,25 @@
 \section*{Results}
 \label{sec:results}
 
-We evaluated representation-pairing kernels for set-intersection cardinality in three
-synthetic stages -- characterizing the cost of every pairing cell across the full density range,
-attributing that cost to a specific mechanism, accelerating work or avoiding it, under a working-set
-sweep, and charging the cost of the selection decision itself before it is allowed to count as a
-saving -- before turning to corpora with independent provenance, to the reference implementation's
-own container statistics, and to the boundaries of the method's domain. Throughout, we use
+We evaluated representation-pairing kernels for set-intersection cardinality. Throughout, we use
 \emph{cell} to denote one representation pairing (for example $\cell{\rB}{\rS}$), \emph{variant} to
 denote one implementation of a cell, and \emph{pairing matrix} to denote the full set of cells;
 unless stated otherwise, every ratio is reported against a \texttt{run\_optimize}-tuned CRoaring
 baseline. Figure~\ref{fig:pairing-matrix} lays out that matrix: the five representation families,
 the driving variable each pairing's cost is proportional to, and the path from precomputed row
 metadata through the selector to a chosen kernel.
+
+The mechanisms reported here form a progression ordered by what a caller gives up, not by what each
+costs. Choosing a representation (Fig.~\ref{fig:pairing-matrix}a--b) and consulting a zone map
+(Fig.~\ref{fig:density-sweep}a) give up nothing: the question and the answer are unchanged, and
+only the work changes. Prefix filtering and a size bound narrow the question instead --- only pairs
+above a similarity threshold, or within a size band --- and are available only because the caller
+said what they wanted; they are opt-in, never substituted for the first two, and their return is
+analytic rather than measured here, reaching as little as a few per cent of pairs surviving at a
+high similarity threshold (Methods, ``What makes work avoidable''; see Supplementary Note~3 and
+Supplementary Fig.~\ref{fig:prefix} for the derivation and the composition rule that governs when
+the two may be multiplied together). Batch amortisation leaves the contract unchanged again but
+needs many operations rather than one, because what it removes is repetition rather than work.
 
 \begin{figure}[!t]
 \centering
@@ -23,7 +30,7 @@ that pairing them gives.}
 stored item, so a strip's length is the number of items that encoding must touch: 16 bits for $\rB$
 ($\Theta(m)$, whatever the set holds), six values for $\rS$ ($\Theta(|X|)$), two
 $(\mathit{start}{:}\mathit{length})$ records for $\rR$ ($\Theta(r)$, whatever the runs' lengths), and
-three words --- two literal and one fill --- for $\rW$ ($\Theta(\ell+f)$). Note that a cell is a bit
+three words --- two literal and one fill --- for $\rW$ ($\Theta(\ell+g)$). Note that a cell is a bit
 in $\rB$ and a word in the others, so the strips compare work, not bytes. Strong fill marks set
 positions, and the position ruler applies to $\rB$ alone, the only positional encoding.
 \textbf{b}, Pairing two representations gives a kernel with its own cost function. The matrix is
@@ -39,8 +46,7 @@ Schematic; no measured data.}
 \label{sec:r1}
 
 We separate the cost of intersection along density -- more precisely, each row's distance from
-density one half -- the axis against which every later comparison in this section is implicitly
-read. To determine whether the fixed cost assumed of bitmap--bitmap intersection actually holds
+density one half. To determine whether the fixed cost assumed of bitmap--bitmap intersection actually holds
 across the range it is assumed to hold across, and where the remaining cells beat it, we swept
 density from a single set bit to a fully set universe and measured every one of
 \nm{count of pairing cells swept in the density sweep} cells at each point. Both sides were swept at
@@ -48,7 +54,8 @@ matched density with the universe pinned at \nm{universe size held fixed across 
 in bits} bits, so that cache residency -- \nm{cache level the density sweep is resident in, e.g.\
 L2} throughout -- stayed constant along the axis instead of confounding it. The sweep in
 Fig.~\ref{fig:density-sweep} covers the uniform spectrum; the $1/i$ spectrum, exercised identically,
-is reported in Supplementary \nm{Supplementary item number carrying the 1/i density sweep}.
+is reported in Supplementary Fig.~\nm{number of the supplementary figure carrying the 1/i density
+sweep}.
 
 Bitmap--bitmap cost was flat across the swept range -- \nm{$\cell{\rB}{\rB}$ cost, ns per pair, range
 across the density sweep} at the cache residency stated above, spanning
@@ -62,170 +69,60 @@ The two curves crossed at approximately \nm{crossover density, order of magnitud
 approximate value} -- an approximate value, since the exact crossover moves under re-measurement even
 though its existence does not. Near density one, the curve turned again: a row that is almost
 entirely set has a complement that is almost entirely empty, and \spec{we expect a complement-based
-cell, $\cell{\rC}{\rB}$ or $\cell{\rC}{\rC}$, to win the dense tail as a designed strategy rather than
-by the incidental margin $\cell{\rR}{\rR}$ carried in the retired campaign}, beating $\cell{\rB}{\rB}$
+cell, $\cell{\rC}{\rB}$ or $\cell{\rC}{\rC}$, to win the dense tail as a designed strategy, beating the
+margin achieved when $\cell{\rR}{\rR}$ wins only incidentally}, beating $\cell{\rB}{\rB}$
 by \nm{dense-tail win ratio over $\cell{\rB}{\rB}$ at the densest measured point}. The result is a U,
 not a monotonic curve, and it corrects the framing this project began with: the operative variable is
 not sparsity but distance from density one half, since a row that is 99.99\% set is exactly as
 compressible as one that is 0.01\% set (Fig.~\ref{fig:density-sweep}).
 
-\begin{figure}[!t]
+\begin{figure}[!p]
 \centering
-\textbf{a}\par\vspace{0.6mm}
-\input{figures/fig_zonemap_schematic}\par\vspace{1.5mm}
-\includegraphics[width=.94\linewidth]{figures/fig2_expectations}
-\caption{\textbf{What a fixed cost leaves on the table, analytically.} All panels are derived, not
-measured, and model \emph{work} rather than time.
-\textbf{a}, How a zone map works, within one pair. Each bin of positions is summarised by one bit
-recording whether that operand holds anything in it. Colour encodes occupancy and each row carries
-its own: green where the row occupies the bin, red where it does not. $\mathrm{occ}_A \wedge
-\mathrm{occ}_B$ is the bitwise AND of the two summaries --- the mechanism itself --- and
-\emph{visit?} reads it out. Bin~1 is the case to follow: $B$ occupies it and is green, $A$ does not
-and is red, so the AND is zero and the pair skips the bin even though one side holds data there. The
-AND costs a fraction of the rows it summarises and its popcount is the \emph{exact} number of bins
-to visit, not an estimate; a popcount of zero proves the operands disjoint without reading either.
+\footnotesize
+\textbf{a}\par\vspace{0.4mm}
+\input{figures/fig_zonemap_schematic}\par\vspace{1.0mm}
+% The canvas is generated at exactly \textwidth, so it is included at full
+% width and never scaled: at the previous .75 it rendered its 8 pt body text
+% at 4.5 pt and its annotations below 4 pt.
+\includegraphics[width=\linewidth]{figures/fig2_expectations}
+\caption{\textbf{What a fixed cost leaves on the table, analytically.} Derived, not measured; every
+panel models \emph{work} rather than time. Reading key: hue names a representation, so mechanisms
+are grey and separated by line style; red marks work still done, cyan work avoided, and grey shading
+the region dearer than a plain bitmap.
+\textbf{a}, A zone map within one pair. Each bin carries one bit recording whether that operand
+holds anything in it, and $\mathrm{occ}_A \wedge \mathrm{occ}_B$ is the AND of the two summaries.
+Follow bin~1: $B$ occupies it and $A$ does not, so the pair skips the bin even though one side holds
+data there. The popcount of the AND is the \emph{exact} number of bins to visit, and a popcount of
+zero proves the operands disjoint without reading either. Digits and glyphs repeat every verdict, so
+the panel reads without colour.
 \textbf{b}, Expected cost of each representation for a uniformly random set, as a multiple of the
 dense-bitmap cost, on a log-odds density axis. Every cost is proportional to the universe $m$, so
 this panel is scale-invariant and the crossovers are universal constants: open circles at
 $d = 1/w = 0.0156$ for $\rS$ and $\rC$, $0.0159$ for $\rR$, and their complements. The bitmap is the
 line at $1$. Shading marks the range of $\rR$ at fixed density --- one run at best, the i.i.d. value
 at worst --- which is the deviation the method exploits.
-\textbf{c}, The same for a zone map, whose cost relative to a plain bitmap pairing is
-$1/W_z + p_Ap_B$ with $p = 1-(1-d)^{W_z}$. Arrangement, not density, sets $p$: scattering gives
-$p = 1-(1-d)^{W_z}$ and clustering $p = d$, and at $d = 0.01$, $W_z = 512$ those differ by
-\prov{$482\times$}. Scattering is the worst case, so the i.i.d. curve is a floor on what a summary
-is worth.
-\textbf{d}, The two composed. Filtering concentrates density --- an occupied bin has local density
-$d/p$ --- so the representation used inside surviving bins is the one for $d/p$. Decade rules mark
-depth: in the clustered case the composition costs $1/W_z$ of a bitmap across the sparse range
-($0.195\%$ at $W_z = 512$) and decays only in the dense half, to $12.7\%$. The floor is $1/W_z$ and
-the knee sits at $d = 1/8$ for every bin width.
-\textbf{e}, The same as a division of labour, on a linear axis: the share of a bitmap's work never
-done (green) against the share still done (red), taking the best of the four options at each
-density. \prov{$99.8\%$} is never done at $d = 10^{-4}$; the red waist about $d = \tfrac12$ is where
-metadata determines least and a bitmap is the right kernel.
-The corresponding measurements on real corpora are plotted against these same axes in
-Supplementary Fig.~\nm{number}, where the distance between a corpus and the curve above it is the
-structure that corpus carries and the method converts into avoided work.}
+\textbf{c}, The same for a zone map. Arrangement, not density, sets the share of bins an operand
+occupies: at $d = 0.01$ and $W_z = 512$ the scattered and clustered extremes differ by
+$482\times$, so the i.i.d. curve floors what a summary is worth.
+\textbf{d}, The two composed. Filtering concentrates density, so the representation used inside a
+surviving bin is the one for that bin's local density. Clustered, the composition costs $0.195\%$ of
+a bitmap across the sparse range at $W_z = 512$, rising to $12.7\%$ only in the dense half; the knee
+sits at $d = 1/8$ for every bin width.
+\textbf{e}, The same as a division of labour: the share of a bitmap's work never done against the
+share still done, taking the best of the four options at each density. $99.8\%$ is never done
+at $d = 10^{-4}$; the waist about $d = \tfrac12$ is where a bitmap is the right kernel.
+Measurements on real corpora appear on these axes in Supplementary Fig.~\nm{number}.}
 \label{fig:density-sweep}
 \end{figure}
 
-The mechanisms this paper uses are not a bag of tricks, and the axis that orders them is not what
-each costs but what the caller has to give up to use it. There are four, and the boundary that
-matters falls in the middle. Choosing a representation (Fig.~\ref{fig:pairing-matrix}a--b) gives up
-nothing at all: the question and the answer are identical and only the encoding the work is done in
-changes. Consulting a zone map (Fig.~\ref{fig:pairing-matrix}c--d) gives up nothing either, and
-needs only metadata built once per set, to skip regions that provably cannot contribute. Those two
-are exact, they are what every measurement in this paper is about, and they stand on their own ---
-nothing reported here depends on narrowing what is asked. The third mechanism does narrow it.
-Prefix filtering, and the size bound introduced with it below, answer a smaller question --- only
-pairs above a similarity threshold, or only pairs whose sizes admit the requested answer --- and
-they are available only because the caller has said what they actually want. They are not cheaper
-versions of the first two and are never substituted for them: the thresholded mode is opt-in and
-exact set algebra is the default throughout. The fourth changes nothing about the contract but needs
-many operations rather than one, because what it removes is repetition rather than work; it is the
-subject of the third subsection below. Read in order, the four are monotone in what a caller
-specifies: the more that is said about what is wanted, the more can be skipped before anything is
-read.
-
-Every panel of Fig.~\ref{fig:density-sweep} is the same argument applied to a different mechanism,
-and it is worth stating that argument once. Each mechanism here --- choosing a representation,
-consulting a zone map, composing the two, and in the thresholded mode the prefix filter of
-Fig.~\ref{fig:prefix} --- is a bet that the data deviates from randomness, and each comes with a
-closed-form null model saying what the bet is worth if it does not. Fixing the density and placing
-elements independently is the most pessimistic assumption available about \emph{arrangement}, and it
-is pessimistic in the same direction for all of them: independent placement maximises the number of
-maximal runs a set has, maximises the fraction of bins it occupies, and maximises the chance that
-two prefixes collide. \textbf{The null model is therefore a floor and not a prediction.} Real
-structure can only move each mechanism further into profit, and the size of that movement is exactly
-what the mechanism converts into speed.
-
-Two things a fixed design cannot do follow immediately, and they are the reason the selector is
-built the way it is. A representation committed to at ingest cannot exploit the deviation, because
-it commits before the deviation is knowable. A selector reading density alone cannot exploit it
-either, because density is the very statistic the null model is built from: at a fixed density $d$
-with $k = dm$ elements the expected number of maximal runs is $k(m-k+1)/m$, but the actual number
-ranges over every integer from one to $\min(k,\,m-k+1)$, so no single function of $d$ can track it.
-The deviation is also \emph{one-sided} --- a real row can be arbitrarily cheaper than a random row
-of the same density and at most about twice as expensive (Methods) --- which is what makes it a
-resource rather than a source of variance. Both readings point the same way: the statistic a
-selector consults has to see arrangement, or be a direct measurement of the kernels themselves.
-
-Four properties of the summary in Fig.~\ref{fig:density-sweep}b--c follow from counting alone, and
-they are worth stating plainly because together they say what a summary can and cannot buy.
-
-\emph{Why there is a floor, and where it is.} A zone map is a bitmap of bitmaps: one bit per bin of
-$W_z$ positions, so $m/W_z$ bits against the row's $m$. Reading it therefore costs $1/W_z$ of
-reading the row, and no pairing that consults a summary can cost less than reading that summary ---
-$0.195\%$ of a bitmap at $W_z = 512$. That is the floor, and it is a property of the bin width alone,
-not of the data.
-
-\emph{Why the leverage is so large.} The exchange rate is the same $W_z$: one summary bit decides
-the fate of $W_z$ data bits, so a bin proved empty returns $W_z$ bits of work for the one bit spent
-asking. This is why a coarser bin buys a deeper floor --- and, symmetrically, why it stops paying at
-a lower density, since a wider bin is harder to leave empty.
-
-\emph{Why the advantage is flat across the sparse range and then erodes quadratically.} A bin
-survives only if \emph{both} operands occupy it, so the surviving fraction goes as the product of
-the two occupancies. For clustered operands, where a run longer than a bin occupies exactly a $d$
-fraction of bins, that product is $d^2$, and the cost is $1/W_z + d^2\kappa$ with $\kappa$ the cost
-of a bin's contents. The two terms are equal when $d^2\kappa = 1/W_z$; with $\kappa$ the cost of one
-run in a bin, $\kappa = w/W_z$, this reduces to $d = 1/\sqrt{w} = 1/8$ --- \textbf{independent of the
-bin width}. Below that density the summary term dominates and the advantage is constant; above it
-the surviving-bin term dominates and the advantage decays as $d^{2}$. Changing $W_z$ moves the floor
-but not the knee.
-
-\emph{Why a summary can be a liability, and exactly when.} The floor cuts both ways, and the reason
-is structural rather than a property of any one representation: \textbf{a summary is indexed by the
-universe, while every compressed representation is indexed by the data}. The zone map costs $1/W_z$
-of a bitmap whatever the operands contain, because its size is set by $m$. The cost of $\rS$, $\rR$
-and $\rW$ is set instead by a quantity that shrinks with the set --- cardinality, run count, or
-literal-and-fill count --- and each of those falls without limit as the operands sparsify. A fixed
-cost and a vanishing one must cross. \textbf{Below that crossing, consulting a summary costs more
-than the entire computation it was meant to shorten, and a zone map is worse than not having one.}
-
-Where the crossing falls depends on which representation is being displaced, and one case fixes the
-scale. A representation costing one word per element costs $w\,d$ of a bitmap, so it meets the
-summary's $1/W_z$ at $d = 1/(wW_z) = 3.1\times10^{-5}$ for $w = 64$ and $W_z = 512$ (Methods,
-Eq.~\eqref{eq:dlow}). At $d = 10^{-6}$ that representation costs $6.4\times10^{-5}$ of a bitmap
-while the summary alone costs $1.95\times10^{-3}$, so consulting it does $31\times$ the work of
-simply enumerating the operands. A run- or fill-based representation crosses at its own density,
-wherever its run or word count falls below $m/W_z$, but that a crossing exists at all is generic.
-
-This makes the gating two-sided, and for two unrelated reasons. A summary must be declined when the
-operands are \emph{too dense}, because every bin is occupied and it proves nothing; and equally when
-they are \emph{too sparse}, because it is then the largest object in the computation. It pays only
-between those two bounds. \spec{The same fact appears in the storage measurements as
-universe-proportional selector metadata dwarfing the data it describes; the time and space
-statements of it are one phenomenon, and a guard on one is a guard on the other.}
-
-The practical reading is that the sparse regime is not a narrow operating point. In the clustered
-idealization --- the favourable edge of the band, where a run spans a whole bin --- the advantage is
-the same at $d = 10^{-6}$ as at $d = 10^{-2}$: five orders of magnitude of density over which a
-fixed-cost kernel does $512\times$ the work of one that consults a summary first. It is only above
-$d = 1/8$ that the margin narrows at all, and even at $d \to 1$ a bitmap still does $7.9\times$ the
-work.
-
-All of the quantities above are counts of $64$-bit words touched, not times, and the distinction is
-load-bearing rather than pedantic. A work model prices a summary that removes nothing at its own
-size, $1/W_z$ of a bitmap, and that is a correct statement about words. It is not a statement about
-runtime: a filtered scan gives up sequential access and hardware prefetch and pays an indirection
-and a branch per bin, and the measured penalty for consulting a summary on operands it cannot help
-is far larger than these panels charge --- \nm{worst-case speedup, filter applied unconditionally,
-which the work model does not predict} against the $1.002\times$ overhead the work model allows.
-That divergence is not a defect in the derivation; it is the reason the gate is decided by
-measurement rather than by the model, and the per-bin and per-word constants needed to convert these
-curves into time are given in Methods.
-
-Finally, the same accounting says where this axis stops. Fig.~\ref{fig:density-sweep}d divides a
-fixed-cost bitmap's work into the share an adaptive kernel never does and the share it still does,
-and the second is a narrow waist about density one half: there no encoding is smaller than the
-bitmap, essentially no bin is empty, and there is nothing available to skip. Inside that waist the
-standard kernel is the right one and the return comes from throughput, the axis the vectorized
-\texttt{AND}-and-popcount literature has already carried a long way \cite{mula2018popcount}. The two
-axes are complementary and the analysis is what separates them: avoid the work where the green
-region says it can be avoided, and accelerate it where the red waist says it cannot. The next
-subsection charges that division against measurement.
+Each mechanism above is a bet that the data deviates from randomness, and the size of the win at the
+sparse extreme, the location of the crossover, and the two-sided condition under which a zone map is
+worth consulting at all follow from a closed-form counting argument against the least favourable
+(independent-placement) arrangement of elements, given in full in Supplementary Note 4. Inside the
+band where nothing beats $\cell{\rB}{\rB}$ (Fig.~\ref{fig:density-sweep}d), no encoding is smaller
+than the bitmap and no bin is empty, so the return there comes from throughput rather than
+avoidance --- the axis the vectorized \texttt{AND}-and-popcount literature has already carried a
+long way \cite{mula2018popcount}.
 
 \subsection*{Avoiding work beats accelerating it, and the gap widens with working-set size}
 \label{sec:r2}
@@ -253,10 +150,9 @@ around: each is already proportional to the small side of the pair, so the avail
 not touching the large side at all, and the measurement confirms that is exactly where the winning
 variants put their effort.
 
-Read against the analysis above, that outcome is what the framing predicts rather than a result that
-cut against it, and its scope should be stated precisely, because the obvious misreading is
-available and is wrong. It is a statement about the \emph{asymmetric} cells alone. Those cells are
-already work-proportional to the smaller operand, so the quantity a wider vector could accelerate is
+This outcome is scoped to the \emph{asymmetric} cells alone, and the scope matters because the
+obvious misreading is available and wrong. Those cells are already work-proportional to the smaller
+operand, so the quantity a wider vector could accelerate is
 small by construction; there is little there for throughput to win, and the remaining saving lies in
 not touching the larger operand. The complement holds with equal force and is measured here too.
 $\cell{\rB}{\rB}$ is the one cell whose work is, in the generic case, not avoidable --- it is the
@@ -275,8 +171,8 @@ $\cell{\rB}{\rB}$ at L2 residency, per host} at L2 residency to \nm{SIMD speedup
 $\cell{\rB}{\rB}$ at DRAM residency, per host} at DRAM residency, while the work-avoidance advantage
 on the asymmetric cells held or grew over the same range, from \nm{work-avoidance speedup at L2
 residency, per host} to \nm{work-avoidance speedup at DRAM residency, per host}.
-\spec{We expect this widening to hold as genuine growth, not merely a plateau, on every host measured
-in the final campaign, resolving the asymmetry between hosts recorded in the retired campaign.} The
+\spec{We expect this widening to hold as genuine growth, not merely a plateau, on every host measured,
+resolving the asymmetry between hosts observed previously.} The
 two mechanisms therefore scale in opposite directions with the memory hierarchy: vector width buys
 relatively less as the hierarchy gets less friendly to it, on the one cell whose work cannot in the
 generic case be avoided, while the cells built around skipping keep or extend their edge
@@ -319,24 +215,12 @@ total runtime, and its regret against a bucket oracle that already knows the win
 policies: per-pair, per-tile, and probe-and-commit,'' for the budget, the tile geometry and the
 probe count.
 
-What those policies have in common is the fourth mechanism of the ladder above, and it differs from
-the first two in what it needs rather than in what it gives up. The contract is unchanged and the
-answer is identical, but it requires many operations rather than one, because what it removes is not
-work but \emph{repetition}. Four things repeat when a batch is run naively, and each can be paid for
-once instead. Row metadata --- cardinality, run count, occupancy summary --- is part of the
-representation, built at ingest and amortised over every operation the set ever participates in
-rather than over any particular batch; this is the same assumption Roaring's per-chunk container
-choice already makes, and it is stated here once for the whole paper. A selection decision can be
-hoisted to a tile, so one decision serves a block of pairs instead of one pair. Probe-and-commit
-pays to time a handful of operations and reuses the verdict for the rest. And operand data loaded
-once can be paired against many, so its memory traffic is amortised rather than repeated. In each
-case the same thing happens: the decision and the metadata are amortised, and only the kernel work
-stays per operation (Fig.~\ref{fig:pairing-matrix}f). This is a regime rather than the setting. It
-applies wherever there are enough operations to share a decision --- which is a property of a
-workload of any size, not an argument that anything must be computed exhaustively --- and it is the
-regime in which the measurements below were taken. The single-operation regime is reasoned instead
-from the cost of a decision read from $O(1)$ metadata against the size of the operation it governs,
-and the asymmetry in evidence between the two is stated here rather than left to be inferred.
+What those policies have in common is the fourth mechanism of the ladder above: the contract is
+unchanged and the answer is identical, but the saving comes from paying once for a quantity that
+would otherwise repeat across every pair of a batch --- row metadata, the selection decision itself,
+or operand data movement. The measurements reported here were taken in that regime, which applies
+wherever there are enough operations to share a decision; see Supplementary Note~5 and Supplementary
+Fig.~\ref{fig:batch} for which quantities repeat and how each is amortised.
 
 Per-pair selection failed that budget outright: \nm{per-pair selection cost, percent of runtime,
 range across hosts and corpora} of runtime, well beyond what the budget allows -- the saving
@@ -367,31 +251,6 @@ oracle.
 
 \begin{figure}[!t]
 \centering
-\input{figures/fig_batch_body}
-\caption{\textbf{The batch regime: rejecting pairs wholesale, and paying for a decision once.}
-Both mechanisms here need many operations rather than one, and what they remove is repetition.
-\textbf{a}, An overlap pre-filter across a set of operands. The same occupancy idea as a zone map
-(Fig.~\ref{fig:density-sweep}a) but at a coarser, chosen width and computed once per set, then
-ANDed pairwise: shaded pair cells may overlap and are passed to a kernel, dashed cells are provably
-disjoint and are answered without touching data. One pass over the summaries settles most of the
-pair matrix. Note the distinction from prefix filtering (Fig.~\ref{fig:prefix}), which is candidate
-\emph{generation} and never enumerates the pair set at all.
-\textbf{b}, Why the cost of a decision depends on what it governs. Each bar spends left-to-right
-through one unit of useful work; the dashed rule marks that work with neither a decision nor a
-filter. \emph{Deciding}: a single operation absorbs the decision easily, since it is read from
-$O(1)$ metadata and the operation it governs is large; the same decision repeated for every
-operation of a batch is a large fraction of the total, because each operation there is small; and
-hoisting it to a tile --- deciding once, then committing --- restores the single-operation picture.
-\emph{Filtering}: where bins are mostly empty a summary converts most of the work into skipped work;
-where every bin is occupied it finds nothing to skip and its cost carries the bar past the rule.
-The cost of deciding therefore scales inversely with how large the operation being decided about is,
-which is why the two regimes need different policies and why every mechanism is gated rather than
-always on. Schematic; no measured data.}
-\label{fig:batch}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
 \figplaceholder{0.9}{Selection cost against the runtime budget, regret against a bucket oracle, and gated-vs-unconditional filter speedup, by policy and host}
 \caption{\textbf{Selection is cheap only when hoisted, and work avoidance must itself be gated.}
 \textbf{a}, Selection cost as a percentage of total runtime for three policies -- per-pair, per-tile,
@@ -399,7 +258,8 @@ and probe-and-commit -- on \nm{host count in the selection-cost sweep} hosts. Da
 \nm{selection-cost budget, as a fraction of runtime} runtime budget; hatched bars fail it.
 \textbf{b}, Regret of each policy against a bucket oracle that times every candidate cell in bulk
 over pairs grouped by shape and keeps the per-bucket minimum -- an unattainable, non-deployable
-denominator, and a measured lower bound on true per-pair regret (Methods). Hatched bars (all-bitmap;
+denominator, and a measured lower bound on true per-pair regret (Methods, ``Selection policies:
+per-pair, per-tile, and probe-and-commit''). Hatched bars (all-bitmap;
 the per-pair cost model) are shown for scale, not as deployment candidates. \textbf{c}, Speedup of
 the zone-map work-avoidance filter over the unfiltered kernel across
 \nm{count of corpora in the gating comparison} corpora (sorted by unconditional-filter speedup),

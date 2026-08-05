@@ -32,6 +32,14 @@
 % ------------------------------------------------------------------ panel d
 % The overlap pre-filter: the same occupancy idea as (c), but at a chosen width
 % and applied ACROSS a tile of rows, to reject whole pairs before touching data.
+%
+% Palette: the reserved cost/saving accents, meaning exactly what they mean in
+% Fig. 2 and Supplementary Fig. S1. Pairs whose summaries overlap must be
+% examined, so they carry the "work" accent; pairs proved disjoint carry the
+% "work avoided" accent. These were previously drawn in R's green and C's
+% gold, which spent two representation hues on non-representation meanings.
+\definecolor{workc}{HTML}{EE6677}
+\definecolor{avoidc}{HTML}{66CCEE}
 
 \resizebox{.72\linewidth}{!}{%
 \begin{tikzpicture}[x=1mm,y=1mm]
@@ -57,10 +65,10 @@
       \node[tiny lbl, anchor=west] at (28.4,-\i*4.6-2.1) {\i};}
     \foreach \i/\js in {0/{1,3,4,5}, 1/{3,4}, 2/{5}, 3/{5}}{
       \foreach \j in \js {
-        \draw[sm, fill=focR] (\j*4.6,-\i*4.6-4.2) rectangle ++(4.6,4.2);}}
+        \draw[sm, fill=workc] (\j*4.6,-\i*4.6-4.2) rectangle ++(4.6,4.2);}}
     \foreach \i/\js in {0/{2}, 1/{2,5}, 2/{3,4}, 3/{4}, 4/{5}}{
       \foreach \j in \js {
-        \draw[sm, dashed, draw=black!40, fill=white]
+        \draw[sm, dashed, draw=black!40, fill=avoidc!25]
           (\j*4.6,-\i*4.6-4.2) rectangle ++(4.6,4.2);}}
   \end{scope}
 \end{tikzpicture}}
@@ -76,11 +84,11 @@
     ref/.style={draw=black!45, dashed, line width=0.4pt},
   }
   \def\bh{4.2}                       % bar height
-  \newcommand{\decide}[3]{\draw[draw=black!55, line width=0.3pt, fill=focC]
+  \newcommand{\decide}[3]{\draw[draw=black!55, line width=0.3pt, fill=workc]
       (#1,#2) rectangle ++(#3,\bh);}
   \newcommand{\work}[3]{\draw[draw=black!55, line width=0.3pt, fill=black!14]
       (#1,#2) rectangle ++(#3,\bh);}
-  \newcommand{\skipped}[3]{\draw[draw=black!42, dashed, line width=0.3pt, fill=white]
+  \newcommand{\skipped}[3]{\draw[draw=black!42, dashed, line width=0.3pt, fill=avoidc!25]
       (#1,#2) rectangle ++(#3,\bh);}
 
   % ---- left group: the cost of deciding, three regimes, equal total work ----
@@ -106,11 +114,11 @@
 
   % ---- key ----
   \begin{scope}[shift={(0,-38)}]
-    \draw[draw=black!55, line width=0.3pt, fill=focC]  (0,0) rectangle ++(4,3.2);
+    \draw[draw=black!55, line width=0.3pt, fill=workc]  (0,0) rectangle ++(4,3.2);
     \node[keylbl] at (5,1.6) {deciding};
     \draw[draw=black!55, line width=0.3pt, fill=black!14] (26,0) rectangle ++(4,3.2);
     \node[keylbl] at (31,1.6) {work done};
-    \draw[draw=black!42, dashed, line width=0.3pt, fill=white] (58,0) rectangle ++(4,3.2);
+    \draw[draw=black!42, dashed, line width=0.3pt, fill=avoidc!25] (58,0) rectangle ++(4,3.2);
     \node[keylbl] at (63,1.6) {work skipped};
     \draw[ref] (94,-0.4) -- (94,3.6);
     \node[keylbl] at (95.5,1.6) {cost with no decision and no filter};

@@ -25,23 +25,37 @@
   flowarrow/.style={-{Latex[length=1.8mm]}, draw=black!65, line width=0.5pt},
 }
 
-\begin{minipage}[b]{.50\linewidth}
+% Type size. Both panels are \resizebox'd to their minipage, so the size a
+% label renders at is (its point size) x (panel width / panel natural width),
+% and nothing else. Measured naturals: panel a 243.8 pt at \simdcw 4.6mm,
+% panel b 230.2 pt. At the previous .50/.435 split with \tiny cells, panel a's
+% digits rendered 5.1 pt against panel b's 7.6 pt -- and against panel a's OWN
+% 8.2 pt row labels and position ruler, which are \scriptsize.
+%
+% Fixed by making every glyph in panel a one size (\scriptsize, as its labels
+% already were) and widening the cell so the longest token, the run record
+% 12:3, still fits inside it -- cells must stay a uniform width or the strips
+% stop comparing item counts, which is the panel's whole point. The two
+% minipage widths are then set so both panels land at ~7 pt, matching the
+% 8 pt body size of the matplotlib panels elsewhere in the paper.
+\begin{minipage}[b]{.54\linewidth}
+\setlength{\simdcw}{6.0mm}% local to this minipage; fits "12:3" at \scriptsize
 \textbf{a}\par\vspace{0.6mm}
 \resizebox{\linewidth}{!}{%
 \begin{simdpicture}
-  \simdstrip[font=\tiny\ttfamily]{5.4}{\rB}{%
+  \simdstrip[font=\scriptsize\ttfamily]{5.4}{\rB}{%
     0/ctxB,1/focB,1/focB,1/focB, 0/ctxB,0/ctxB,0/ctxB,0/ctxB,%
     0/ctxB,0/ctxB,0/ctxB,0/ctxB, 1/focB,1/focB,1/focB,0/ctxB}
   \simdlabels{4.85}{0}{15}
   \node[simd note, anchor=east] at (-0.35,4.85) {position};
-  \simdstrip[font=\tiny\ttfamily]{3.1}{\rS}{%
+  \simdstrip[font=\scriptsize\ttfamily]{3.1}{\rS}{%
     1/focS,2/focS,3/focS,12/focS,13/focS,14/focS}
-  \simdstrip[font=\tiny\ttfamily]{1.55}{\rR}{{1{:}3}/focR,{12{:}3}/focR}
-  \simdstrip[font=\tiny\ttfamily]{0}{\rW}{L/focW,{F0}/ctxW,L/focW}
+  \simdstrip[font=\scriptsize\ttfamily]{1.55}{\rR}{{1{:}3}/focR,{12{:}3}/focR}
+  \simdstrip[font=\scriptsize\ttfamily]{0}{\rW}{L/focW,{F0}/ctxW,L/focW}
 \end{simdpicture}}
 \end{minipage}\hfill
 % ------------------------------------------------------------------ panel b
-\begin{minipage}[b]{.435\linewidth}
+\begin{minipage}[b]{.395\linewidth}
 \textbf{b}\par\vspace{0.6mm}
 \resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[x=1mm,y=1mm]
@@ -54,13 +68,13 @@
   \node[gridcell, fill=focB]  at (0,0)      {$\Theta(m)$};
   \node[gridcell, fill=ctxS]  at (17.5,0)   {$\Theta(|S|)$};
   \node[gridcell, fill=ctxR]  at (35,0)     {$\Theta(r)$};
-  \node[gridcell, fill=ctxW]  at (52.5,0)   {$\Theta(\ell{+}f)$};
+  \node[gridcell, fill=ctxW]  at (52.5,0)   {$\Theta(\ell{+}g)$};
   \node[gridcell, fill=ctxS]  at (17.5,-7.1){$\Theta(|A|{+}|B|)$};
   \node[gridcell, fill=ctxR]  at (35,-7.1)  {$\Theta(|S|{+}r)$};
-  \node[gridcell, fill=ctxW]  at (52.5,-7.1){$\Theta(|S|{+}\ell{+}f)$};
+  \node[gridcell, fill=ctxW]  at (52.5,-7.1){$\Theta(|S|{+}\ell{+}g)$};
   \node[gridcell, fill=ctxR]  at (35,-14.2) {$\Theta(r_A{+}r_B)$};
-  \node[gridcell, fill=ctxW]  at (52.5,-14.2){$\Theta(r{+}\ell{+}f)$};
-  \node[gridcell, fill=ctxW]  at (52.5,-21.3){$\Theta(\ell{+}f)$};
+  \node[gridcell, fill=ctxW]  at (52.5,-14.2){$\Theta(r{+}\ell{+}g)$};
+  \node[gridcell, fill=ctxW]  at (52.5,-21.3){$\Theta(\ell{+}g)$};
   % Lower triangle: drawn but empty. The matrix is symmetric, so these cells
   % carry no information and saying so in every one of them is noise.
   \foreach \x/\y in {0/-7.1, 0/-14.2, 17.5/-14.2, 0/-21.3, 17.5/-21.3, 35/-21.3}{

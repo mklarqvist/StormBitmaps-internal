@@ -10,9 +10,10 @@ under review).
 Every cost here is proportional to the universe size m, so the curves are
 scale-invariant: plotted RELATIVE TO THE DENSE BITMAP they are the same at
 every m, and the crossovers are universal constants (S meets the bitmap at
-d = 1/32; R at d ~ 0.0159 and ~ 0.9841). Verified numerically to four
-significant figures at m = 1e5 and 1e6. One panel therefore suffices, and a
-second universe size would only redraw it.
+d = 1/w = 1/64 ~ 0.0156, one word touched per element against one word of
+bitmap per w positions; R at d ~ 0.0159 and ~ 0.9841). Verified numerically
+to four significant figures at m = 1e5 and 1e6. One panel therefore suffices,
+and a second universe size would only redraw it.
 
 The bitmap is the horizontal line at 1. Below it is work avoided; above it
 is work a fixed bitmap would never have done. Growing m does not change the
@@ -30,12 +31,39 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import LogLocator
 
 # ---- house palette (DISPLAY_ITEMS.md 1.1) ---------------------------------
+# Hue is reserved for REPRESENTATION IDENTITY and is never spent on anything
+# else. Mechanisms (a zone map, a composition) are references, so they take the
+# reserved neutral grey plus a line style; the two reserved accents carry the
+# only non-representation axis in the figure, cost against saving.
 INK   = "#222222"   # B, the foil
 BLUE  = "#4477AA"   # S
 GREEN = "#228833"   # R
 PURP  = "#AA3377"   # W
 GOLD  = "#CCBB44"   # C
-GREY  = "#BBBBBB"
+GREY  = "#BBBBBB"   # reserved: reference / baseline, never a representation
+
+COST  = "#EE6677"   # reserved accent: work done, or dearer than a bitmap
+SAVE  = "#66CCEE"   # reserved accent: work avoided
+REF   = "0.55"      # mechanism reference lines: grey + line style + a label
+TXT   = "0.35"      # small annotation text: ink grey, never a saturated hue
+
+# House rcParams (DISPLAY_ITEMS.md 1.2). pdf.fonttype 42 is NOT optional --
+# without it matplotlib emits Type 3 fonts, which production pipelines reject.
+matplotlib.rcParams.update({
+    "pdf.fonttype": 42, "ps.fonttype": 42,
+    "font.size": 8,
+    "figure.facecolor": "white", "savefig.facecolor": "white",
+    "axes.grid": False,
+    "axes.axisbelow": True,
+    "savefig.bbox": "tight", "savefig.pad_inches": 0.02,
+})
+
+# The canvas is sized to the real text block (\textwidth = 500.484 pt) so that
+# "8 pt in matplotlib" is 8 pt on the page. The figure is included at
+# width=\linewidth with no downstream scaling; scaling it there would undo
+# every type-size decision below.
+FIG_W = 500.484 / 72.27          # inches
+FIG_H = FIG_W / 1.95
 
 WORD = 64           # bits per machine word
 REPEATS = 3
@@ -119,8 +147,11 @@ def panel(ax, m, rng, spacing):
     ax.set_yscale("log")
     lo, hi = 2e-5, max(c_S.max(), c_R.max()) * 3.0
 
-    ax.axhspan(lo, 1.0, color=GREEN, alpha=0.10, lw=0, zorder=0)
-    ax.axhspan(1.0, hi, color="#CC3311", alpha=0.10, lw=0, zorder=0)
+    # The half-plane wash marks position relative to the BITMAP, which is
+    # achromatic, so the wash is achromatic too: tinting it green would put an
+    # R-coloured field under the R curve, spending a representation hue on a
+    # non-representation meaning.
+    ax.axhspan(1.0, hi, color=GREY, alpha=0.35, lw=0, zorder=0)
     ax.axhline(1.0, color=INK, lw=2.4, zorder=5)
 
     # Structure-dependent representations are drawn as RANGES, not curves:
@@ -131,15 +162,31 @@ def panel(ax, m, rng, spacing):
     w_best = np.full_like(d, 3.0) / bitmap                 # fill, literal, fill
     ax.fill_between(d, r_best, c_R, color=GREEN, alpha=0.10, lw=0, zorder=1)
 
-    ax.plot(d, c_S, color=BLUE,  lw=1.6, zorder=4)
-    ax.plot(d, c_R, color=GREEN, lw=1.6, zorder=4)
-    ax.plot(d, c_W, color=PURP,  lw=1.8, ls=(0, (1.6, 1.4)), zorder=6)
-    ax.plot(d, c_C, color=GOLD,  lw=1.6, ls=(0, (5, 2)), zorder=4)
+    # On the sparse side S, C and R coincide (every representation costs about
+    # one word per element), so direct labelling is impossible here and a
+    # frameless legend is the readable choice. It doubles as the greyscale key:
+    # each representation carries its own dash pattern as well as its own hue.
+    ax.plot(d, c_S, color=BLUE,  lw=1.6, zorder=4, label="S  sorted array")
+    ax.plot(d, c_R, color=GREEN, lw=1.6, ls=(0, (5, 1.6)), zorder=4,
+            label="R  runs")
+    ax.plot(d, c_W, color=PURP,  lw=1.8, ls=(0, (1.6, 1.4)), zorder=6,
+            label="W  EWAH fills")
+    ax.plot(d, c_C, color=GOLD,  lw=1.6, ls=(0, (5, 2, 1, 2)), zorder=4,
+            label="C  complement")
     ax.plot(d, r_best, color=GREEN, lw=1.0, alpha=0.8, zorder=4)
+    # These two labels annotate R's own band, so R's hue is the correct one.
     ax.text(2.5e-3, r_best[0] * 2.2, "one run (best case)", color=GREEN,
-            fontsize=6.6, ha="center", va="bottom", zorder=7)
-    ax.text(0.5, 2.2e-3, "range of R at fixed density", color="#155c22",
-            fontsize=6.8, ha="center", va="center", style="italic", zorder=7)
+            fontsize=7.0, ha="center", va="bottom", zorder=7)
+    ax.text(0.5, 2.2e-3, "range of R at fixed density", color=GREEN,
+            fontsize=7.2, ha="center", va="center", style="italic", zorder=7)
+    # Two columns, so the key is two rows tall and clears the bitmap line and
+    # the crossover labels that sit just beneath it.
+    # Anchored in the only genuinely empty region of the panel: above the
+    # bitmap line and left of where any curve rises to meet it.
+    leg = ax.legend(loc="upper left", frameon=False, fontsize=6.5, ncol=1,
+                    handlelength=1.8, borderpad=0.05, labelspacing=0.22,
+                    handletextpad=0.45, bbox_to_anchor=(-0.015, 1.03))
+    leg.set_zorder(9)
 
     # crossovers: where each representation stops being cheaper than a bitmap.
     # These are universal constants -- independent of m -- because every cost
@@ -175,13 +222,13 @@ def panel(ax, m, rng, spacing):
     lo_marks = dedupe([m_ for m_ in marks if m_[1] < 0.5])
     hi_marks = dedupe([m_ for m_ in marks if m_[1] > 0.5])
     if lo_marks:
-        ax.text(lo_marks[0][1] * 0.55, 1.0 / 4.5,
-                "   ".join(f"{n} {x:.3f}" for n, x, _ in lo_marks),
-                fontsize=6.6, color="0.25", ha="right", va="center", zorder=8)
+        ax.text(lo_marks[0][1] * 0.55, 1.0 / 150.0,
+                "   ".join(f"{n} {x:.4f}" for n, x, _ in lo_marks),
+                fontsize=7.0, color=TXT, ha="right", va="center", zorder=8)
     if hi_marks:
-        ax.text(min(hi_marks[-1][1] * 1.0008, 0.9999), 1.0 / 4.5,
-                "   ".join(f"{n} {x:.3f}" for n, x, _ in hi_marks),
-                fontsize=6.6, color="0.25", ha="left", va="center", zorder=8)
+        ax.text(min(hi_marks[-1][1] * 1.0008, 0.9999), 1.0 / 150.0,
+                "   ".join(f"{n} {x:.4f}" for n, x, _ in hi_marks),
+                fontsize=7.0, color=TXT, ha="left", va="center", zorder=8)
 
     ax.set_ylim(lo, hi)
     if spacing == "logit":
@@ -191,7 +238,7 @@ def panel(ax, m, rng, spacing):
         ax.set_xlim(0, 1)
         ax.set_xlabel("density  $d = |X|/m$")
     ax.axvline(0.5, color="0.75", lw=0.6, ls=":", zorder=1)
-    ax.set_ylabel("expected cost  $\\div$  dense-bitmap cost")
+    ax.set_ylabel("cost $\\div$ dense bitmap")
     ax.yaxis.set_major_locator(LogLocator(base=10, numticks=12))
     ax.grid(True, which="major", axis="y", color="0.9", lw=0.5, zorder=1)
     for side in ("top", "right"):
@@ -222,24 +269,30 @@ def zone_panel(ax, spacing, wz=512):
 
     ax.set_yscale("log")
     lo, hi = 5e-4, 3.0
-    ax.axhspan(lo, 1.0, color=GREEN, alpha=0.10, lw=0, zorder=0)
-    ax.axhspan(1.0, hi, color="#CC3311", alpha=0.10, lw=0, zorder=0)
+    # The half-plane wash marks position relative to the BITMAP, which is
+    # achromatic, so the wash is achromatic too: tinting it green would put an
+    # R-coloured field under the R curve, spending a representation hue on a
+    # non-representation meaning.
+    ax.axhspan(1.0, hi, color=GREY, alpha=0.35, lw=0, zorder=0)
     ax.axhline(1.0, color=INK, lw=2.4, zorder=5)
 
-    ax.fill_between(d, best, worst, color=PURP, alpha=0.20, lw=0, zorder=2)
-    ax.plot(d, worst, color=PURP, lw=1.8, ls=(0, (1.8, 1.5)), zorder=4)
-    ax.plot(d, best,  color=PURP, lw=1.8, zorder=4)
+    # A zone map is a MECHANISM, not a representation, so it must not borrow
+    # W's purple. The saving it buys is the reserved "work avoided" accent, and
+    # the two arrangements are separated by line style, not by hue.
+    ax.fill_between(d, best, worst, color=SAVE, alpha=0.35, lw=0, zorder=2)
+    ax.plot(d, worst, color=REF, lw=1.6, ls=(0, (1.8, 1.5)), zorder=4)
+    ax.plot(d, best,  color=REF, lw=1.6, zorder=4)
     ax.axhline(1.0 / wz, color="0.45", lw=0.7, ls=":", zorder=3)
 
-    ax.text(6e-3, 0.42, "scattered\n(i.i.d.)", color=PURP, fontsize=7,
+    ax.text(6e-3, 0.42, "scattered\n(i.i.d.)", color=TXT, fontsize=7.2,
             ha="left", va="center", zorder=7)
-    ax.text(0.30, 3.0e-3, "clustered", color=PURP, fontsize=7,
+    ax.text(0.30, 3.0e-3, "clustered", color=TXT, fontsize=7.2,
             ha="right", va="top", weight="bold", zorder=7)
-    ax.text(1.3e-2, 3.6e-2, "what structure\nis worth", color="#6a2050",
+    ax.text(1.3e-2, 3.6e-2, "what structure\nis worth", color=TXT,
             fontsize=7.2, ha="center", va="center", style="italic", zorder=7)
-    ax.text(1.5e-6, 1.0 / wz * 1.35, "$1/W_z$ floor", color="0.35",
-            fontsize=6.8, ha="left", va="bottom", zorder=7)
-    ax.text(1.5e-6, 1.45, "B   plain dense bitmap", color=INK, fontsize=8,
+    ax.text(1.5e-6, 1.0 / wz * 1.35, "$1/W_z$ floor", color="0.45",
+            fontsize=7.0, ha="left", va="bottom", zorder=7)
+    ax.text(1.5e-6, 1.45, "B   plain dense bitmap", color=INK, fontsize=7.6,
             ha="left", va="bottom", weight="bold", zorder=7)
 
     j = int(np.argmin(np.abs(d - 0.01)))
@@ -254,7 +307,7 @@ def zone_panel(ax, spacing, wz=512):
         ax.set_xlim(0, 1)
         ax.set_xlabel("density  $d = |X|/m$")
     ax.axvline(0.5, color="0.75", lw=0.6, ls=":", zorder=1)
-    ax.set_ylabel("expected cost  $\\div$  plain-bitmap cost")
+    ax.set_ylabel("cost $\\div$ plain bitmap")
     ax.yaxis.set_major_locator(LogLocator(base=10, numticks=8))
     ax.grid(True, which="major", axis="y", color="0.9", lw=0.5, zorder=1)
     for side in ("top", "right"):
@@ -264,8 +317,8 @@ def zone_panel(ax, spacing, wz=512):
 def kappa_best(x, floor=0.0):
     """Cheapest single representation at density x, relative to a bitmap.
 
-    Analytic, from the same expressions the other panels use:
-      B 1;  S 32x;  C 32 min(x,1-x);  R 64 x(1-x);  W 1-(1-x)^128-x^128.
+    Analytic, from the same expressions the other panels use, with w = 64:
+      B 1;  S 64x;  C 64 min(x,1-x);  R 64 x(1-x);  W 1-(1-x)^128-x^128.
     """
     x = np.clip(x, 1e-12, 1 - 1e-12)
     cands = np.vstack([
@@ -314,39 +367,51 @@ def combo_panel(ax, spacing, wz=512):
     # magnitude -- not the margin over the runner-up.
     ax.set_yscale("log")
     lo, hi = 2e-5, 3.0
-    ax.axhspan(lo, 1.0, color=GREEN, alpha=0.10, lw=0, zorder=0)
-    ax.axhspan(1.0, hi, color="#CC3311", alpha=0.10, lw=0, zorder=0)
+    # The half-plane wash marks position relative to the BITMAP, which is
+    # achromatic, so the wash is achromatic too: tinting it green would put an
+    # R-coloured field under the R curve, spending a representation hue on a
+    # non-representation meaning.
+    ax.axhspan(1.0, hi, color=GREY, alpha=0.35, lw=0, zorder=0)
     ax.axhline(1.0, color=INK, lw=2.4, zorder=5)
 
-    # the two mechanisms alone, worst case, as thin references
-    ax.plot(d, repr_w, color=BLUE, lw=1.0, alpha=0.85, zorder=3)
-    ax.plot(d, zone_w, color=PURP, lw=1.0, ls=(0, (1.8, 1.5)), alpha=0.85, zorder=3)
+    # The two mechanisms alone are REFERENCES, so they take the reserved grey
+    # and are told apart by line style and a direct label -- not by borrowing
+    # S's blue and W's purple, which name representations elsewhere.
+    ax.plot(d, repr_w, color=REF, lw=1.1, zorder=3)
+    ax.plot(d, zone_w, color=REF, lw=1.1, ls=(0, (1.8, 1.5)), zorder=3)
 
-    # the composition, as a best-worst band
-    ax.fill_between(d, comp_b, comp_w, color="#117733", alpha=0.20, lw=0, zorder=2)
-    ax.plot(d, comp_w, color="#117733", lw=2.2, zorder=6)
-    ax.plot(d, comp_b, color="#117733", lw=1.1, ls=(0, (3, 2)), zorder=6)
+    # the composition -- the result -- as a best-worst band in the "avoided" accent
+    ax.fill_between(d, comp_b, comp_w, color=SAVE, alpha=0.40, lw=0, zorder=2)
+    ax.plot(d, comp_w, color=SAVE, lw=2.4, zorder=6)
+    ax.plot(d, comp_b, color=SAVE, lw=1.2, ls=(0, (3, 2)), zorder=6)
 
-    # depth markers: this is the point of the panel
-    for depth, lab in ((1e-1, "$10\\times$ less work"),
-                       (1e-2, "$100\\times$"),
-                       (1e-3, "$1000\\times$")):
+    # Depth markers. These state a SHARE of the bitmap's work, never a
+    # "N times less work" ratio, which has no well-defined referent.
+    for depth, lab in ((1e-1, "$10\\%$ of a bitmap"),
+                       (1e-2, "$1\\%$"),
+                       (1e-3, "$0.1\\%$")):
         ax.axhline(depth, color="0.75", lw=0.5, ls=":", zorder=1)
-        ax.text(0.9999, depth * 1.25, lab, color="0.45", fontsize=6.4,
+        ax.text(0.9999, depth * 1.25, lab, color="0.45", fontsize=6.8,
                 ha="right", va="bottom", zorder=7)
 
-    ax.text(3.5e-3, 0.55, "representation\nalone", color=BLUE, fontsize=6.8,
-            ha="right", va="center", zorder=7)
-    ax.text(4e-2, 0.30, "zone map alone", color=PURP, fontsize=6.8,
-            ha="left", va="center", zorder=7)
-    ax.text(1.5e-6, 3.6e-3, "composed", color="#117733", fontsize=8.5,
-            ha="left", va="bottom", weight="bold", zorder=7)
-    ax.text(1.5e-6, 1.0e-4, "solid = i.i.d. (worst)\ndashed = clustered (best)",
-            color="0.35", fontsize=6.4, ha="left", va="bottom", zorder=7)
+    # A frameless three-entry key replaces three free-floating labels that
+    # collided once the panel was set at its true printed height. The
+    # solid/dashed convention is stated in the caption.
+    ax.plot([], [], color=REF, lw=1.1, label="representation alone")
+    ax.plot([], [], color=REF, lw=1.1, ls=(0, (1.8, 1.5)), label="zone map alone")
+    ax.plot([], [], color=SAVE, lw=2.4, label="composed")
+    leg = ax.legend(loc="lower left", frameon=False, fontsize=6.8,
+                    handlelength=1.9, borderpad=0.1, labelspacing=0.25,
+                    handletextpad=0.5, bbox_to_anchor=(-0.01, -0.02))
+    leg.set_zorder(9)
 
+    # Values quoted in the caption are printed here so the two cannot drift.
     j = int(np.argmin(np.abs(d - 1e-3)))
-    print(f"    at d=1e-3 composed costs {comp_w[j]:.4f} of a bitmap "
-          f"({1/comp_w[j]:.0f}x less work), floor {1/wz:.5f} ({wz}x less)")
+    print(f"    at d=1e-3 composed costs {100*comp_w[j]:.2f}% of a bitmap "
+          f"(a bitmap does {1/comp_w[j]:.0f}x the work)")
+    print(f"    clustered floor 1/Wz = {100/wz:.3f}% of a bitmap; "
+          f"clustered cost at the dense end = {100*comp_b[-1]:.1f}%; "
+          f"knee where d^2*(64/Wz) = 1/Wz, i.e. d = 1/8, for every Wz")
 
     ax.set_ylim(lo, hi)
     if spacing == "logit":
@@ -356,7 +421,7 @@ def combo_panel(ax, spacing, wz=512):
         ax.set_xlim(0, 1)
         ax.set_xlabel("density  $d = |X|/m$")
     ax.axvline(0.5, color="0.75", lw=0.6, ls=":", zorder=1)
-    ax.set_ylabel("expected cost  $\\div$  plain-bitmap cost")
+    ax.set_ylabel("cost $\\div$ plain bitmap")
     ax.yaxis.set_major_locator(LogLocator(base=10, numticks=8))
     ax.grid(True, which="major", axis="y", color="0.9", lw=0.5, zorder=1)
     for side in ("top", "right"):
@@ -382,17 +447,20 @@ def split_panel(ax, spacing, wz=512):
         1.0 / wz + p * p,                                            # zone map
         1.0 / wz + p * p * kappa_best(np.clip(d / p, 0, 1), floor=k_full),
     ])
+    # The two reserved accents, on the figure's one non-representation axis:
+    # red = work still done, cyan = work avoided. The same pair carries the
+    # same meaning in panel a, so no colour changes sense across the figure.
     done = np.clip(env, 0, 1)
-    ax.fill_between(d, 0, done, color="#CC3311", alpha=0.28, lw=0, zorder=2)
-    ax.fill_between(d, done, 1.0, color=GREEN, alpha=0.35, lw=0, zorder=2)
-    ax.plot(d, done, color="#8c2d15", lw=1.8, zorder=5)
+    ax.fill_between(d, 0, done, color=COST, alpha=0.45, lw=0, zorder=2)
+    ax.fill_between(d, done, 1.0, color=SAVE, alpha=0.45, lw=0, zorder=2)
+    ax.plot(d, done, color=COST, lw=1.8, zorder=5)
 
-    ax.text(3e-5, 0.55, "work never done", color="#155c22", fontsize=10,
+    ax.text(1.3e-6, 0.30, "work never done", color=TXT, fontsize=8,
+            ha="left", va="center", weight="bold", zorder=7)
+    ax.text(0.5, 0.66, "work still\ndone", color=TXT, fontsize=7,
             ha="center", va="center", weight="bold", zorder=7)
-    ax.text(0.5, 0.42, "work\nstill\ndone", color="#8c2d15", fontsize=8,
-            ha="center", va="center", weight="bold", zorder=7)
-    ax.text(3e-5, 0.94, "a fixed-cost bitmap does all of it", color=INK,
-            fontsize=7.2, ha="center", va="top", zorder=7)
+    ax.text(1.3e-6, 0.95, "a fixed-cost bitmap does all of it", color=INK,
+            fontsize=7.2, ha="left", va="top", zorder=7)
     ax.axhline(1.0, color=INK, lw=2.0, zorder=6)
 
     frac = 1.0 - done
@@ -415,8 +483,7 @@ def split_panel(ax, spacing, wz=512):
 
 def build(spacing, stem):
     rng = np.random.default_rng(20260805)
-    plt.rcParams.update({"font.size": 11})
-    fig, axes = plt.subplots(2, 2, figsize=(9.4, 6.6))
+    fig, axes = plt.subplots(2, 2, figsize=(FIG_W, FIG_H))
     print("  panel a:")
     panel(axes[0][0], 1_048_576, rng, spacing)
     print("  panel b:")
@@ -425,11 +492,14 @@ def build(spacing, stem):
     combo_panel(axes[1][0], spacing)
     print("  panel d:")
     split_panel(axes[1][1], spacing)
+    # Panel letters match the LaTeX figure, whose panel a is the TikZ
+    # schematic set above this canvas. 9 pt bold, the same size and weight as
+    # the "a" that LaTeX sets, so no panel letter is larger than its neighbour.
     for ax, t in zip(axes.ravel(), ("b   representations", "c   zone maps",
                                     "d   both, composed",
                                     "e   how the work divides")):
-        ax.set_title(t, loc="left", fontsize=11, weight="bold")
-    fig.tight_layout(pad=0.6, w_pad=2.4, h_pad=1.8)
+        ax.set_title(t, loc="left", fontsize=9, weight="bold", pad=4)
+    fig.tight_layout(pad=0.4, w_pad=2.2, h_pad=2.0)
     for ext in ("pdf", "png"):
         fig.savefig(f"figures/{stem}.{ext}", dpi=220, bbox_inches="tight")
     print(f"wrote figures/{stem}.pdf/.png")

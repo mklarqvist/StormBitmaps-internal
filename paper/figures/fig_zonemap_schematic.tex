@@ -29,70 +29,90 @@
 }
 
 % ------------------------------------------------------------------ panel c
-\resizebox{.46\linewidth}{!}{%
+\resizebox{.506\linewidth}{!}{%
 \begin{simdpicture}
   % One verdict per bin, carried as a colour down the whole column, so the
-  % reader can trace a bin top-to-bottom: green = both sides occupy it and it
-  % must be visited; red = one side is empty there and it is skipped.
-  % Luminance differs as well as hue (dark green vs light rose), so the
-  % encoding survives greyscale, and the 0/1 digits repeat it redundantly.
-  \definecolor{visitc}{HTML}{117733}
-  \definecolor{skipc}{HTML}{CC6677}
+  % reader can trace a bin top-to-bottom. Colour here is the SAME reserved
+  % cost/saving axis used in the matplotlib panels of this figure and of
+  % Supplementary Fig. S1, and it means the same thing in all of them:
+  %   workc  = there is data here, so this bin costs work
+  %   avoidc = nothing here, so the work is skipped
+  % It formerly ran green-for-occupied against red-for-empty, which inverted
+  % the sense of green between this panel and panel e (where green marked work
+  % NEVER done) and spent R's representation hue on a non-representation
+  % meaning. Neither is true now.
+  %
+  % Colour is never the only encoding: the 0/1 digits, the tick/cross glyphs,
+  % the fill/text-contrast pairing (white on the dark accent, black on the
+  % light one) and the dashed bin rules each carry the verdict on their own,
+  % so the panel reads in greyscale.
+  \definecolor{workc}{HTML}{EE6677}
+  \definecolor{avoidc}{HTML}{66CCEE}
+  \colorlet{visitc}{workc}
+  \colorlet{skipc}{avoidc}
 
   % Each row is coloured by ITS OWN occupancy, so the AND row reads as the
-  % product of the two above it: green AND green = green, green AND red = red.
+  % product of the two above it: work AND work = work, work AND skip = skip.
   % Bin 1 is the instructive case -- B occupies it, A does not, so occ_B is
-  % green, occ_A is red, and the pair skips the bin.
-  \foreach \bin/\ca/\cb/\cn/\abits/\bbits/\oa/\ob/\an in {%
-      0/visitc/visitc/visitc/{0,1,0,0}/{0,0,1,0}/1/1/1,
-      1/skipc/visitc/skipc/{0,0,0,0}/{0,0,1,0}/0/1/0,
-      2/skipc/skipc/skipc/{0,0,0,0}/{0,0,0,0}/0/0/0,
-      3/visitc/visitc/visitc/{0,1,0,0}/{0,0,1,0}/1/1/1}{%
-    % operand rows: light tint of that row's own verdict, set bits at full
+  % red, occ_A is cyan, and the pair skips the bin.
+  %
+  % Type size: cells were \tiny against \scriptsize row labels inside one
+  % picture, so the digits rendered about 3.6 pt on the page. Both are
+  % \scriptsize now and the picture is scaled to render at roughly 8 pt, the
+  % same body size as the matplotlib panels beneath it.
+  \foreach \bin/\ca/\ta/\cb/\tb/\cn/\tn/\abits/\bbits/\oa/\ob/\an in {%
+      0/workc/white/workc/white/workc/white/{0,1,0,0}/{0,0,1,0}/1/1/1,
+      1/avoidc/black/workc/white/avoidc/black/{0,0,0,0}/{0,0,1,0}/0/1/0,
+      2/avoidc/black/avoidc/black/avoidc/black/{0,0,0,0}/{0,0,0,0}/0/0/0,
+      3/workc/white/workc/white/workc/white/{0,1,0,0}/{0,0,1,0}/1/1/1}{%
+    % Operand rows: light tint of that row's own verdict, set bits at full.
+    % Text colour tracks the fill so every digit stays legible on both accents
+    % -- white on the mid-tone red, black on the light cyan.
     \foreach \bit [count=\k from 0] in \abits {%
       \ifnum\bit=1\relax
-        \node[simd cell, fill=\ca, text=white, font=\tiny\ttfamily]
-          at (\bin*4+\k,3) {1};
-      \else \node[simd cell, fill=\ca!15, text=black!60, font=\tiny\ttfamily]
-          at (\bin*4+\k,3) {0};\fi}
+        \node[simd cell, fill=\ca, text=\ta, font=\scriptsize\ttfamily]
+          at (\bin*4+\k,2) {1};
+      \else \node[simd cell, fill=\ca!15, text=black!60, font=\scriptsize\ttfamily]
+          at (\bin*4+\k,2) {0};\fi}
     \foreach \bit [count=\k from 0] in \bbits {%
       \ifnum\bit=1\relax
-        \node[simd cell, fill=\cb, text=white, font=\tiny\ttfamily]
+        \node[simd cell, fill=\cb, text=\tb, font=\scriptsize\ttfamily]
           at (\bin*4+\k,0) {1};
-      \else \node[simd cell, fill=\cb!15, text=black!60, font=\tiny\ttfamily]
+      \else \node[simd cell, fill=\cb!15, text=black!60, font=\scriptsize\ttfamily]
           at (\bin*4+\k,0) {0};\fi}
     % summary rows, each in its own row's colour; the AND row is the product
-    \node[simd cell, fill=\ca, text=white, font=\tiny\ttfamily,
-          minimum width=4\simdcw] at (\bin*4,-2.4) {\oa};
-    \node[simd cell, fill=\cb, text=white, font=\tiny\ttfamily,
-          minimum width=4\simdcw] at (\bin*4,-4.1) {\ob};
+    \node[simd cell, fill=\ca, text=\ta, font=\scriptsize\ttfamily,
+          minimum width=4\simdcw] at (\bin*4,-1.7) {\oa};
+    \node[simd cell, fill=\cb, text=\tb, font=\scriptsize\ttfamily,
+          minimum width=4\simdcw] at (\bin*4,-3.1) {\ob};
     % the AND itself -- this is the mechanism, kept as bits
-    \node[simd cell, fill=\cn, text=white, font=\tiny\ttfamily,
+    \node[simd cell, fill=\cn, text=\tn, font=\scriptsize\ttfamily,
           minimum width=4\simdcw, line width=0.8pt, draw=black!70]
-      at (\bin*4,-5.8) {\an};
-    % and its readout, as a glyph
+      at (\bin*4,-4.5) {\an};
+    % and its readout, as a glyph. Glyphs are drawn dark rather than in the
+    % accent itself, so they stay the panel's most legible encoding.
     \node[simd cell, fill=\cn!12, minimum width=4\simdcw,
-          draw=\cn, line width=0.7pt] at (\bin*4,-7.5) {};
+          draw=\cn, line width=0.7pt] at (\bin*4,-5.9) {};
     \ifnum\an=1\relax
-      \draw[line width=1.1pt, draw=visitc, line cap=round, line join=round]
-        (\bin*4+1.62,-7.00) -- (\bin*4+1.86,-7.28) -- (\bin*4+2.40,-6.68);
+      \draw[line width=1.1pt, draw=workc!65!black, line cap=round, line join=round]
+        (\bin*4+1.62,-5.40) -- (\bin*4+1.86,-5.68) -- (\bin*4+2.40,-5.08);
     \else
-      \draw[line width=1.1pt, draw=skipc, line cap=round]
-        (\bin*4+1.72,-7.28) -- (\bin*4+2.28,-6.72)
-        (\bin*4+1.72,-6.72) -- (\bin*4+2.28,-7.28);
+      \draw[line width=1.1pt, draw=avoidc!55!black, line cap=round]
+        (\bin*4+1.72,-5.68) -- (\bin*4+2.28,-5.12)
+        (\bin*4+1.72,-5.12) -- (\bin*4+2.28,-5.68);
     \fi
   }
 
-  \node[simd label] at (-0.35,3.5) {$A$};
+  \node[simd label] at (-0.35,2.5) {$A$};
   \node[simd label] at (-0.35,0.5) {$B$};
-  \node[simd label] at (-0.35,-1.9) {$\mathrm{occ}_A$};
-  \node[simd label] at (-0.35,-3.6) {$\mathrm{occ}_B$};
-  \node[simd label] at (-0.35,-5.3) {$\mathrm{occ}_A \wedge \mathrm{occ}_B$};
-  \node[simd label] at (-0.35,-7.0) {visit?};
+  \node[simd label] at (-0.35,-1.2) {$\mathrm{occ}_A$};
+  \node[simd label] at (-0.35,-2.6) {$\mathrm{occ}_B$};
+  \node[simd label] at (-0.35,-4.0) {$\mathrm{occ}_A \wedge \mathrm{occ}_B$};
+  \node[simd label] at (-0.35,-5.4) {visit?};
   \foreach \b in {0,4,8,12,16}{
-    \draw[black!45, dashed, line width=0.35pt] (\b,-7.7) -- (\b,4.35);}
-  \simdbrace{0}{16}{-8.1}{popcount $=2$: visit bins 0 and 3, skip half the universe}
+    \draw[black!45, dashed, line width=0.35pt] (\b,-6.1) -- (\b,3.35);}
+  \simdbrace{0}{16}{-6.5}{popcount $=2$: visit bins 0 and 3, skip half the universe}
 \end{simdpicture}}
 
 
-\vspace{2mm}
+\vspace{0.4mm}

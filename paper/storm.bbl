@@ -102,16 +102,6 @@
   \bibinfo{pages}{1231--1242}, \doiprefix\url{10.1145/2463676.2465292}
   (\bibinfo{year}{2013}).
 
-\bibitem{lemire2016roaring}
-\bibinfo{author}{Lemire, D.}, \bibinfo{author}{Ssi-Yan-Kai, G.} \&
-  \bibinfo{author}{Kaser, O.}
-\newblock \bibinfo{journal}{\bibinfo{title}{Consistently faster and smaller
-  compressed bitmaps with {Roaring}}}.
-\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
-  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{1547--1569},
-  \doiprefix\url{10.1002/spe.2402} (\bibinfo{year}{2016}).
-\newblock \bibinfo{note}{ArXiv:1603.06549}.
-
 \bibitem{tomahawk_github}
 \bibinfo{author}{Klarqvist, M. D.~R.}
 \newblock \bibinfo{title}{{Tomahawk}: Fast calculation of {LD} and genotype
@@ -141,5 +131,15 @@
   Computer Science}}, \bibinfo{pages}{154--168},
   \doiprefix\url{10.1007/978-3-540-68552-4_12} (\bibinfo{publisher}{Springer},
   \bibinfo{year}{2008}).
+
+\bibitem{lemire2016roaring}
+\bibinfo{author}{Lemire, D.}, \bibinfo{author}{Ssi-Yan-Kai, G.} \&
+  \bibinfo{author}{Kaser, O.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Consistently faster and smaller
+  compressed bitmaps with {Roaring}}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{1547--1569},
+  \doiprefix\url{10.1002/spe.2402} (\bibinfo{year}{2016}).
+\newblock \bibinfo{note}{ArXiv:1603.06549}.
 
 \end{thebibliography}

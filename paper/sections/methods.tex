@@ -19,7 +19,7 @@ resolved by a single random probe. A run container (\rR) stores the set as $r$ m
 $(a,b)$ of contiguous set bits and, against a bitmap fitted with a rank index (below), costs
 $\Theta(r)$ --- independent of run length. A fill-compressed word stream (\rW, an EWAH-style
 encoding of literal words interleaved with run-length-coded fill words) costs
-$\Theta(\ell + f)$ against a bitmap, where $\ell$ is the literal-word count and $f$ the fill-word
+$\Theta(\ell + g)$ against a bitmap, where $\ell$ is the literal-word count and $g$ the fill-group
 count, and its fills are skipped in constant time using the same rank index used for \rR. A fifth
 view, the complement (\rC), does not add a representation to the symmetric matrix; it is a strategy,
 described in the next subsection, for reusing whichever of \rB, \rS, \rR or \rW is cheapest on a
@@ -27,11 +27,11 @@ row's complement when that row sits above density one-half.
 
 The cost of each symmetric cell is, in the notation above: $\cell{\rB}{\rB}=\Theta(m)$ (naive; made
 sub-linear by the zone-map filter below); $\cell{\rB}{\rS}=\Theta(|S|)$; $\cell{\rB}{\rR}=\Theta(r)$
-with a rank index; $\cell{\rB}{\rW}=\Theta(\ell+f)$; $\cell{\rS}{\rS}=\Theta(|A|+|B|)$ by merge or
+with a rank index; $\cell{\rB}{\rW}=\Theta(\ell+g)$; $\cell{\rS}{\rS}=\Theta(|A|+|B|)$ by merge or
 $\Theta(|A|\log(|B|/|A|))$ by galloping search when $|A|\ll|B|$; $\cell{\rS}{\rR}=\Theta(|S|+r)$ by
-merge or $\Theta(|S|\log r)$ by binary search into runs; $\cell{\rS}{\rW}=\Theta(|S|+\ell+f)$;
-$\cell{\rR}{\rR}=\Theta(r_A+r_B)$ by run merge; $\cell{\rR}{\rW}=\Theta(r_A+(\ell+f)_B)$; and
-$\cell{\rW}{\rW}=\Theta((\ell+f)_A+(\ell+f)_B)$. Every cell except $\cell{\rB}{\rB}$ is sub-linear in
+merge or $\Theta(|S|\log r)$ by binary search into runs; $\cell{\rS}{\rW}=\Theta(|S|+\ell+g)$;
+$\cell{\rR}{\rR}=\Theta(r_A+r_B)$ by run merge; $\cell{\rR}{\rW}=\Theta(r_A+(\ell+g)_B)$; and
+$\cell{\rW}{\rW}=\Theta((\ell+g)_A+(\ell+g)_B)$. Every cell except $\cell{\rB}{\rB}$ is sub-linear in
 the universe size $m$.
 
 \subsection*{The pairing matrix and its cells}
@@ -49,17 +49,14 @@ the symmetric matrix over \{\rB, \rS, \rR, \rW\}, and \cell{\rC}{\rB} is reporte
 strategy rather than folded into that count. Roaring is never constructed as a cell of this matrix; it
 is used throughout as an external baseline only (below).
 
-Each cell is implemented in its own source file (\texttt{cell\_bb.cpp}, \texttt{cell\_bs.cpp},
-\texttt{cell\_br.cpp}, \texttt{cell\_sparse.cpp}, \texttt{cell\_wah.cpp}, \texttt{cell\_comp.cpp}),
-against a shared representation layer (\texttt{storm\_repr.\{h,cpp\}}: \texttt{BitmapView},
-\texttt{ListView}, \texttt{RunView}, \texttt{EwahView}, \texttt{ComplementView}). Several of the
-asymmetric cells have more than one implemented strategy --- for example \cell{\rB}{\rR} has a
-rank-indexed variant and a scalar per-run-scan variant --- and each variant was raced against the
-independent oracle described below before being admitted to any comparison. The variant reported for
-a given cell in Results is the one selected as fastest for the density regime or corpus shape being
-reported, not a single fixed implementation chosen in advance; the full record of implemented variants,
-including those that did not win any regime, is not itemized in this paper and is available in the
-project repository.
+Each cell is implemented independently against a shared representation layer providing one view per
+format (bitmap, sorted list, run, EWAH-fill and complement). Several of the asymmetric cells have more
+than one implemented strategy --- for example \cell{\rB}{\rR} has a rank-indexed variant and a scalar
+per-run-scan variant --- and each variant was raced against the independent oracle described below
+before being admitted to any comparison. The variant reported for a given cell in Results is the one
+selected as fastest for the density regime or corpus shape being reported, not a single fixed
+implementation chosen in advance; the full record of implemented variants, including those that did
+not win any regime, is not itemized in this paper (Code availability).
 
 \subsection*{Zone-map and rank-index construction}
 
@@ -95,7 +92,7 @@ policy in the next subsection, and its necessity is established as a result rath
 procedure (Fig.~\ref{fig:selection-cost}c). This is a re-parameterization of established occupancy-summary mechanisms rather
 than a new one: BitFunnel's hierarchical block index \cite{goodwin2017bitfunnel}, WAH/EWAH's own
 uniform-fill words, and Lucene's sparse-block bitset all skip empty regions by a similar test; what is
-specific to this setting is applying the same test as an \emph{exact} work-count for all-pairs
+specific to this setting is applying the same test as an \emph{exact} work-count for
 intersection cardinality, where the summary's own popcount is the number of bins that must be visited
 rather than a heuristic estimate of it.
 
@@ -174,9 +171,9 @@ baseline every ratio in this paper is computed against. Four fields are recorded
 total container count. The threshold governing that choice is a vendor fact rather than a measurement
 of ours: CRoaring stores a $2^{16}$-bit chunk as an array container unless the chunk's own cardinality
 exceeds the compile-time constant \texttt{DEFAULT\_MAX\_SIZE}, whose value is
-\nm{value of \texttt{DEFAULT\_MAX\_SIZE} in the pinned CRoaring version} (declared at
-\texttt{roaring.h:2486} and tested at dispatch at \texttt{roaring.h:5515} in the pinned version
-below). The same fixed commitment prices a run container against a bitset by iterating every run and
+4096 (declared as
+\texttt{enum \{ DEFAULT\_MAX\_SIZE = 4096 \}} at \texttt{roaring.h:2486}, and tested at dispatch as
+\texttt{size <= DEFAULT\_MAX\_SIZE} at \texttt{roaring.h:5515}, in the pinned version below). The same fixed commitment prices a run container against a bitset by iterating every run and
 charging for its length (\texttt{run\_bitset\_container\_intersection\_cardinality},
 \texttt{roaring.c:10901}).
 
@@ -236,16 +233,16 @@ without re-explaining the variance underlying it at every mention.
 
 \subsection*{Correctness oracle and differential testing}
 
-Every cell variant is checked against an independent scalar oracle (\texttt{oracle.cpp}) that computes
-intersection cardinality by direct bit-by-bit or element-by-element counting, sharing no code path with
-any of the variants under test, before that variant is admitted to any timed comparison; a variant that
-returns a wrong cardinality is not reported as fast regardless of its measured speed. Correctness is
-tracked at three levels: an ABI-level regression suite (\texttt{test\_storm.c}, \nm{test\_storm check
-count} checks against the oracle, \nm{test\_storm failure count, expected "0"} failures) that is
-compiled and linked as C to serve as the public C ABI's own regression test; a cell-level differential
-suite (\texttt{test\_cells}, \nm{test\_cells check count} checks, \nm{test\_cells failure count,
-expected "0"} failures) that exercises every implemented cell variant against the oracle across a grid
-of densities, structures and alignments; and a larger differential run, on the order of
+Every cell variant is checked against an independent scalar oracle that computes intersection
+cardinality by direct bit-by-bit or element-by-element counting, sharing no code path with any of the
+variants under test, before that variant is admitted to any timed comparison; a variant that returns a
+wrong cardinality is not reported as fast regardless of its measured speed. Correctness is tracked at
+three levels: an ABI-level regression suite (\nm{test\_storm check count} checks against the oracle,
+\nm{test\_storm failure count, expected "0"} failures) that is compiled and linked as C to serve as
+the public C ABI's own regression test; a cell-level differential suite (\nm{test\_cells check count}
+checks, \nm{test\_cells failure count, expected "0"} failures) that exercises every implemented cell
+variant against the oracle across a grid of densities, structures and alignments; and a larger
+differential run, on the order of
 \nm{cross-architecture differential check count per host family}, executed once per host family during
 the cross-architecture measurement campaign. The public C ABI surface was verified independently with
 \texttt{nm}: \nm{count of unmangled STORM\_-prefixed exported symbols} unmangled \texttt{STORM\_}
@@ -278,8 +275,8 @@ All code was compiled with \nm{compiler name and version per host}, using \nm{co
 whether native-architecture dispatch (\texttt{-march=native} or equivalent) was enabled or disabled for
 a given reported number}. The CRoaring baseline used throughout is pinned at version
 \nm{CRoaring version pin, expected "v4.7.2" pending re-verification against current \texttt{master}},
-vendored at \texttt{third\_party/croaring\_amalg}, so that the exact baseline is reproducible rather
-than referred to generically as ``CRoaring.''
+vendored as a source amalgamation within the project repository, so that the exact baseline is
+reproducible rather than referred to generically as ``CRoaring.''
 
 \subsection*{Data and code availability}
 

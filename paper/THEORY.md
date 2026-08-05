@@ -1245,3 +1245,717 @@ Panel (b) is the one panel in the paper that can be built **today**, before any 
 Building it first is worth doing on its own: it fixes the mirrored-log axis, the palette assignment
 and the envelope styling that panel (c) then reuses, and it is the panel a reader needs in order to
 understand what panel (c) is a comparison against.
+
+---
+
+## 14. Which representation is optimal, and when — the container-threshold problem
+
+**Why this section exists, and what it adds to §§1–13.** Sections 1–13 establish that headroom
+exists (Thm A), that it is invisible to density (Thm B), and that the mechanisms must be selected
+between rather than stacked (P11c). None of them says *how to choose*, and none of them prices a
+choice against a stated objective. This section supplies the missing layer: it defines the decision
+problem, derives the boundary of every pairing's region of optimality, derives the array-to-bitset
+crossover as a **formula** rather than a constant, states in its strongest true form what is and is
+not wrong with a fixed threshold, and says exactly when metadata settles the decision.
+
+It is written against a concrete incumbent — CRoaring — because the incumbent's constants are the
+cleanest available instance of the general result, and because every claim about it below is checked
+against the vendored source rather than recalled. **CRoaring's threshold is the exact optimum of the
+objective it was chosen for.** Nothing here says otherwise; §14.3 derives that optimality before it
+derives anything else.
+
+Chunked setting, fixed once. The universe `[0,m)` is partitioned into **chunks** of `M` bits
+(CRoaring: `M = 2^16`), each chunk stored in its own representation. Within a chunk,
+`n = M/w` words (CRoaring on a 64-bit host: `n = 1024`), `k` is the chunk cardinality, `r` the chunk
+run count, `d = k/M` the **in-chunk** density. Array elements occupy `e` bits each (CRoaring:
+`e = 16`, verified — `array_container_serialized_size_in_bytes(card) = card * sizeof(uint16_t)`,
+`croaring_amalg/roaring.h:2621`).
+
+---
+
+### 14.1 The decision problem, stated precisely
+
+#### Definition 14.1 (cost model)
+
+For an operation `ω` and a representation pair `(ρ_A, ρ_B)`, the cell cost is
+
+```
+  C_ω(ρ_A, μ_A ; ρ_B, μ_B)  =  Σ_j  c_j · N_j(ω, ρ_A, μ_A, ρ_B, μ_B),
+```
+
+where `μ_X = (k_X, r_X, ℓ_X + g_X)` is the operand's metadata, the `N_j` are **counts of primitive
+items touched**, and the `c_j > 0` are per-item constants. Five item classes are used below:
+
+| class | constant | what it is |
+|---|---|---|
+| word AND-plus-popcount, vectorised | `c_w` | one 64-bit word of a bitset × bitset pass |
+| membership probe into a bitset | `c_p` | index, load, shift, test |
+| merge step | `c_m` | one advance of a two-pointer sorted merge |
+| galloping step | `c_g` | one exponential-search probe |
+| rank lookup | `c_ρ` | one `O(1)` rank query against a directory |
+
+**Every result below is a statement about the `N_j`.** The `c_j` enter only through the three ratios
+
+```
+  θ_pw = c_p/c_w ,     θ_mw = c_m/c_w ,     θ_ρw = c_ρ/c_w ,
+```
+
+and every threshold derived below is a function of those ratios and of `(M, w, e)`. The ratios are
+**measured, not derived** — this is the tier-3 boundary of `AGENTS.md`, and no number in this
+section is quotable as a timing claim without it. Nothing here converts operations to time; §9.2's
+guard rail applies verbatim, and **[GAP 12] applies with particular force to §14.6**, where the work
+model and the measurement disagree in sign.
+
+#### Definition 14.2 (the optimisation problem)
+
+Given a corpus `𝒳` of sets partitioned into chunks, a **pairing distribution** `π` over the chunk
+pairs actually evaluated, and an operation `ω`, choose an assignment `ρ : chunks → {S, B, R, W}`
+minimising
+
+```
+  C(ρ)  =  Σ_{(x,y) ~ π}  C_ω( ρ(x), μ_x ; ρ(y), μ_y )        subject to   Σ_x bytes(ρ(x), μ_x) ≤ F.
+```
+
+This is what "optimal representation" means here, and every claim below is relative to it. Three
+things are part of the problem instance and not of the container: the pairing distribution `π`, the
+operation `ω`, and the byte budget `F`.
+
+#### Proposition 14 (the query objective is not separable; the storage objective is)
+
+`Σ_x bytes(ρ(x), μ_x)` is a sum of per-container terms, so its minimiser is obtained by minimising
+each term independently. `C(ρ)` is a **quadratic** pseudo-Boolean function of the assignment: the
+cost of a pair depends on both operands' representations, so no per-container rule minimises it in
+general.
+
+**Proof.** The storage claim is immediate. For the query claim it suffices to exhibit a pair
+interaction, which Definition 14.1 supplies: `C_∩card(S,k_A;B,·) = c_p k_A` while
+`C_∩card(S,k_A;S,k_B) = c_m(k_A+k_B)`, so the cost attributable to `x` depends on `ρ(y)`. ∎
+
+**This, and not the value 4096, is the structural difference between the two objectives**, and it is
+the honest headline of the whole section. A storage-optimal assignment can be computed one container
+at a time with no knowledge of the workload. A query-optimal assignment cannot, because there is no
+such thing as the cost of a container — only the cost of a pair.
+
+---
+
+### 14.2 What CRoaring's rules are, read off the source
+
+#### Proposition 15 (all three CRoaring container decisions are `argmin` over serialized size)
+
+Verified against `third_party/croaring_amalg/`:
+
+| decision | rule as written | in the notation above | source |
+|---|---|---|---|
+| array ↔ bitset | bitset iff `k > DEFAULT_MAX_SIZE = 4096` | `e·k > M`, i.e. `2k > 8192` bytes | `roaring.h:2486`, `:2621`, `:3443` |
+| array → run | run iff `2 + 4r < 2k` | `bytes(R) < bytes(S)` | `roaring.c:9929–9941` |
+| bitset → run | run iff `2 + 4r < 8192` | `bytes(R) < bytes(B)` | `roaring.c:9963–9975` |
+
+Each is a **two-way** comparison of serialized sizes, and `DEFAULT_MAX_SIZE = 4096` is exactly the
+cardinality at which an array container and a bitset container occupy the same bytes. In general
+
+```
+  τ_storage  =  M / e            ( = 65536/16 = 4096 for CRoaring on any host ).
+```
+
+Note what `τ_storage` does **not** contain: `w`, any `c_j`, `π`, `ω`, or `F`. It is a function of the
+format alone. That is the correct answer to the storage question, and it is why it is a compile-time
+constant rather than a tuned one.
+
+#### Corollary 15a (`convert_run_optimize` is not confluent)
+
+Because each comparison is two-way and *which* two depends on the container's present type, the same
+set can end in different representations depending on how it arrived. From `ARRAY` the result is
+`RUN` iff `2+4r < 2k`; from `BITSET` it is `RUN` iff `2+4r < 8192`. The two disagree exactly on
+
+```
+  (k−1)/2  ≤  r  ≤  2047      and     k ≤ 4096.
+```
+
+**Worked instance.** `k = 3000`, `r = 1600`: array `6000` B, run `6402` B, bitset `8192` B. Arriving
+as `ARRAY` the container stays `ARRAY` (6402 ≥ 6000); arriving as `BITSET` it becomes `RUN`
+(6402 < 8192) — 402 bytes larger than the three-way `argmin`, for the same set.
+
+**Consequence, and it explains a measured regression.** A three-way `argmin` over
+`{bytes(S), bytes(B), bytes(R)}` is confluent, never larger than the present rule, and about ten
+lines. The non-confluence is also the mechanism behind the regression recorded in the vendored
+modification's own comment: lowering `DEFAULT_MAX_SIZE` *before* `run_optimize()` changes which
+comparison a borderline container is subjected to and can flip it into `RUN`, measured at a 46 %
+regression on `census1881` (`third_party/croaring_modified/roaring.c:16366–16401`). Running the
+promotion **after** `run_optimize()` sidesteps the interaction, which is what the vendored change
+does.
+
+---
+
+### 14.3 The crossover as a formula
+
+#### Proposition 16 (the three array-versus-bitset crossovers for count-only AND)
+
+Item counts, read off the kernels (`container_and_cardinality`, `croaring_amalg/roaring.h:6000`):
+`B×B` is `n` word AND-popcounts unconditionally (no early exit — the NEON and AVX2 `justcard` loops
+run the full `BITSET_CONTAINER_SIZE_IN_WORDS`, `roaring.c:8084`, `:7816`); `S×B` is `k_S` membership
+probes (`array_bitset_container_intersection_cardinality`, `roaring.c:10710`, a loop of
+`bitset_container_contains`); `S×S` is a two-pointer merge of `≤ k_A + k_B` steps, or a galloping
+pass of `≤ k_min⌈log₂(k_max/k_min)⌉` steps when `k_max > 64 k_min` (`roaring.c:6992–7016`).
+
+Then, for a container of cardinality `k` under count-only AND:
+
+**(i) Against a bitset partner.** Promote iff `c_w n < c_p k`, i.e.
+
+```
+  k  >  τ_∩(B-partner)  =  (c_w/c_p) · (M/w)  =  n / θ_pw .
+```
+
+**(ii) Against an array partner of cardinality `k_Y` (balanced regime).** Promotion turns a
+two-sided merge into a one-sided probe: `c_m(k + k_Y)  →  c_p k_Y`. Promote iff
+
+```
+  k  >  (θ_pm − 1) · k_Y ,        θ_pm = c_p/c_m .
+```
+
+In particular **if `c_p ≤ c_m` the promotion helps at every `k`** — a bitset is the cheapest thing to
+be probed *into*, so making one side dense is free work-avoidance for the other side.
+
+**(iii) Both sides promoted together, equal cardinality `k`.** Promote iff `c_w n < 2 c_m k`, i.e.
+
+```
+  k  >  τ_∩(symmetric)  =  n / (2 θ_mw) .
+```
+
+**Proof.** Each is the comparison of the two item counts named above; all are exact given
+Definition 14.1. ∎
+
+#### The general form, and the substitution
+
+Putting Proposition 15 and Proposition 16(i) side by side gives the whole finding as one ratio:
+
+```
+  τ_storage  =  M/e ,        τ_∩  =  (c_w/c_p)·(M/w) ,
+                                                              τ_storage      w
+                                                             ─────────  =  ─── · θ_pw .
+                                                               τ_∩          e
+```
+
+`w/e = 4` for CRoaring on a 64-bit host. **So the storage threshold exceeds the count-only-AND
+threshold by exactly `4 θ_pw`**, and the two objectives disagree by that factor and no other. This
+is the derived form of the finding; the constant `30–60×` quoted in `RESEARCH_PLAN.md` §26 is
+`τ_storage/τ_∩`, and substituting the measured crossover reproduces it:
+
+| substituted quantity | value | tier |
+|---|---|---|
+| measured symmetric crossover `τ_∩(symmetric)` | `k = 64–128` on the target host (C35) | **measured**, subject to re-measurement |
+| implied `θ_mw = c_m/c_w` from (iii), `n = 1024` | `4 – 8` | derived from the above |
+| implied `τ_storage/τ_∩(symmetric)` | `4096/64 = 64` to `4096/128 = 32` | derived |
+| reported in `RESEARCH_PLAN.md` §26 | "30–60× off for this workload" | matches |
+
+That the reported factor is recovered from `M/e` divided by a single measured crossover, with no
+free parameters, is the consistency check this section owes.
+
+> **Caveat, and it governs every substituted number in §14.** The campaign measured crossover
+> **(iii)**, which fixes `θ_mw ∈ [4, 8]`. It did **not** measure crossover **(i)**, which is the one
+> `τ_storage/τ_∩ = (w/e)θ_pw` is written in terms of. The two are related by
+> `θ_pw = θ_mw · θ_pm`, and `θ_pm = c_p/c_m` — a bitmap probe against a merge step — is
+> **unmeasured**. Where a numeric `θ_pw` is substituted below (`θ_pw = 16`), it assumes `θ_pm = 2`
+> alongside the measured `θ_mw = 8`. That assumption is plausible (a probe is an index, a load, a
+> shift and a test against a pointer advance and a compare) but it is **tier-1 until measured**, and
+> every `θ_pw`-dependent number in §14.8 inherits its uncertainty linearly. Measuring (i) and (iii)
+> together is one benchmark, it over-determines the model, and it would turn this assumption into a
+> checkable prediction — `θ_pm` computed two ways must agree.
+
+#### Theorem C (the two thresholds are the endpoints of one family, indexed by the price of a byte)
+
+Introduce a byte price `λ ≥ 0` and minimise `C(ρ) + λ·bytes(ρ)`. For the `{S,B}` decision on a
+container of cardinality `k` participating in `ν` pairs, write `Δw(k) ≥ 0` for the per-pair item
+saving from promotion and `Δb(k) = M/8 − e k/8` for the byte cost. The Lagrangian rule is
+
+```
+  promote  ⟺  ν · Δw(k)  >  λ · Δb(k).
+```
+
+Then, since `Δw` is non-decreasing in `k` and `Δb` is strictly decreasing:
+
+1. the rule is a **threshold rule** in `k` for every fixed `λ` and `ν`, with threshold `τ(λ, ν)`;
+2. `τ(λ, ν)` is non-decreasing in `λ`;
+3. `τ(0, ν) = τ_∩` and `τ(λ, ν) → τ_storage` as `λ → ∞`;
+4. the range of `τ(·, ν)` is, up to integer rounding, exactly the interval `[τ_∩, τ_storage]`.
+
+**Proof.** (1) `Δw(k)/Δb(k)` is non-decreasing in `k` on `k < τ_storage` (numerator non-decreasing,
+denominator positive and strictly decreasing), so `{k : νΔw > λΔb}` is an up-set; for `k ≥ τ_storage`
+we have `Δb ≤ 0 ≤ νΔw`, so those `k` are in the set for every `λ`. (2) The set shrinks pointwise as
+`λ` grows. (3) At `λ = 0` the rule is `Δw(k) > 0`, which is Proposition 16; as `λ → ∞` only `Δb ≤ 0`
+survives. (4) `τ(λ)` is the crossing point of two continuous functions of `k` and moves continuously
+between the two endpoints. ∎
+
+**Read this out loud, because it is the generous form of the finding.** `4096` and `64` are not a
+right answer and a wrong answer. They are `τ(∞)` and `τ(0)` of the same one-parameter family, and
+**every threshold between them is optimal for some price of a byte.** CRoaring's choice is the
+unique threshold at which promotion is *never* paid for in bytes — the largest threshold at which
+the compute-favourable move is footprint-neutral. That is a coherent and defensible objective for a
+general-purpose library whose users' workloads it cannot see.
+
+**One consequence worth isolating.** `τ(λ, ν)` depends on `ν`, the number of pairs the container
+participates in. Two containers with identical `k` and different `ν` have different optima whenever
+`λ > 0`. So under any byte budget the optimal rule is **not a function of the container at all**,
+and no per-container rule — CRoaring's or ours — attains it.
+
+---
+
+### 14.4 Regions of optimality in the parameter space
+
+Normalise every cost to units of one `B×B` chunk pass (`n c_w = 1`). With `k = d M = d w n`:
+
+| cell | normalised cost | derivation |
+|---|---|---|
+| `B×B` | `1` | P4 |
+| `S×B` | `θ_pw · w · d_A` | `c_p k_A / (n c_w)` |
+| `S×S`, balanced | `θ_mw · w · (d_A + d_B)` | merge |
+| `S×S`, skewed (`k_max > 64 k_min`) | `θ_gw · w · d_min · ⌈log₂(k_max/k_min)⌉` | galloping |
+| `R×B`, no rank index | `d_A + r_A/n` | `Σ_i⌈len_i/w⌉ + r ≈ k_A/w + r_A` words; verified below |
+| `R×B`, with rank index | `2 θ_ρw · r_A / n` | P5b |
+| `R×R` | `θ_mw · (r_A + r_B)/n` | P5b corollary |
+
+The `R×B`-without-rank row is not an assumption: `run_bitset_container_intersection_cardinality`
+(`roaring.c:10901`) loops over runs calling `bitset_lenrange_cardinality` (`roaring.h:1780`), which
+popcounts `⌈len/w⌉ + O(1)` words per run. Summing, `Σ_i ⌈len_i/w⌉ + r ≈ k/w + r` words.
+
+The boundaries follow by equating pairs of rows. Writing them in the form a selector would evaluate:
+
+```
+  S×B  beats  B×B      ⟺   k_A  <  n/θ_pw                            ( = τ_∩ )
+  S×S  beats  S×B      ⟺   k_B  <  (θ_pm − 1) k_A
+  S×S  beats  B×B      ⟺   k_A + k_B  <  n/θ_mw
+  R×B  beats  B×B      ⟺   r_A  <  n/(2θ_ρw)                          [rank index]
+  R×B  beats  S×B      ⟺   r_A  <  k_A · θ_pw/(2θ_ρw)                 [rank index]
+  R×R  beats  R×B      ⟺   r_A + r_B  <  2θ_ρw r_A/θ_mw
+```
+
+Four readings, each of which is a design rule rather than a curiosity.
+
+1. **`τ_∩ = n/θ_pw` is the only boundary that involves the universe.** Every other boundary is a
+   comparison between two data-proportional quantities. That is Proposition 4 reappearing: `B` is the
+   sole representation indexed by the universe, so it is the sole source of a *fixed* threshold.
+2. **`R×B` beats `S×B` iff the mean run length `L̄ = k_A/r_A` exceeds `2θ_ρw/θ_pw`.** A run
+   container wins over a sorted array against a bitset partner as soon
+   as runs are longer than a small machine-dependent constant, *independently of density*. That is
+   the container-level statement of Theorem B.
+3. **The rank index is not an unconditional improvement over `bitset_lenrange_cardinality`.**
+   Comparing the two `R×B` rows, rank wins iff `2θ_ρw r < k/w·n/n + r`, i.e. iff the **mean run
+   length** satisfies
+
+   ```
+     L̄  =  k/r   >   w · (2θ_ρw − 1).
+   ```
+
+   The asymptotic statement is nonetheless clean and is P5b: the present cost is `Θ(k/w + r)` and is
+   therefore a function of run *length*, while a rank index makes it `Θ(r)` and independent of it.
+   The gain factor is exactly `1 + L̄/w`, unbounded in `L̄`. `θ_ρw` is unmeasured and must be
+   measured before any claim of benefit; the condition, not the benefit, is what is derived here.
+4. **Skew is a separate axis from density.** The galloping row is the only one whose cost is
+   sublinear in the larger operand, and its region — `k_max > 64 k_min` in CRoaring — is a region in
+   the *ratio* of cardinalities, invisible to any per-container rule. A per-container decision cannot
+   express it, which is Proposition 14 again.
+
+---
+
+### 14.5 Is a fixed threshold ever optimal?
+
+This is the load-bearing result and the one easiest to state falsely. It is therefore stated first in
+the direction that **weakens** the paper's rhetoric, because that version is true and the stronger
+one is not.
+
+#### Proposition 17 (a fixed threshold *is* optimal, under five hypotheses)
+
+Assume
+
+- **H1** the candidate set is `{S, B}` only;
+- **H2** the operation is count-only AND;
+- **H3** the constants `c_j` do not depend on the resident footprint;
+- **H4** there is no byte budget (`λ = 0`);
+- **H5** every container faces the same partner mix.
+
+Then the optimal assignment is the fixed cardinality threshold `τ_∩` of Proposition 16, which is a
+function of `(M, w)` and the machine constants only — **independent of the corpus and of the
+pairing distribution.**
+
+**Proof.** Under H1–H2 the cost of a pair is one of the four entries of Proposition 16. Under H5 the
+promotion decision for a container is the same functional of `k` for every container; under H4 there
+is no coupling through the budget; the decision is then the threshold comparison of Proposition 16,
+which under H3 has workload-independent constants. ∎
+
+**So "no fixed constant is optimal" is false as an unqualified statement.** Anyone asserting it must
+drop at least one of H1–H5, and must say which. The rest of this subsection drops them one at a time
+and shows each drop is real.
+
+#### Theorem D (each hypothesis fails, and each failure has an exact witness)
+
+**(a) Dropping H1 — run containers.** No rule that reads cardinality alone can implement `argmin`
+over `{S, B, R}`. By **Theorem B**, at fixed `k` the run count attains *every* integer in
+`[1, min(k, M−k+1)]`. The `R×B` cost is strictly increasing in `r` (both rows of §14.4) while the
+`S×B` cost does not depend on `r`. Hence two containers of the same cardinality have different
+optimal representations, and any `k`-only rule mis-ranks one of them. **Exact**; it is Corollary B
+specialised from selectors-in-general to the container decision.
+
+**(b) Dropping H5 — partner mix.** Let a container of cardinality `k` face bitset partners with
+probability `β` and array partners of mean cardinality `k̄` otherwise. Promotion is favourable iff
+
+```
+  β c_p k + (1−β) c_m (k + k̄)   >   β c_w n + (1−β) c_p k̄ ,
+```
+
+so the optimal threshold is
+
+```
+                β c_w n  +  (1−β)(c_p − c_m) k̄
+  τ*(β, k̄)  =  ────────────────────────────────  ,
+                    β c_p  +  (1−β) c_m
+```
+
+which interpolates between `τ*(1, ·) = n/θ_pw = τ_∩` and `τ*(0, k̄) = (θ_pm − 1) k̄`. **`τ*` is a
+statistic of the workload, not of the machine**: two corpora with the same containers and different
+pairing distributions have different optima. **Exact**, given Definition 14.1.
+
+*The fixed point, and why the decision is self-referential.* `β` is not exogenous — the partners are
+containers subject to the same rule. Writing `β(τ)` for the pair-weighted fraction of partners with
+`k > τ`, an optimal fixed threshold must satisfy `τ = τ*(β(τ), k̄(τ))`. Both sides are bounded and
+`τ*` is continuous in `β`, so a fixed point exists on `[0, M]` by the intermediate value theorem
+whenever `β` is continuous; it need not be unique. **A library's container threshold is therefore a
+fixed point of its own workload, which is exactly why it cannot be a compile-time constant without
+choosing an objective that removes the dependence — as the storage objective does.**
+
+**(c) Dropping H4 — the byte budget.** Theorem C: the threshold is the dual variable of the
+footprint constraint and sweeps `[τ_∩, τ_storage]`. **Exact.**
+
+**(d) Dropping H2 — the operation.** Two facts, in this order.
+
+*First, for cardinality-only queries the operation dimension collapses, and this is not an
+approximation.* CRoaring computes `|A∪B|`, `|A∖B|` and `|A△B|` from `|A∩B|` by inclusion–exclusion
+(`roaring.c:17900–17922`: `or_cardinality` returns `c1+c2−inter`, `andnot_cardinality` `c1−inter`,
+`xor_cardinality` `c1+c2−2·inter`). So **all four cardinality queries have the same cost matrix**,
+and no operation-dependence exists for them. This closes, for the container decision, the part of
+[GAP 11] that concerns cardinality: the map cannot differ by operation when three of the operations
+are the fourth plus two subtractions.
+
+*Second, for **materialising** operations the matrix differs in sign.* A materialising union with a
+bitset operand must produce a bitset-sized result: `B×B` union costs `n` words, and `S×B` union costs
+`n` words *plus* `k_S` insertions. Hence against a bitset partner, promotion **always** helps for
+materialising union (it removes the `c_p k` term at no cost), whereas for count-only AND it helps
+only above `τ_∩ > 0`. The two thresholds are therefore `0` and `τ_∩`, and **no single stored
+assignment is optimal for a workload mixing the two** unless one dominates. **Exact**, given the
+item counts.
+
+**(e) Dropping H3 — residency.** `c_w` is not a constant: a bitset chunk is `M/8` bytes and an array
+chunk is `ek/8`, so promoting a container multiplies its footprint by
+
+```
+  M / (e k)   =   τ_storage / k ,
+```
+
+which is `64×` at `k = 64` and `1×` at `k = τ_storage`. **This is the second reading of
+`τ_storage`, and it is the important one:** `τ_storage` is the unique threshold at which promotion
+never inflates the working set. Every lower threshold buys items with bytes at an exchange rate of
+`τ_storage/k − 1`, and the bytes are paid in `c_w`, which rises as the corpus leaves cache. This is
+the **only** one of the five hypotheses whose failure is not analytic, and it is the one the
+measurements say dominates — see §14.6.
+
+#### How far a fixed choice can be from optimal
+
+Bounded exactly, under H1–H3 and H5, against the family `{τ(λ)}` of Theorem C. A container at
+cardinality `k` paired with bitsets costs `min(c_p k, c_w n)` at the optimum and `c_p k` or `c_w n`
+under a fixed `τ`. The worst case sits at the far endpoint:
+
+```
+  max_k  C(τ_storage; k) / C(τ_∩; k)   =   c_p τ_storage / (c_w n)   =   τ_storage / τ_∩   =   (w/e)·θ_pw ,
+```
+
+attained at `k = τ_storage`; and symmetrically, running at `τ_∩` inflates the footprint of a
+`k = τ_∩` container by `τ_storage/τ_∩`. **The exchange rate is the same number in both directions.**
+Substituting the measured *symmetric* crossover (`k = 64–128`, so reading `τ_∩` as `τ_∩(symmetric)`
+— the two coincide only under the `θ_pm = 2` assumption of §14.3) it is `32–64×`, which is the
+`30–60×` of `RESEARCH_PLAN.md` §26, derived.
+
+**The honest summary of §14.5, in one sentence.** A fixed threshold is optimal for a fixed objective
+on a homogeneous workload with two candidate representations; the incumbent's constant is exactly
+that optimum for the storage objective; and every one of the five hypotheses that makes the
+statement true is violated by the workloads either project cares about, each with an exact witness
+above.
+
+---
+
+### 14.6 What the work model does not explain, and this is a finding
+
+Under Definition 14.1, promoting every container above `τ = τ_∩(symmetric) = n/(2θ_mw)` is **weakly
+beneficial on every pair it affects**, provided `θ_pm ≤ 2`:
+
+- both sides promoted (`k, k' > τ`): before `c_m(k+k')`, after `c_w n = 2 c_m τ`, and `k+k' > 2τ`;
+- one side promoted (`k > τ`, partner an array with `k_Y ≤ τ`): before `c_m(k+k_Y)`, after
+  `c_p k_Y = θ_pm c_m k_Y`, and `(θ_pm − 1) k_Y ≤ k_Y ≤ τ < k`;
+- neither promoted: unchanged.
+
+The work model therefore predicts that lowering the threshold from `τ_storage` to `τ_∩` never loses.
+(The condition `θ_pm ≤ 2` is the assumption of §14.3's caveat, and it is exactly what makes the
+second case go through — a stronger `θ_pm` would leave a band `τ < k < (θ_pm−1)k_Y` where the work
+model itself predicts a loss. That band is not where the measured losses are, so it is not the
+explanation.)
+
+**It loses.** C35 measures `0.8×` on `uscensus2000` and `0.6×` on `as-skitter` — sparse corpora —
+against `19.5×` on `census1881`. The sign flip is not in the item counts.
+
+The mechanism is Theorem D(e). On a sparse corpus most containers sit just above `τ_∩`, so promotion
+multiplies their footprint by `τ_storage/k ≈ 30–60×` while removing only a handful of merge steps
+each; the corpus leaves cache and `c_w` rises for every bitset pair, including the ones promotion did
+not touch. This is **the same divergence as [GAP 12]**, in a second and independent instance: an
+analytic model of work, correct as far as it goes, mis-signs a decision because the penalty lives in
+the memory system. Recording it here rather than eliding it, because the pattern is now twice
+observed and is itself a result:
+
+> **A work model can price a representation choice but cannot price its footprint, and footprint
+> re-enters the work model as a multiplier on the very constant the choice was evaluated with.**
+
+The constructive consequence is Theorem C read backwards: the byte price `λ` is not an accounting
+fiction, it is the mechanism by which residency enters, and `λ` should be **fitted per host and per
+corpus** rather than set to `0` or `∞`. The two constants in the field today are the two limits.
+
+---
+
+### 14.7 When the decision is settled by metadata, and when it provably is not
+
+Two identifiability questions are easy to conflate and must not be. §1 asks what metadata determines
+about the **answer**; this subsection asks what it determines about the **decision**. They have
+different answers and the difference is favourable.
+
+#### Proposition 18 (determinability of the decision)
+
+Let `μ(X)` be the metadata held about `X` and say the decision is **determinable from `μ`** if
+`argmin` over the candidate cells is a function of `(μ_A, μ_B)` alone.
+
+1. **If `μ = (k, r, ℓ+g)` the decision is determinable exactly, in `O(1)`, touching no operand
+   data.** Every cost in §14.4 is a closed-form function of `(μ_A, μ_B, n, w)` and the constants, so
+   the `argmin` is too. This is the formal content of "selection must be near-free", and it is a
+   consequence of the cost model rather than an engineering aspiration.
+2. **If `μ = (k) alone the decision is not determinable** whenever the candidate set contains `R`.
+   Theorem D(a) is the witness. Adding one integer per container — the run count — restores
+   determinability; adding cardinality precision does not.
+
+#### Proposition 19 (the robustness band: the decision is either determined or immaterial)
+
+Suppose each constant `c_j` is known only up to a multiplicative factor `√γ` in each direction, so
+that any modelled cost is known within a factor `γ ≥ 1`. Order the candidate cells by modelled cost,
+`C₁ ≤ C₂ ≤ …`, and define the **margin** `Λ = C₂/C₁`. Then:
+
+- if `Λ > γ`, the true ordering of the two best cells is determined by `μ`, and the selector's choice
+  is correct;
+- if `Λ ≤ γ`, the ordering is not determined by `μ` — **and the cost of choosing wrong is at most
+  `γ`, by the definition of `Λ`.**
+
+**Proof.** If `Λ > γ` then even the most adverse admissible perturbation of the constants leaves
+`C₁ < C₂`. If `Λ ≤ γ` then `C₂ ≤ γ C₁`, and the second-best cell costs at most `γ` times the best. ∎
+
+**So for every pair, either the metadata settles the decision or the decision does not matter to
+within the precision of the constants.** The undetermined set is a `γ`-neighbourhood of the
+boundaries of §14.4 — the **mid-band of the decision** — and it is not a region where a selector
+fails; it is a region where it cannot lose by more than `γ`.
+
+**How this connects to §1, and the connection is the point.** Proposition 2 says the *answer* is
+pinned by cardinality only at the density extremes, leaving `m·s` values open in the middle.
+Proposition 19 says the *decision* is pinned everywhere except a `γ`-neighbourhood of a boundary,
+and that the exception is bounded loss rather than unbounded error. **The mid-band of the answer and
+the mid-band of the decision are different regions with different consequences**, and the paper must
+not let a reader merge them: at `d = ½` cardinality determines nothing about the answer while
+determining the decision completely — `B×B`, by Proposition 12.
+
+**The caveat that makes `γ` interesting rather than cosmetic.** `γ` is the uncertainty in the
+*model*, not in the constants alone. §14.6 and [GAP 12] show the work model and measured time
+diverge by more than three orders of magnitude in at least one regime, so on the residency axis `γ`
+is not small. **That is the derived motivation for probe-and-commit**: not that models are bad, but
+that `γ` is large exactly where the model omits the memory system, and measurement is the only way
+to shrink it. This is a narrower and more defensible statement than "the theory implies
+probe-and-commit" (which Corollary B's guard rail forbids) — it says only that `γ` is large in a
+named regime, and that a mechanism which reduces `γ` is worth its cost there.
+
+---
+
+### 14.8 Why an advantage survives repairing the incumbent's kernel
+
+The finding of C35 removes a kernel-level advantage. The claim that replaces it is that the
+avoidance layer still wins over the *repaired* baseline. That claim needs a proof of orthogonality,
+not a measurement, because the obvious objection — "then put the avoidance layer in Roaring too" —
+is correct and should be met by offering exactly that (`ROARING_PROPOSALS.md`), not by denying it.
+
+#### Proposition 20 (exact decomposition, and the invariance)
+
+Write the total cost of a batch of pairwise queries as
+
+```
+  C(ρ)  =  C_meta  +  Σ_{(A,B) ∈ 𝒫_surv}  Σ_{z ∈ Z(A,B)}  C_cell( ρ(A|z), ρ(B|z) ) ,
+```
+
+where `𝒫_surv ⊆ 𝒫` are the pairs not discarded by metadata and `Z(A,B)` the regions actually
+visited. Then:
+
+1. **`𝒫_surv` and `Z(A,B)` are functions of the metadata and the data only, and are invariant under
+   every change to `ρ`.** The size bound reads `(a,b)`; the zone-map test reads bin occupancy; the
+   thresholded mode reads `(a,b,t)`. None reads a representation, and representations are exact and
+   interconvertible (§0), so changing `ρ` changes no membership.
+2. Consequently, for a **uniform** kernel improvement by a factor `α > 1` (every `C_cell` divided by
+   `α`),
+
+   ```
+                       C_base/α                         C_base
+     G(α)  =  ────────────────────────────  =  ──────────────────────────  ,
+              C_meta + N_surv Ē_surv / α        α C_meta + N_surv Ē_surv
+   ```
+
+   where `C_base = N_all · Ē_all` is the same batch with no avoidance. `G` is **invariant in `α`
+   exactly when `C_meta = 0`, and decreases in `α` only through `C_meta`'s share of the
+   post-avoidance cost.**
+
+**Proof.** (1) is the statement that the three tests are functions of quantities `ρ` does not enter.
+(2) is substitution. ∎
+
+**This is the proof the claim needs, and it also states its own limit.** Improving the kernel cannot
+subsume avoidance, because avoidance changes *which* work is asked for and the kernel changes only
+what the asked-for work costs. But the advantage is not perfectly invariant: a faster kernel raises
+the relative weight of the summary, so `G` erodes toward `C_base/(α C_meta)`. **The erosion is
+governed by the summary's share of the post-avoidance cost**, which is precisely what
+Proposition 11c's window measures — and it predicts the sign of the C35 result: on sparse corpora
+where the summary dominates, repairing the kernel erodes the advantage most.
+
+#### Proposition 21 (which savings multiply and which do not)
+
+By the composition rule (`NARRATIVE.md` §2, and `theory_block.tex` Eq. `shortfall`): mechanisms
+multiply when they act on different waste **and read different operand statistics**.
+
+- **The zone map multiplies with container choice.** It reads bin occupancy; container choice reads
+  cardinality and run count. Different statistics, different waste. ✔
+- **The size bound does *not* multiply with container choice.** Both read cardinality, and in
+  opposite directions: the size bound's survivors are the pairs with `a ≈ b`, while every cell in
+  §14.4 is cheapest when `a` and `b` are *dissimilar* (the `S×B` and galloping rows are functions of
+  `min(a,b)` against a fixed `B×B`). The composed cost exceeds the product by
+  `E[min(a,b) | survivor] / E[min(a,b)] → ln K / 2`. ✘ — **and this is a new instance of the
+  falsified-composition rule, not a restatement: it says a paper reporting a container-threshold gain
+  and a size-bound gain must not multiply them.**
+
+#### The shape of the surviving advantage, and what it predicts
+
+Under the null model of §5, working **inside a chunk both operands occupy** (so the incumbent is
+credited its chunk-key skip in full), with the incumbent using the compute-optimal container
+threshold of Proposition 16 — i.e. the *repaired* baseline — and the challenger adding a zone map of
+bin width `W_z` at overhead `c/W_z`:
+
+```
+                     κ_Ro(d)                                    θ_pw w d ,  d < 1/(θ_pw w)
+  G(d)  =  ───────────────────────────  ,      κ_Ro(d) = min(1, θ_pw w d) = {
+            c/W_z  +  p_A p_B · κ(d/p)                                        1 ,        otherwise
+```
+
+with `p = 1 − (1−d)^{W_z}` (Proposition 11b) and `κ` the §5 envelope.
+
+**Two exact consequences, and the second is a design rule that did not exist before.**
+
+1. In the sparse band `κ(d/p) ≡ 1`, because `d/p → 1/W_z` and a bin holding one bit in `W_z` is
+   *above* the compute crossover whenever `W_z ≤ θ_pw w`. Substituting `p ≈ x` for `x = W_z d ≪ 1`,
+
+   ```
+     G(x)  =  θ_pw w x / ( c + W_z (1 − e^{−x})² ) ,
+   ```
+
+   maximised at `x* = √(c/W_z)`, giving
+
+   ```
+                    θ_pw · w
+     G_max  =  ─────────────────  ,      at   d*  =  √c / W_z^{3/2} ,
+                2 √( c · W_z )
+   ```
+
+   **valid on `(θ_pw w √c)^{2/3} ≤ W_z ≤ θ_pw w`**, and both edges bind. Below the lower edge
+   `d*` would exceed `1/(θ_pw w)`, where `κ_Ro` saturates at `1` and the peak is capped. Above the
+   upper edge `κ(d/p) < 1` — the concentrated content of an occupied bin falls *below* the compute
+   crossover — and the peak saturates at the `W_z`-independent value `√(θ_pw w / c)/2`. At
+   `θ_pw = 16`, `w = 64`, `c = 2` the valid window is `128 ≤ W_z ≤ 1024` and the saturated value is
+   `11.3×`. *An earlier draft of this paragraph quoted `5.7×` at `W_z = 4096` by applying the closed
+   form outside its range; the correct value there is `11.3×`.*
+
+2. **`W_z* = θ_pw · w` is the bin width at which a singly-occupied bin sits exactly at the
+   array/bitset compute crossover.** Above it the summary hands the kernel bins it should enumerate;
+   below it, bins it should popcount. The zone-map granularity and the container threshold are
+   therefore governed by the *same* measured ratio, which is a link neither §7 nor §14.3 had.
+
+**Substituting.** With `θ_pw = 16` — the measured `θ_mw = 8` times the **assumed** `θ_pm = 2`, per
+the caveat in §14.3, so every number in this table scales linearly with an unmeasured constant —
+`w = 64`, `c = 2`:
+
+| `W_z` | `G_max`, closed form | `G_max`, numeric scan | at in-chunk density `d*` | note |
+|---|---:|---:|---:|---|
+| 64 | — (below range) | `28.6×` | `9.8 × 10⁻⁴` | `κ_Ro` saturated; peak is capped, not given by the formula |
+| 128 | `32.0×` | `34.0×` | `9.8 × 10⁻⁴` | lower edge of validity; `d*` sits exactly at the crossover |
+| 256 | `22.6×` | `23.7×` | `3.8 × 10⁻⁴` | |
+| 512 | `16.0×` | `16.5×` | `1.3 × 10⁻⁴` | the configuration the figures use |
+| 1024 | `11.3×` | `11.6×` | `4.5 × 10⁻⁵` | upper edge, `W_z = θ_pw w` |
+| ≥ 1024 | `11.3×` (saturated) | `11.4×` | — | `κ(d/p) < 1`; formula no longer applies |
+
+The numeric column is a direct scan of `G(d)` on a `2 × 10⁵`-point geometric grid over
+`d ∈ [10⁻⁸, ½]`, with no approximation of `p`; the closed form agrees within `4 %` across its range.
+At `W_z = 512` the band over which `G ≥ 5×` is `d ∈ [2.0 × 10⁻⁵, 1.1 × 10⁻³]`, and `G > 1` exactly on
+`d ∈ [3.8 × 10⁻⁶, 1.2 × 10⁻²]`. The lower edge is Proposition 11c's `d_low` with the per-item
+constants carried:
+
+```
+  d_low  =  c / (θ_pw · w · W_z)   =  3.81 × 10⁻⁶      ( matched to three figures by the scan ).
+```
+
+P11c's tabulated `d_low = c/(w W_z)` is the `θ_pw = 1` case — it normalised a sorted array at one
+word per element. Charging a probe its measured cost moves the window down by `θ_pw`, and the upper
+edge from `x ≈ 5` to `x ≈ 6.2` in `x = W_z d`. **Nothing structural changes; the window is the same
+window with the constants in it**, which is what §14 adds to §7 throughout.
+
+**What this predicts, said plainly, including where it disagrees.** On **structureless** data the
+derivation caps the exact-mode advantage over a repaired incumbent at about `32×`, attained at
+`W_z ≈ 128`, and puts the `≥5×` band inside two decades of in-chunk density. A measured range of
+`5–50×` is therefore **consistent at its lower and middle range and exceeds the structureless
+ceiling at its top**, and the theory already says which way that must go: Proposition 10 makes the
+deviation one-sided, `σ_R ≥ ½` and unbounded above, so real corpora can only be cheaper than the
+null at the same density. **The excess above `32×` is attributable to structure and must be reported
+as such**, not as agreement. Two further caveats bound the comparison: `κ_Ro` here is a two-cell
+envelope and under-credits an incumbent whose run containers are working; and the thresholded mode
+(rung 3) is excluded entirely — Eq. `survive` supplies `6.9×` to `90×` on its own, and by
+Proposition 21 that factor **must not be multiplied** into the numbers above.
+
+---
+
+### 14.9 Result ledger for §14 (extends §11)
+
+| # | Result | Status |
+|---|---|---|
+| D14.1 | cost model: items × measured constants; three ratios `θ_pw, θ_mw, θ_ρw` | **definition**; constants are tier-3, unmeasured except as noted |
+| D14.2 | the decision problem: `argmin` over assignments, under `π`, `ω`, `F` | **definition** |
+| P14 | storage objective is separable; query objective is quadratic in the assignment | **exact** |
+| P15 | all three CRoaring container rules are `argmin` over serialized bytes; `τ_storage = M/e` | **exact**, verified against `croaring_amalg` source with line references |
+| Cor 15a | `convert_run_optimize` is not confluent; disagreement region `(k−1)/2 ≤ r ≤ 2047`, `k ≤ 4096` | **exact**, by the two inequalities in the source; worked instance `k=3000, r=1600` |
+| P16 | three crossovers: `n/θ_pw`, `(θ_pm−1)k_Y`, `n/(2θ_mw)` | **exact** given D14.1 |
+| — | `τ_storage/τ_∩ = (w/e)·θ_pw`; substitution reproduces the reported `30–60×` | **derived**, from one measured crossover, no free parameters |
+| **Thm C** | `τ(λ)` sweeps `[τ_∩, τ_storage]`; the two constants are the two limits | **exact**, given monotone `Δw`, strictly decreasing `Δb` |
+| — | `τ(λ,ν)` depends on the pair count `ν`, so no per-container rule is optimal under a budget | **exact** |
+| §14.4 | region boundaries for `S×B`, `S×S`, `R×B`, `R×R` | **exact** given D14.1; `θ_ρw` unmeasured, so the `R×B` rank condition is a condition, not a claim |
+| **P17** | a fixed threshold **is** optimal under H1–H5, and equals `τ_∩` | **exact** — and it is the reason the negative result must be stated carefully |
+| **Thm D(a)** | dropping `R` in: no `k`-only rule can rank `R` against `S` | **exact**, from Theorem B |
+| **Thm D(b)** | `τ*(β,k̄)`; workload-dependent; fixed point exists, may not be unique | **exact** for `τ*`; the fixed-point existence needs `β` continuous |
+| **Thm D(c)** | byte budget ⇒ Theorem C | **exact** |
+| **Thm D(d)** | cardinality queries: **no** operation dependence (inclusion–exclusion, verified in source). Materialising ops: thresholds `0` vs `τ_∩`, opposite signs | **exact** |
+| **Thm D(e)** | footprint multiplier `τ_storage/k`; `τ_storage` is the unique footprint-neutral threshold | **exact** as arithmetic; its *consequence* for `c_w` is **not** analytic — [GAP 12] |
+| — | worst-case regret of a fixed threshold `= τ_storage/τ_∩ = (w/e)θ_pw`, both directions | **exact** under H1–H3, H5 |
+| §14.6 | the work model mis-signs the sparse-corpus case; footprint re-enters through `c_w` | **finding**, not a theorem; measured evidence is C35, analytic explanation is D(e) |
+| **P18** | determinable from `(k, r, ℓ+g)` in `O(1)`; not determinable from `k` alone with `R` present | **exact** |
+| **P19** | margin `Λ > γ` ⇒ determined; `Λ ≤ γ` ⇒ loss bounded by `γ` | **exact**, and it is a statement about the *model*, so `γ` must absorb [GAP 12] |
+| **P20** | `𝒫_surv`, `Z` are `ρ`-invariant; `G(α) = C_base/(αC_meta + N_survĒ_surv)` | **exact** |
+| **P21** | zone map × container choice multiplies; size bound × container choice does not | **exact** given the composition rule; the shortfall factor is `ln K/2` |
+| — | `G_max = θ_pw w / (2√(cW_z))` at `d* = √c/W_z^{3/2}`; `W_z* = θ_pw w` | **exact given the null model**; a model of **work**; substituted values depend on one measured crossover |
+
+**Three things §14 does not establish, recorded here so the prose cannot drift into them.**
+
+1. **No lower bound on algorithmic work appears anywhere in §14.** Every comparison is between
+   achievable costs, as in §9.1. `τ_∩` is not a floor; it is where two achieved costs cross.
+2. **No timing claim follows.** `θ_pw`, `θ_mw`, `θ_ρw` are measured ratios and only one of the three
+   has been measured even indirectly. Every substituted number above is conditional on that
+   measurement and is marked as such.
+3. **§14.8's `G` is a null-model prediction of work.** It is a floor on the mechanism's value
+   (Proposition 10 makes the deviation one-sided) and not a prediction of any measurement. Where it
+   disagrees with the measured range, §14.8 says so rather than reconciling.

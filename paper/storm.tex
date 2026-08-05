@@ -57,10 +57,22 @@
   \newcommand{\nm}[1]{\textcolor{red}{\textbf{[#1]}}}
   \newcommand{\spec}[1]{\textcolor{blue!70!black}{#1}}
   \newcommand{\prov}[1]{\textcolor{orange!85!black}{#1}}
+  % \draftnote{...} is scaffolding for us, never manuscript prose: provenance
+  % caveats, campaign status, internal cross-references. Vanishes entirely
+  % outside draft mode, so nothing repo-internal can reach a submitted PDF.
+  \newcommand{\draftnote}[1]{\textcolor{gray}{\footnotesize [#1]}}
 \else
-  \newcommand{\nm}[1]{#1}
+  % Outside draft mode \nm and \prov must not render. \nm{n/a} would silently
+  % typeset the literal words "n/a"; \prov would ship a retired-campaign number
+  % as if it were final. Both are submission-blocking and neither is visible in
+  % a proofread of black-on-white output, so make the BUILD fail instead: the
+  % non-draft PDF cannot exist until every slot is filled.
+  \newcommand{\nm}[1]{\GenericError{}{storm: unfilled \string\nm{#1} outside
+    draft mode -- the final campaign must supply this value}{}{}}
+  \newcommand{\prov}[1]{\GenericError{}{storm: provisional \string\prov{#1}
+    outside draft mode -- refresh from the final campaign}{}{}}
   \newcommand{\spec}[1]{#1}
-  \newcommand{\prov}[1]{#1}
+  \newcommand{\draftnote}[1]{}
 \fi
 
 % Placeholder for a figure whose data the final campaign has not yet produced.
@@ -95,6 +107,7 @@ avoidance; set intersection; SIMD}
 \input{sections/results_b}
 \input{sections/discussion}
 \input{sections/methods}
+\input{sections/supplementary}
 
 % wlscirep.cls already issues \bibliographystyle{naturemag-doi}; repeating it
 % makes bibtex report "Illegal, another \bibstyle command".

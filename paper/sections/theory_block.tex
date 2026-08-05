@@ -5,23 +5,14 @@ a dense-bitmap kernel \emph{spends} and what a cheaper but equally exact algorit
 operands \emph{already achieves}, and representations whose cost is a function of structure rather
 than of the universe can enter it. Both compared quantities are achieved; neither lower-bounds the
 work the problem demands, and no such bound is claimed here. Every representation is exact and
-interconvertible --- \rB, \rS, \rR, \rW\ and the complement view \rC\ encode the same set and
-every cell returns the same cardinality --- so nothing is approximated and only the cost changes.
-
-Every result below is an answer to one question in two parts: how much of the computation can be
-skipped, and how is that known before doing it. The order is fixed by that question. What
-cardinality alone determines bounds what the cheapest metadata can settle; the fixed cost of \rB\
-against the achievable cost of the cheapest descriptor gives the headroom; a null model over
-arrangement says what the headroom is worth on structureless data; the deviation from that null
-says what it is worth in fact and rules out a family of selectors; and the composition result says
-when consulting a summary is cheaper than computing the answer. Everything through that point holds
-for the exact question and changes only the cost of answering it; two paragraphs near the end state
-separately what becomes available when a caller narrows the question instead, and they are the only
-results here that do not return the same answer as a dense-bitmap pass. The Results section states the
-consequences of these in prose and the Introduction states the chain without notation; only this
-subsection carries the conditions under which each holds. Every quantity here is a count of stored
-items or of operations, never a time, and the constants that separate the two are given under
-``Benchmark protocol and cache-residency statement''.
+interconvertible --- \rB, \rS, \rR, \rW\ and the complement view \rC\ encode the same set and every
+cell returns the same cardinality --- so nothing is approximated and only the cost changes. Every
+quantity below is a count of stored items or of operations, never a time; the constants that convert
+one to the other are measured, not derived, and are given under ``Benchmark protocol and
+cache-residency statement''. Each result is stated here with its hypotheses; the proof, the worked
+numerical checks and the secondary propositions that support but do not themselves state a result are
+in Supplementary Note 8, for the results up to and including the size bound, and Supplementary
+Note 9, for the representation-choice optimisation problem that follows it.
 
 Write $A,B \subseteq [0,m)$, $a=|A|$, $b=|B|$, densities $d_A=a/m$, $d_B=b/m$, word width $w$, vector
 width $V$ words per operation. Complementation is an involution on density, $d\mapsto 1-d$, so define
@@ -33,35 +24,36 @@ Given only $a$ and $b$ --- the cheapest metadata any selector holds --- the answ
 \max(0,\,a+b-m) \;\le\; |A \cap B| \;\le\; \min(a,\,b),
 \label{eq:interval}
 \end{equation}
-by $A\cap B\subseteq A,B$ and $|A\cup B|\le m$, and every integer in the range is realised. Its width
-is the quantity the rest of this subsection turns on:
+and every integer in the range is realised (Supplementary Note 8). Its width is the quantity the rest
+of this subsection turns on:
 \begin{equation}
 \min(a,b)-\max(0,a+b-m) \;=\; \min\,(\,a,\;b,\;m-a,\;m-b\,) \;=\; m\,\min(s_A,s_B) \;=\; m\,s .
 \label{eq:width}
 \end{equation}
-Those four terms are the sizes of the four lists one could enumerate --- $A$, $B$, $A^{c}$, $B^{c}$
---- so the uncertainty is the size of the smallest, and one near-empty or near-full side collapses it
-alone. Above density one half the floor lifts off zero at $(d_A+d_B-1)m$, saying the complements can
-at most be disjoint: at $d_A=d_B=0.51$, two per cent of the universe must overlap.
+The four terms are the sizes of the four lists one could enumerate --- $A$, $B$, $A^{c}$, $B^{c}$ ---
+so the uncertainty is the size of the smallest, and one near-empty or near-full side collapses it
+alone. Above density one half the floor lifts off zero at $(d_A+d_B-1)m$: at $d_A=d_B=0.51$, two per
+cent of the universe must overlap.
 
 \paragraph*{The fixed cost, and therefore the headroom.}
 A dense bitmap stores $\lceil m/w\rceil$ words whatever it contains, so $\cell{\rB}{\rB}$ performs
 $\lceil m/(wV)\rceil$ vector AND-plus-popcount operations per pair, independently of $a$, $b$, of
-structure, and of the answer. Against that, let each operand $X$ be available as a bitmap and as a
+structure, and of the answer. Against that, suppose each operand $X$ is available as a bitmap and as a
 sorted array of whichever of $X$, $X^{c}$ is smaller --- $\Theta(m\,s_X)$ of space, the choice made
-from $a$, $b$, $m$ in $O(1)$. Then $|A\cap B|$ is answered in $O(m\,s)$ membership probes: enumerate
-the smallest list in Eq.~\eqref{eq:width}, recovering the cardinality by inclusion--exclusion when it
-is a complement. Counting descriptor items touched, and taking $w \mid m$,
+from $a$, $b$, $m$ in $O(1)$; no rank index is needed for this result. Then $|A\cap B|$ is answered in
+$O(m\,s)$ membership probes (four cases, one per term of Eq.~\eqref{eq:width}; Supplementary Note 8).
+Counting descriptor items touched, and taking $w \mid m$,
 \begin{equation}
 \frac{\text{items touched by } \cell{\rB}{\rB}}{\text{items touched by the cheapest list-based cell}}
 \;=\; \frac{\lceil m/w\rceil}{m\,s} \;=\; \frac{1}{w\,s},
 \label{eq:headroom}
 \end{equation}
-which exceeds one whenever $s<1/w$ and grows without bound as either operand leaves density one half.
-That is the headroom, derived rather than observed. Two of the four cases need a complement view,
-which is why \rC\ is part of the design rather than an afterthought for the dense tail. Charging
-measured per-item costs --- a random probe against a vector word --- turns it into a crossover in $s$
-of \nm{measured crossover in effective sparsity}.
+which exceeds one whenever $s<1/w$ and grows without bound as either operand leaves density one half
+--- the headroom, derived rather than observed, and a comparison of two \emph{achieved} costs, not a
+lower bound on any algorithm's work. Two of the four cases need a complement view, which is why \rC\
+is part of the design rather than an afterthought for the dense tail. Charging measured per-item
+costs --- a random probe against a vector word --- turns it into a crossover in $s$ of
+\nm{measured crossover in effective sparsity}.
 
 \paragraph*{From descriptor length to operation count.}
 Everything else here counts \emph{stored items}, a fact about representation size; the paper's claim
@@ -72,16 +64,18 @@ $\{[u_i,v_i)\}_{i=1}^{r}$. The runs partition $B$, so
 |A \cap B| \;=\; \sum_{i=1}^{r}\big(\,\mathrm{rank}_A(v_i)-\mathrm{rank}_A(u_i)\,\big),
 \label{eq:rank}
 \end{equation}
-in exactly $2r$ lookups --- independent of $m$, of $|A|$, of $|B|$, and of the run lengths. A run of
-any length is priced as a run of length one, because the kernel never looks inside it; symmetrically
-$\cell{\rR}{\rR}$ by merge costs $O(r_A+r_B)$ with no index. This is what makes a run count a cost
-parameter and not merely a storage parameter, and it is the only bridge between the two here. It
-reaches \emph{operation count}, not time: per-operation constants still differ across cells.
+in exactly $2r$ lookups --- independent of $m$, of $|A|$, of $|B|$, and of the run lengths
+(Supplementary Note 8). A run of any length is priced as a run of length one, because the kernel never
+looks inside it; symmetrically $\cell{\rR}{\rR}$ by merge costs $O(r_A+r_B)$ with no index. This is
+what makes a run count a cost parameter and not merely a storage parameter, and it is the only bridge
+between the two here: it reaches \emph{operation count}, not time, since per-operation constants still
+differ across cells.
 
 \paragraph*{What randomness would predict.}
 Let each position be set independently with probability $d$, and write $\kappa(\rho)$ for the number
 of stored items representation $\rho$ must touch. The first two entries below are exact; the last two
-are the leading-order forms of exact Bernoulli expectations, written in $s=\min(d,1-d)$,
+are the leading-order forms of exact Bernoulli expectations (Supplementary Note 8), written in
+$s=\min(d,1-d)$,
 \begin{equation}
 \mathbb{E}\,\kappa(\rB) = \Big\lceil \tfrac{m}{w} \Big\rceil, \quad
 \mathbb{E}\,\kappa(\rS) = m\,d, \quad
@@ -90,200 +84,282 @@ are the leading-order forms of exact Bernoulli expectations, written in $s=\min(
 \label{eq:expected}
 \end{equation}
 where $\kappa(\rR)$ counts maximal runs and $\kappa(\rW)$ literal words plus fill groups. With the
-complement view making the best of \rS\ and $\rC\!\circ\!\rS$ cost $m\,s$, every entry is constant
-in $s$ or strictly increasing on $[0,\tfrac12]$, and each is symmetric about $d=\tfrac12$ by
-construction: under this null model the U-shaped cost curve is a theorem --- about the model and the
-bitmap's flatness, not about any method. Randomness also gives run containers nothing, since
+complement view making the best of \rS\ and $\rC\!\circ\!\rS$ cost $m\,s$, every entry is constant in
+$s$ or strictly increasing on $[0,\tfrac12]$ and symmetric about $d=\tfrac12$: under this null model the
+U-shaped cost curve is a theorem --- about the model and the bitmap's flatness, not about any method.
+Randomness gives run containers nothing either, since
 $\tfrac12 m s\le\mathbb{E}\,\kappa(\rR)\le m\,s+1$, so choosing \emph{among} \{\rS,
-$\rC\!\circ\!\rS$, \rR, \rW\} buys at most a constant on structureless data. The bitmap is the
-exception and the exception is the point: $\kappa(\rB)$ is $\lceil m/w\rceil$ at every density, so
-the spread across the full matrix is Eq.~\eqref{eq:headroom} and unbounded. It is the envelope, not
-each cell, that follows $\Theta(\min(m/w,\,m\,s))$.
+$\rC\!\circ\!\rS$, \rR, \rW\} buys at most a constant on structureless data. \rB\ is the exception and
+the exception is the point: $\kappa(\rB)$ is $\lceil m/w\rceil$ at every density, so the spread across
+the full matrix is Eq.~\eqref{eq:headroom} and unbounded. It is the envelope, not each cell, that
+follows $\Theta(\min(m/w,\,m\,s))$.
 
 \paragraph*{The deviation, which is the contribution.}
 Real data is not random, and the representations part company with Eq.~\eqref{eq:expected} in a way
 density cannot express. At fixed density $d\le\tfrac12$ with $k=dm$, $\kappa(\rB)$ and $\kappa(\rS)$
-are constants --- functions of $(m,k)$ alone --- while $\kappa(\rR)$ ranges over every integer in
-$[1,k]$ and $\kappa(\rW)$ from $O(1)$ to $\Theta(\min(k,m/w))$; the extremes are $[0,k)$, one run,
-and $\{\,i\lfloor m/k\rfloor : 0\le i<k\,\}$, of cardinality exactly $k$ and stride at least two,
-hence $k$ of them. Concretely $A=[0,\tfrac{m}{2})$ and $B=[\tfrac{m}{4},\tfrac{3m}{4})$ both sit at
-density one half, where Eq.~\eqref{eq:width} leaves $\tfrac{m}{2}+1$ feasible answers and
-Eq.~\eqref{eq:expected} predicts $m/4$ runs apiece; each in fact has one, and Eq.~\eqref{eq:rank}
-answers the pair in two lookups where $\cell{\rB}{\rB}$ spends $\lceil m/w\rceil$ word operations.
-Writing $\sigma(\rho,X)$ for predicted descriptor length at $X$'s density over actual, $\sigma$ is
-identically one for \rB\ and \rS, at least $\max(d,\,1-d+\tfrac{1}{m})\ge\tfrac12$ for \rR, and
-unbounded above: real rows can be arbitrarily cheaper than random rows of the same density and at
-most about twice as expensive.
+are constants, while $\kappa(\rR)$ ranges over every integer in $[1,k]$ and $\kappa(\rW)$ from $O(1)$
+to $\Theta(\min(k,m/w))$ (Theorem B, proved by explicit families in Supplementary Note 8). Writing
+$\sigma(\rho,X)$ for predicted descriptor length at $X$'s density over actual, $\sigma$ is identically
+one for \rB\ and \rS, at least $\max(d,\,1-d+\tfrac{1}{m})\ge\tfrac12$ for \rR, and unbounded above:
+real rows can be arbitrarily cheaper than random rows of the same density and at most about twice as
+expensive.
 
 One impossibility follows, exactly. A selector reading density --- or cardinality, or any function of
 them --- evaluates one fixed function on every row of that density, so by the range above it
-mis-predicts $\kappa(\rR)$ by an unbounded factor on some rows at every density; a fixed
-representation cannot exploit $\sigma$ either, having committed before $\sigma$ is knowable. That
-rules out a family of selectors without choosing among the survivors, and two further readings do not
-follow: whether a mis-predicting model costs more than selecting nothing depends on which cell it
-picks and that cell's actual cost, which is measured (Fig.~\ref{fig:selection-cost}b), not derived;
-and a run or occupancy count is $O(1)$ metadata that sees $\sigma$ perfectly and could feed a model.
-What is proved is that selection must be gated on a statistic that sees structure rather than on
-cardinality --- structural summary or direct kernel measurement is settled below, by measurement.
+mis-predicts $\kappa(\rR)$ by an unbounded factor on some rows at every density; a fixed representation
+cannot exploit $\sigma$ either, having committed before $\sigma$ is knowable. That rules out a family
+of selectors without choosing among the survivors, and two further readings do not follow: whether a
+mis-predicting model costs more than selecting nothing depends on which cell it picks and that cell's
+actual cost, which is measured (Fig.~\ref{fig:selection-cost}b), not derived; and a run or occupancy
+count is $O(1)$ metadata that sees $\sigma$ perfectly and could feed a model. What is proved is that
+selection must be gated on a statistic that sees structure rather than on cardinality --- structural
+summary or direct kernel measurement is settled below, by measurement.
 
 \paragraph*{The null model is a floor, and it is the same floor three times.}
-Independent placement at fixed density is not a typical case to be corrected for; it is the
-\emph{extremal} arrangement for every mechanism used here, and always in the same direction. For a
-representation, Eq.~\eqref{eq:expected} gives $\mathbb{E}\,\kappa(\rR)=m\,s(1-s)$ against a maximum
-of $\min(k,m-k+1)$ over arrangements, so the null sits within a factor of two of the worst
-achievable descriptor and $\sigma(\rR,X)\ge\max(d,1-d+\tfrac1m)\ge\tfrac12$ at every density.
-Throughout, $\sigma$ is defined against the \emph{fixed-cardinality} null, $k(m-k+1)/m$ runs, which
-conditions on the observable $k$ and is exact; it differs from the Bernoulli form of
-Eq.~\eqref{eq:expected} by $O(1)$ and nothing below depends on the choice. For a
-zone map of bin width $W_z$, the occupied-bin fraction is $p=1-(1-d)^{W_z}$ under independence
-against $p=d$ when every run spans a bin, and $1-(1-d)^{W_z}\ge d$ for all $d\in[0,1]$ and
-$W_z\ge1$, with equality only at the endpoints: scattering maximises occupancy, so the summary's
-null cost is an upper bound on its cost and a lower bound on its value. For the prefix filter of the
-thresholded mode, with prefix length $p(X)=|X|-\lceil t|X|\rceil+1$, the probability that two
-scattered prefixes share an element is $1-e^{-y}$ in $y=p^2/m$ --- so the entire mechanism depends
-on the operands through that one dimensionless quantity --- and any ordering that concentrates rare
-elements into prefixes makes real prefixes collide less often than scattered ones of the same
-length.
-
-The consequence is uniform and it is the reason selection is measured rather than modelled. In each
-case the null is what the mechanism is worth on data with no structure to find; real data deviates
-from it only in the mechanism's favour; the magnitude of that deviation is not a function of density
-and so is invisible to any cost model whose inputs are cardinalities; and it is exactly the quantity
-the mechanism converts into avoided work.
-
+Independent placement at fixed density is the \emph{extremal} arrangement for every mechanism used
+here, always in the same direction (proofs in Supplementary Note 8). For a representation,
+Eq.~\eqref{eq:expected} sits within a factor of two of the worst achievable descriptor. For a zone map
+of bin width $W_z$, scattering maximises the occupied-bin fraction, so the summary's null cost is an
+upper bound on its cost and a lower bound on its value. For the prefix filter of the narrowed-contract
+mode, the entire mechanism depends on the operands through one dimensionless quantity, and any ordering
+that concentrates rare elements into prefixes makes real prefixes collide less often than scattered
+ones of the same length. In each case the null is what the mechanism is worth on data with no
+structure to find, real data deviates from it only in the mechanism's favour, and that deviation is
+exactly the quantity the mechanism converts into avoided work.
 
 \paragraph*{Where the headroom vanishes.}
 At $s=\tfrac12$ the interval has width $m/2$ and excludes nothing, the cheapest list-based cell spends
-$m/2$ probes against $\lceil m/w\rceil$ words, and Eq.~\eqref{eq:expected} offers neither \rR\ nor
-\rW\ an advantage: Eq.~\eqref{eq:headroom} falls below one. In the generic case the mid-density band
-belongs to $\cell{\rB}{\rB}$, and a selector choosing it there is correct rather than defeated. The
-qualification is carried throughout --- this bounds what cardinality determines absent structure, not
-what any kernel must spend, and the structured example above is a counterexample to the unqualified
-form. It is also why the zone map of the next subsection matters in the one band where cardinality is
-useless.
+$m/2$ probes against $\lceil m/w\rceil$ words, and Eq.~\eqref{eq:expected} offers neither \rR\ nor \rW\
+an advantage: Eq.~\eqref{eq:headroom} falls below one. In the generic case the mid-density band belongs
+to $\cell{\rB}{\rB}$, and a selector choosing it there is correct rather than defeated. This bounds what
+cardinality determines absent structure, not what any kernel must spend --- call it a \emph{metadata}
+or \emph{identifiability floor}, never an information-theoretic one --- and a structured row at exactly
+this density is a counterexample to the unqualified form (Supplementary Note 8). It is also why the
+zone map of the next paragraph matters in the one band where cardinality is useless.
 
 \paragraph*{Why the two mechanisms are selected between rather than stacked.}
 Composing a zone map with a representation is not the product of the two, because filtering
-\emph{concentrates} what it passes on: conditioned on a bin of width $W_z$ being occupied its
-expected local density is $d/p$, $p=1-(1-d)^{W_z}$, not $d$ --- no summary hands a kernel anything
-sparser than one bit per bin. Charging the summary pass $c/W_z$ of a bitmap scan and taking the
-operands independent, the composed cost relative to a plain bitmap is
+\emph{concentrates} what it passes on: conditioned on a bin of width $W_z$ being occupied its expected
+local density is $d/p$, $p=1-(1-d)^{W_z}$, not $d$ --- no summary hands a kernel anything sparser than
+one bit per bin (Supplementary Note 8). Charging the summary pass $c/W_z$ of a bitmap scan and taking
+the operands independent, the composed cost relative to a plain bitmap is
 \begin{equation}
 \frac{c}{W_z} \;+\; p_A\,p_B\;\kappa\!\Big(\frac{d}{p}\Big),
 \label{eq:compose}
 \end{equation}
 $\kappa\le1$ being the envelope of Eq.~\eqref{eq:expected} normalised against the bitmap. The
-composition therefore never costs more than the summary alone, yet is floored at $c/W_z$, below
-which a sparse representation is cheaper outright --- three regimes, the middle one exactly
-$x e^{-x} > c/w$ in $x = W_z d$ bits per bin, opening where the summary undercuts enumeration and
-closing where bins stop being empty. This is the analytic form of the gating result of
-Fig.~\ref{fig:selection-cost}c, and it models \emph{work}: it bounds where a filter has work to
-remove and says nothing about what one costs when it removes nothing.
+composition never costs more than the summary alone, yet is floored at $c/W_z$, below which a sparse
+representation is cheaper outright --- three regimes, the middle one exactly $x e^{-x} > c/w$ in
+$x = W_z d$ bits per bin, opening where the summary undercuts enumeration and closing where bins stop
+being empty. This is the analytic form of the gating result of Fig.~\ref{fig:selection-cost}c, and it
+models \emph{work}: it bounds where a filter has work to remove and says nothing about what one costs
+when it removes nothing.
 
 \paragraph*{Each mechanism's liability is two-sided, for unrelated reasons at the two ends.}
-A summary is indexed by the universe while every compressed representation is indexed by the data,
-so their costs must cross. Charging the summary $c/W_z$ of a bitmap scan as in
-Eq.~\eqref{eq:compose}, and a one-word-per-element representation $w\,d$, the low crossing is
+A summary is indexed by the universe while every compressed representation is indexed by the data, so
+their costs must cross. Charging the summary $c/W_z$ of a bitmap scan as in Eq.~\eqref{eq:compose},
+and a one-word-per-element representation $w\,d$, the low crossing is
 \begin{equation}
 d_{\mathrm{low}} \;=\; \frac{c}{w\,W_z} \;=\; 3.1\times10^{-5} \qquad (c=1,\; w=64,\; W_z=512),
 \label{eq:dlow}
 \end{equation}
-below which reading the summary costs more than enumerating the operands outright: at
-$d = 10^{-6}$ it does $31\times$ the work of enumerating them. At the other end $p_Ap_B\to1$: no bin is empty, the summary proves
-nothing, and only its own $c/W_z$ remains. A run- or fill-based representation crosses at its own
-density, wherever its descriptor length falls below $m/W_z$, but that a crossing exists at all is
-generic. Prefix filtering has the same shape in $y=p^2/m$: for $y\ll1$ the surviving fraction is $y$
-itself, so pruning improves quadratically as prefixes shorten, while for $y>1$ prefixes collide by
-default and the index earns nothing. This is why no mechanism here is applied unconditionally, and
-why each gate is a two-sided test rather than a threshold.
+below which reading the summary costs more than enumerating the operands outright (Supplementary
+Note 5). At the other end $p_Ap_B\to1$: no bin is empty, the summary proves nothing, and only its own
+$c/W_z$ remains. A run- or fill-based representation crosses at its own density, wherever its
+descriptor length falls below $m/W_z$, but that a crossing exists at all is generic. Prefix filtering
+has the same shape in $y=p^2/m$: for $y\ll1$ the surviving fraction is $y$ itself, so pruning improves
+quadratically as prefixes shorten, while for $y>1$ prefixes collide by default and the index earns
+nothing. This is why no mechanism here is applied unconditionally, and why each gate is a two-sided
+test rather than a threshold.
 
 \paragraph*{A narrowed contract, and what two integers then settle.}
-Every statement above returns the cardinality itself. A caller may instead ask a narrower question
---- report only the pairs with $J(A,B)\ge t$, or only those with $|A\cap B|\ge\tau$, or restrict
-attention to operands whose size falls in a band --- and the narrowing is itself exploitable,
-because Eq.~\eqref{eq:interval} already says what sizes permit. Since $|A\cap B|\le\min(a,b)$ and
-$|A\cup B| = a+b-|A\cap B| \ge \max(a,b)$,
+Every statement above returns the cardinality itself. A caller may instead ask a narrower question ---
+report only the pairs with $J(A,B)\ge t$, or only those with $|A\cap B|\ge\tau$, or restrict attention
+to operands whose size falls in a band --- and the narrowing is itself exploitable, because
+Eq.~\eqref{eq:interval} already says what sizes permit:
 \begin{equation}
 J(A,B) \;=\; \frac{|A\cap B|}{|A\cup B|} \;\le\; \frac{\min(a,b)}{\max(a,b)},
 \label{eq:sizebound}
 \end{equation}
 so $J(A,B)\ge t$ requires $\min(a,b)\ge t\,\max(a,b)$, and $|A\cap B|\ge\tau$ requires
-$\min(a,b)\ge\tau$. Restricting the inputs to a size band is the same test applied before a pair is
-formed rather than after. The hypotheses are that $a,b>0$ and that $t\in(0,1]$; nothing is assumed
-about arrangement, about $m$, or about how either operand is stored. Both conditions are necessary
-and neither is sufficient, so the test discards pairs and never reports one --- the survivors still
-go to an exact kernel. What it costs is one comparison between two integers already held as
-metadata, and no element of either set is read. This is the Swamidass--Baldi pruning bound
+$\min(a,b)\ge\tau$ (proof in Supplementary Note 8). The hypotheses are that $a,b>0$ and $t\in(0,1]$;
+nothing is assumed about arrangement, about $m$, or about how either operand is stored. Both conditions
+are necessary and neither is sufficient, so the test discards pairs and never reports one --- the
+survivors still go to an exact kernel, at the cost of one comparison between two integers already held
+as metadata, no element of either set read. This is the Swamidass--Baldi pruning bound
 \cite{swamidass2007bounds} together with the size filter of the similarity-join literature
-\cite{bayardo2007allpairs,xiao2008ppjoin}, and it is restated here to place it against the
-mechanisms above rather than as a result of this paper.
+\cite{bayardo2007allpairs,xiao2008ppjoin}, restated here to place it against the mechanisms above
+rather than as a result of this paper.
 
 \paragraph*{What that removes, and why a wider corpus helps it.}
-Model a corpus by drawing cardinalities independently with $\log a$ uniform on $[0,\ln K]$ --- which
-is the density $\Pr(a)\propto 1/a$, and so is exactly the $1/i$ cardinality spectrum this paper's
-benchmark protocol mandates (``Corpora, provenance and loaders''), not an approximation to it. Then
-$\min(a,b)/\max(a,b)\ge t$ is $|\log a - \log b|\le\gamma$ with $\gamma=\ln(1/t)$, and for two
+Modelling a corpus by drawing cardinalities independently with $\log a$ uniform on $[0,\ln K]$ --- the
+density $\Pr(a)\propto 1/a$, exactly the $1/i$ cardinality spectrum this paper's benchmark protocol
+mandates (``Corpora, provenance and loaders''), not an approximation to it ---
+$\min(a,b)/\max(a,b)\ge t$ becomes $|\log a - \log b|\le\gamma$, $\gamma=\ln(1/t)$, and for two
 independent uniforms on an interval of length $L=\ln K$,
 \begin{equation}
 \Pr\big[\text{pair can qualify}\big] \;=\; 1-\Big(1-\frac{\ln(1/t)}{\ln K}\Big)^{2},
 \qquad \ln(1/t)\le\ln K,
 \label{eq:survive}
 \end{equation}
-with the absolute form $\big(1-\ln\tau/\ln K\big)^{2}$. At $K=10^{4}$ the surviving fraction is
-$0.1449$ at $t=\tfrac12$, $0.0479$ at $t=0.8$, $0.0227$ at $t=0.9$ and $0.0111$ at $t=0.95$; at
-$K=10^{3}$ and $t=0.9$ it is $0.0303$. Equivalently, examining every pair does $6.9\times$,
-$20.9\times$, $44.0\times$, $90.0\times$ and $33.0\times$ the work of examining only the survivors.
-Eq.~\eqref{eq:survive} agrees with a $10^{5}$-sample simulation to three decimals at each of those
-points. Expanding for small $\gamma$ gives $2\gamma\!\int\! g^{2}$ for any density $g$ of $\log a$,
-so the governing quantity is the \emph{effective log-spread} $1/\!\int\! g^{2}$ of the size
-distribution, and Eq.~\eqref{eq:survive} is its log-uniform case.
-
-Two hypotheses carry real weight and are stated rather than buried. First, cardinalities are
-integers, and $a=b$ passes at every $t$; the continuous form is therefore optimistic where sizes are
-small, and drawing integer cardinalities as the generator does leaves $0.0185$ rather than $0.0111$
-surviving at $t=0.95$, $K=10^{4}$. Second, Eq.~\eqref{eq:survive} decreases monotonically in $K$ ---
-at $t=0.9$ the surviving fraction falls from $0.0452$ at $K=10^{2}$ to $0.0114$ at $K=10^{8}$ ---
-but that improvement is a property of the log-uniform family, not of heavy tails generally. Under
-the alternative reading in which \emph{ranked} sizes scale as $1/i$, a density $\propto 1/a^{2}$
-whose log is exponential, the surviving fraction is exactly $1-t$ independent of $K$: the effective
-log-spread saturates at two nats however far the sizes are spread, and so does the gain. The
-favourable scaling in $K$ is therefore claimed for the spectrum this paper benchmarks and not for
-every skewed corpus.
+with the absolute form $\big(1-\ln\tau/\ln K\big)^{2}$ (proof and worked values in Supplementary
+Note 5, which agree with a $10^{5}$-sample simulation to three decimals). Expanding for small $\gamma$
+gives $2\gamma\!\int\!\phi^{2}$ for any density $\phi$ of $\log a$, so the governing quantity is the
+\emph{effective log-spread} $1/\!\int\!\phi^{2}$ of the size distribution, of which
+Eq.~\eqref{eq:survive} is the log-uniform case. Two hypotheses carry real weight. Cardinalities are
+integers, and $a=b$ passes at every $t$, so the continuous form is optimistic where sizes are small.
+And the favourable scaling in $K$ --- Eq.~\eqref{eq:survive} decreases monotonically in $K$ --- is a
+property of the log-uniform family and not of heavy tails generally: under the alternative reading in
+which \emph{ranked} sizes scale as $1/i$, the surviving fraction is exactly $1-t$, independent of $K$,
+since the effective log-spread saturates at two nats however far the sizes are spread. The favourable
+scaling in $K$ is therefore claimed for the spectrum this paper benchmarks, not for every skewed
+corpus.
 
 \paragraph*{The size bound does not multiply with the mechanisms below it.}
 Acting at a coarser granularity is not sufficient for savings to compose. The size test decides
 whether a pair is formed at all, while representation choice and the zone map act inside a pair that
 is formed, so the granularity argument of Eq.~\eqref{eq:compose} predicts a product --- and the
-product is not achieved, for a reason that argument does not capture: both mechanisms read the same
-statistic. The survivors of Eq.~\eqref{eq:sizebound} are the pairs with $a\approx b$, and every
-mechanism below is cheapest exactly when $a$ and $b$ are \emph{dissimilar}, since its cost tracks
-$\min(a,b)$ against a fixed $\lceil m/w\rceil$. Conditioning raises the mean cost of a survivor by
+product is not achieved, because both mechanisms read the same statistic. The survivors of
+Eq.~\eqref{eq:sizebound} are the pairs with $a\approx b$, and every mechanism below is cheapest exactly
+when $a$ and $b$ are \emph{dissimilar}, since its cost tracks $\min(a,b)$ against a fixed
+$\lceil m/w\rceil$. Conditioning raises the mean cost of a survivor by
 \begin{equation}
 \frac{\mathbb{E}\big[\min(a,b)\;\big|\;\min/\max\ge t\big]}{\mathbb{E}\,\min(a,b)}
 \;=\; \frac{L^{2}\big(K(1-t)-\gamma\big)}{\gamma\,(2L-\gamma)\,(K-L-1)}
 \;\xrightarrow[\;t\to1\;]{}\; \frac{\ln K}{2},
 \label{eq:shortfall}
 \end{equation}
-and the composed work exceeds the product of the two savings by that same factor: $4.40$ at
-$K=10^{4}$, $t=0.9$, against $\ln K/2 = 4.61$. Simulating the composition directly reproduces it
---- the size bound leaves $2.76\%$ of pairs and representation choice costs $1.51\%$ of a bitmap, so
-a product would predict $0.042\%$ where the composition in fact costs $0.151\%$, a shortfall of
-$3.69\times$ once cardinalities are integers --- and permuting which pairs pass the size test, so
-that the two mechanisms read uncorrelated statistics at the same rates, restores the product to
-within $0.6\%$. The composition is still strongly worth taking: at those parameters it costs
-$10.0\%$ of the better of the two mechanisms alone, and a bitmap pass over every pair does
-$660\times$ its work. What is refuted is only the product, and the general form is that mechanisms
-compose multiplicatively when they act on different waste \emph{and} are driven by different
-operand statistics; sharing a statistic costs the composition Eq.~\eqref{eq:shortfall} even across
-granularities. Values here are analytic, computed over the model above at $m=10^{6}$, and count
-work rather than time.
+and the composed work exceeds the product of the two savings by that same factor; the derivation, the
+numerical verification and the decorrelation control that isolates the shared statistic as the cause
+are in Supplementary Note 8. The composition is still strongly worth taking. What is
+refuted is only the product; the general rule is that mechanisms compose multiplicatively when they act
+on different waste \emph{and} are driven by different operand statistics, and sharing a statistic costs
+the composition Eq.~\eqref{eq:shortfall}'s factor even across granularities. Values here are analytic,
+computed over the model above at $m=10^{6}$, and count work rather than time.
+
+\paragraph*{Choosing a representation is a different problem from choosing a size, and only one of
+them is separable.}
+Everything above prices representations; a deployed library must \emph{choose} between them, and the
+choice has to be stated as an optimisation before it can be called optimal. Partition the universe into
+chunks of $M$ bits, each stored in one representation, $n=M/w$ words to a chunk and $e$ bits to a
+stored array element. Given a corpus, a distribution $\pi$ over the chunk pairs an application actually
+evaluates, and an operation $\omega$, the problem is to choose an assignment $\rho$ of representations
+to chunks minimising $\sum_{(x,y)\sim\pi} C_\omega(\rho(x),\mu_x;\rho(y),\mu_y)$ subject to a byte
+budget, where $\mu$ is the metadata of Eq.~\eqref{eq:expected} and $C_\omega$ counts items touched at
+measured per-item constants. Storage is a \emph{separable} objective --- minimised one container at a
+time --- whereas the query cost is quadratic in the assignment, since there is no such thing as the
+cost of a container, only the cost of a pair (Supplementary Note 9). And the incumbent's three
+container decisions --- array against bitset, array against run, bitset against run --- are one rule,
+$\arg\min$ over serialized size, so its array-to-bitset threshold is $\tau_{\mathrm{stor}} = M/e$, a
+property of the format carrying no machine constant and no property of the workload: the exact optimum
+of a separable objective, and why it can be a compile-time constant. What follows is what changes
+when the objective is not separable.
+
+\paragraph*{The crossover is a formula, and the two constants in the field are its two limits.}
+Write $c_w$ for a vectorised word \texttt{AND}-plus-popcount, $c_p$ for a membership probe into a
+bitmap and $c_m$ for a merge step, and $\theta_{pw}=c_p/c_w$, $\theta_{mw}=c_m/c_w$. Promotion of a
+chunk of cardinality $k$ from array to bitset is favourable against a bitmap partner exactly above
+\begin{equation}
+\tau_{\cap} \;=\; \frac{c_w}{c_p}\cdot\frac{M}{w}\;=\;\frac{n}{\theta_{pw}},
+\qquad\text{whence}\qquad
+\frac{\tau_{\mathrm{stor}}}{\tau_{\cap}} \;=\; \frac{w}{e}\,\theta_{pw},
+\label{eq:tauratio}
+\end{equation}
+and against an array partner above $(\theta_{pw}/\theta_{mw}-1)\,k_Y$ for a partner of size $k_Y$
+(proof in Supplementary Note 9). Pricing a byte at $\lambda\ge0$ and minimising query cost plus
+$\lambda\,\mathrm{bytes}$ gives a threshold that runs from $\tau_{\cap}$ at $\lambda=0$ to
+$\tau_{\mathrm{stor}}$ as $\lambda\to\infty$: every value between the two is optimal at some price of a
+byte, and $\tau_{\mathrm{stor}}=M/e$ is the unique threshold at which promotion is never paid for in
+bytes. The threshold also carries the pair count, so under any byte budget the optimum is not a
+function of the container at all. The measured input is the symmetric crossover \nm{cardinality at
+which an array--array merge stops beating a bitmap--bitmap popcount}, which fixes $\theta_{mw}$;
+substituted into Eq.~\eqref{eq:tauratio} at $M=2^{16}$, $w=64$, $e=16$ together with \nm{measured ratio
+of a bitmap probe to a merge step} it gives \nm{the ratio of the two thresholds}, recovering the
+divergence between the two objectives from measurements of the constants and no free parameters. Both
+crossovers share $c_w$, so measuring them together over-determines the model and the probe-to-merge
+ratio becomes a checkable prediction rather than an input.
+
+\paragraph*{A fixed threshold is optimal, under five hypotheses, and each of them fails.}
+The loose form is false, so state the hypotheses first: if the candidates are
+only \rS\ and \rB, the operation is a count-only intersection, the per-item constants do not depend on
+the resident footprint, there is no byte budget, and every chunk faces the same partner mix, then the
+optimal assignment \emph{is} the fixed threshold $\tau_{\cap}$ of Eq.~\eqref{eq:tauratio} --- a machine
+constant, independent of the corpus. Dropping any one hypothesis breaks it, with an exact witness for
+each (Supplementary Note 9): admitting \rR\ reintroduces the impossibility above, specialised to the
+container decision, since $\cell{\rR}{\rB}$ costs a strictly increasing function of run count while
+$\cell{\rS}{\rB}$ does not depend on it; letting the partner mix vary makes the optimal threshold
+\begin{equation}
+\tau^{*}(\beta,\bar k)\;=\;\frac{\beta\,c_w n+(1-\beta)(c_p-c_m)\,\bar k}
+                                 {\beta\,c_p+(1-\beta)\,c_m},
+\label{eq:taustar}
+\end{equation}
+where $\beta$ is the pair-weighted fraction of a chunk's partners that are bitmaps and $\bar k$ the
+mean cardinality of the array partners: a statistic of the workload rather than of the machine, and
+self-referential --- an optimal fixed
+threshold is a fixed point $\tau=\tau^{*}(\beta(\tau),\bar k(\tau))$, which exists but need not be
+unique; admitting a byte budget makes the threshold its dual variable, sweeping the whole interval
+above; changing the operation flips the matrix's sign, since cardinality queries have no operation
+dimension at all (union, difference and symmetric difference are inclusion--exclusion over the
+intersection) but a \emph{materialising} union with a bitmap operand costs $n$ words whatever the other
+side is, so no single stored assignment serves a mixed workload. The fifth hypothesis --- that the
+per-item constants do not depend on footprint --- is the one that is not analytic and the one the
+measurements say dominates: $c_w$ is not a constant, footprint re-enters through it, and a work model
+that prices the choice cannot price its consequence, the same divergence recorded under
+Eq.~\eqref{eq:compose} and treated as a measurement question, not an analytic one.
+
+\paragraph*{Metadata settles the decision wherever the decision matters.}
+Two identifiability questions must not be merged. Eq.~\eqref{eq:width} says what cardinality
+determines about the \emph{answer}, pinned only at the density extremes. What cardinality determines
+about the \emph{decision} is different and more favourable: every cost in this paragraph and the two
+before it is a closed form in $(k,r,\ell+g)$ and the constants, so a selector holding those three
+integers per operand evaluates the ordering exactly, in $O(1)$, touching no operand data --- which is
+what ``selection must be near-free'' means, and a consequence of the cost model rather than an
+engineering aspiration (proof in Supplementary Note 9). Holding only $k$, the ordering is not
+determined once \rR\ is a candidate; one extra integer restores it and more cardinality precision does
+not. Suppose the constants are known within a factor $\eta\ge1$ --- the uncertainty of the modelled
+costs, distinct from the $\gamma$ of the size bound above --- and let $\Lambda$ be the ratio of the two
+cheapest modelled costs: if $\Lambda>\eta$ the ordering is determined; if $\Lambda\le\eta$ it is
+not, and choosing the second-best costs at most $\eta$. So for every pair, either the metadata
+settles the decision or the decision does not matter to within the precision of the constants, and the
+undetermined set is an $\eta$-neighbourhood of the boundaries rather than a region of unbounded error.
+The caveat that makes $\eta$ interesting: it is the uncertainty of the \emph{model}, and where the
+model omits the memory system it is not small --- the derived reason to measure a candidate rather than
+only to model it.
+
+\paragraph*{Why an advantage survives repairing the kernel beneath it.}
+A pairwise batch costs $C_{\mathrm{meta}}$ plus the cell cost summed over the pairs a summary does not
+discard and the regions it does not exclude; those sets are functions of cardinality, bin occupancy and
+the data, and of nothing else, so no change of representation moves either set (Supplementary Note 9).
+Consequently, if a better kernel divides every cell cost by $\alpha$, the advantage over the same batch
+without avoidance is invariant in $\alpha$ when the summary is free and erodes only through the
+summary's share of the surviving cost: improving a kernel cannot subsume avoidance, because avoidance
+changes which work is asked for and a kernel changes only what asked-for work costs. Which savings
+multiply is settled by the same rule as Eq.~\eqref{eq:shortfall}: a zone map reads bin occupancy while
+representation choice reads cardinality and run count, so those multiply; the size bound reads
+cardinality, which representation choice also reads, so those do not, and a container-threshold gain
+must not be multiplied into a size-bound gain. Quantitatively, against an incumbent already holding the
+compute-optimal threshold of Eq.~\eqref{eq:tauratio}, the modelled advantage of adding a zone map of bin
+width $W_z$ peaks at
+\begin{equation}
+G_{\max}\;=\;\frac{\theta_{pw}\,w}{2\sqrt{c\,W_z}}
+\qquad\text{at}\qquad d^{*}=\frac{\sqrt{c}}{W_z^{3/2}},
+\label{eq:gmax}
+\end{equation}
+valid on $(\theta_{pw}w\sqrt{c})^{2/3}\le W_z\le\theta_{pw}w$ and saturating at
+$\sqrt{\theta_{pw}w/c}\,/2$ above it, and falling below one outside a window whose lower edge is
+Eq.~\eqref{eq:dlow} with the per-item constants carried, $c/(\theta_{pw}wW_z)$ (proof in Supplementary
+Note 6). Eq.~\eqref{eq:gmax} is a \emph{null-model} ceiling on structureless data, and by the
+one-sidedness of $\sigma$ above, real corpora can only fall below the null, so a measured advantage
+exceeding it is evidence of structure and must be reported as such rather than as agreement. And
+Eq.~\eqref{eq:gmax} excludes the narrowed contract entirely: Eq.~\eqref{eq:survive} supplies its own
+factor, and by the rule above the two are not multiplied.
 
 \paragraph*{Where avoidance is unavailable, throughput is what remains.}
-The mid-band above is not only where these results stop applying; it is where a different
-optimization applies, and the two are complementary rather than competing. Where
-Eq.~\eqref{eq:headroom} falls below one and $p_Ap_B\to1$, the work $\cell{\rB}{\rB}$ performs is, in
-the generic case, work that is going to be performed, and what remains to optimize is the per-cycle
-throughput of its $\lceil m/(wV)\rceil$ vector \texttt{AND}-plus-popcount operations --- a quantity
-none of the results above speaks to, and one the popcount literature has already driven close to the
-hardware limit \cite{mula2018popcount}. Eq.~\eqref{eq:headroom} and Eq.~\eqref{eq:compose} locate
-the boundary between the two domains; they do not rank them.
+The mid-band above is not only where these results stop applying; it is where a different optimization
+applies, and the two are complementary rather than competing. Where Eq.~\eqref{eq:headroom} falls below
+one and $p_Ap_B\to1$, the work $\cell{\rB}{\rB}$ performs is, in the generic case, work that is going to
+be performed, and what remains to optimize is the per-cycle throughput of its $\lceil m/(wV)\rceil$
+vector \texttt{AND}-plus-popcount operations --- a quantity none of the results above speaks to, and one
+the popcount literature has already driven close to the hardware limit \cite{mula2018popcount}.
+Eq.~\eqref{eq:headroom} and Eq.~\eqref{eq:compose} locate the boundary between the two domains; they do
+not rank them.

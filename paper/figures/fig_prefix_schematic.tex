@@ -32,34 +32,50 @@
 % Prefix filtering: a candidate-pruning rule from the similarity-join
 % literature, used only in the opt-in thresholded mode.
 \centering
-\resizebox{.34\linewidth}{!}{%
+\resizebox{.23\linewidth}{!}{%
 \begin{tikzpicture}[x=1mm,y=1mm]
   \tikzset{sm/.style={draw=black!55, line width=0.35pt},
-           tiny lbl/.style={font=\tiny, text=black!70}}
+           tiny lbl/.style={font=\scriptsize, text=black!70}}
+  % Type size: cell values were \tiny against \scriptsize row labels, and the
+  % whole picture was then scaled up ~1.9x, so the labels rendered about 15 pt
+  % -- larger than the body text and roughly four times the neighbouring
+  % matplotlib panels. Every glyph is \scriptsize now and the picture is set
+  % near its natural size, so it renders at ~8 pt like everything around it.
   % Encoding, not prose: prefix = saturated, tail = near-white, the shared
   % element = accent. The verdict is a glyph. The caption narrates.
-  \colorlet{pfx}{reprS!62}\colorlet{tail}{black!5}\colorlet{hit}{reprR!60}
+  %
+  % Prefix-versus-tail is a pure LUMINANCE axis (mid ink against near-white),
+  % so it survives greyscale on its own and costs no hue. It used to be drawn
+  % in S's blue and the shared element in R's green, which spent two
+  % representation hues on things that are not representations. The shared
+  % element is what makes the pair survive to exact verification, so it now
+  % takes the same reserved "work" accent used everywhere else in the paper,
+  % and the discarded pair takes the "work avoided" accent.
+  \definecolor{workc}{HTML}{EE6677}
+  \definecolor{avoidc}{HTML}{66CCEE}
+  \colorlet{pfx}{black!26}\colorlet{tail}{black!5}\colorlet{hit}{workc}
   \newcommand{\prefrow}[5]{% #1 y  #2 label  #3 prefix  #4 tail  #5 hit index (-1 none)
     \node[font=\scriptsize\bfseries, anchor=east] at (-1.4,#1+2.1) {#2};
     \foreach \v [count=\k from 0] in {#3}{
       \ifnum\k=#5 \def\f{hit}\else\def\f{pfx}\fi
       \draw[sm, fill=\f] (\k*5,#1) rectangle ++(5,4.2);
-      \node[font=\tiny\bfseries] at (\k*5+2.5,#1+2.1) {\v};}
+      \node[font=\scriptsize\bfseries] at (\k*5+2.5,#1+2.1) {\v};}
     \foreach \v [count=\k from 0] in {#4}{
       \draw[sm, draw=black!35, fill=tail] (\k*5+10,#1) rectangle ++(5,4.2);
-      \node[font=\tiny, text=black!45] at (\k*5+12.5,#1+2.1) {\v};}}
+      \node[font=\scriptsize, text=black!45] at (\k*5+12.5,#1+2.1) {\v};}}
   % verdict glyphs, drawn rather than set as text
-  \newcommand{\vdiscard}[2]{\draw[line width=1.1pt, draw=black!45]
+  \newcommand{\vdiscard}[2]{\draw[line width=1.1pt, draw=avoidc!55!black]
       (#1-1.7,#2-1.7) -- (#1+1.7,#2+1.7) (#1-1.7,#2+1.7) -- (#1+1.7,#2-1.7);}
-  \newcommand{\vkeep}[2]{\draw[line width=1.2pt, draw=reprR, line cap=round,
+  \newcommand{\vkeep}[2]{\draw[line width=1.2pt, draw=workc!65!black,
+      line cap=round,
       line join=round] (#1-1.9,#2+0.1) -- (#1-0.5,#2-1.5) -- (#1+2.0,#2+1.9);}
 
   \draw[-{Latex[length=1.3mm]}, draw=black!45, line width=0.4pt] (0,10.4) -- (10,10.4);
-  \node[font=\tiny, text=black!55, anchor=west] at (10.8,10.4) {rarest first};
+  \node[font=\scriptsize, text=black!55, anchor=west] at (10.8,10.4) {rarest first};
   \prefrow{0}{$A$}{17,4}{23,8,31}{-1}
   \prefrow{-6}{$B$}{12,23}{8,31,5}{-1}
   \draw[decorate, decoration={brace, amplitude=2.2pt}, draw=black!55]
-    (0,4.7) -- (10,4.7) node[midway, above=1.8pt, font=\tiny, text=black!65] {prefix};
+    (0,4.7) -- (10,4.7) node[midway, above=1.8pt, font=\scriptsize, text=black!65] {prefix};
   \vdiscard{31}{-3}
 
   \begin{scope}[shift={(0,-11.5)}]

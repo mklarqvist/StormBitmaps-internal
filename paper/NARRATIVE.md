@@ -67,6 +67,20 @@ SPE tolerates a longer main text than Nature Methods' 3,000 words, and this pape
 kernel cells, four microarchitectures and seventeen corpora do not compress below about 4,500 words
 without becoming a table dump. Budget the extra words to Results, not to Introduction.
 
+**Methods budget — corrected 2026-08-06.** The ~2,500–3,000 figure above was inherited from the
+Nature Methods skeleton and is wrong for this paper. Three rules cannot hold at once: every equation
+and threshold lives in Methods and nowhere else; Methods fits 3,000 words; and evidence is never
+culled. The formal treatment alone is ~4,000 words of statements and hypotheses.
+
+**Resolution: raise the Methods budget to ~7,000 words and keep the other two rules.** SPE imposes no
+Methods limit, and the venue's own Roaring paper carries a long one. This paper's contribution is
+substantially analytic, so a Methods section that is mostly stated results with their hypotheses is
+the honest shape for it, not an overrun to be managed. Proofs, worked examples and secondary
+propositions still live in Supplementary; Methods keeps statement, hypotheses and pointer.
+
+Do **not** resolve this by moving the cost model into Supplementary and having Results cite equations
+that live there — that inverts the tier system and makes the main text unreadable alone.
+
 ---
 
 ## 1b. Scope — REFRAMED, and this supersedes everything written before it
@@ -1255,6 +1269,20 @@ believe either.
 > container-census argument from "Roaring gets this wrong" to "**Roaring needs adaptive selection for
 > the same reason Storm does**" — which is a stronger, more generous and more interesting claim than
 > the one it replaces. It is also directly contributable upstream.
+
+**A hard constraint on step 2, verified in the source and easy to get wrong.** The threshold cannot
+simply be lowered upstream: CRoaring's *portable serialization format* infers container type from
+cardinality — `isbitmap = (thiscard > DEFAULT_MAX_SIZE)` at `roaring.c:14421` and `14553`, with only
+a run-override bitmap beside it and no way to mark "bitset despite low cardinality". A promoted
+container therefore writes as a bitset and reads back as an array: **it does not round-trip**, and
+the validator rejects it. **4096 is a format constant, not a tuning knob.**
+
+Two consequences the paper must state rather than discover in review. The promotion is necessarily
+**in-memory only** — which is exactly the shape the existing patch already has, but that is currently
+an accident of implementation rather than a documented constraint. And the upstream proposal cannot
+be "change the constant"; it has to be an opt-in, non-persisted retuning step alongside
+`run_optimize()`, or a format revision, which is a much larger ask. Say so plainly: it makes the
+proposal credible rather than naive.
 
 **The three-step arc this creates, and it is the paper's strongest sequence.** Do not present C35 as
 damage control. Present it in order:
