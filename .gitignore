@@ -57,3 +57,18 @@ CMakeFiles/
 
 data/
 *.pack
+
+# Benchmark corpora -- never committed. Fetch with bench/fetch_corpora.sh;
+# data/README.md describes each dataset so it stays identifiable if a URL rots.
+data/corpora/
+data/*.bin
+data/*.pack
+data/*.vcf.gz
+data/*.vcf
+!data/README.md
+
+# cmake-free build output (build/ is already ignored above)
+build_portable/
+
+# uv virtualenv
+.venv/
