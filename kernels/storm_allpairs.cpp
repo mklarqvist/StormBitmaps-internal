@@ -36,6 +36,41 @@ inline uint64_t now_ns() {
 #endif
 }
 
+/* Variant override, for the per-corpus variant question.
+ *
+ * Kernels below hardcodes one variant per cell for every corpus. That
+ * contradicts this project's own F10 finding, quoted in storm_cost.h: round 10
+ * sampled the hardcoded constants and "the sampled optimum DIFFERED BY CORPUS
+ * every time". The cost model selects the CELL per tile and then runs a
+ * globally fixed VARIANT of it, so half the decision is still hardcoded.
+ *
+ * STORM_VARIANT_BS and friends let that half be swept before deciding whether
+ * it deserves a selection mechanism of its own.
+ *
+ * SWEPT FOR B x S -- the cell that now carries 34-99% of pairs on nearly every
+ * corpus, so the one with the most leverage. Per-tile vs fixed Roaring, medians
+ * of three:
+ *
+ *                        ilp8  ilp8x  adapt  collapse  prefetch16  neon_idx
+ *   census1881          0.94x  0.90x  0.87x    0.43x      0.54x      0.62x
+ *   enwiki-categorylinks 3.67x 2.87x  2.74x    2.86x      2.90x      3.15x
+ *   com-Orkut           2.09x  2.23x  2.13x    1.29x      1.61x      1.75x
+ *
+ * ilp8 is best or within noise of best everywhere, and the alternatives are not
+ * marginally worse but badly worse -- collapse costs census1881 more than half
+ * its throughput. So F10's "the optimum differs by corpus" does NOT hold for
+ * this cell's variants at this point in the project: the hardcoded choice is
+ * right, and per-corpus variant selection would be machinery in search of a
+ * gain. Recorded so the question is not reopened without new variants.
+ *
+ * Note the shape of the result: `adaptive` -- which switches on whether the
+ * bitmap is L1-resident, exactly the reasoning that failed three times in the
+ * cost model this session -- is beaten by the unconditional ilp8 on all three. */
+static const char* variant_override(const char* env, const char* dflt) {
+    const char* v = std::getenv(env);
+    return (v && *v) ? v : dflt;
+}
+
 template <class L>
 auto pick(L list, const char* nm) -> decltype(list.v[0].fn) {
     for (size_t i = 0; i < list.n; ++i) {
@@ -65,9 +100,9 @@ struct Kernels {
     fn_ss ss; fn_sr sr; fn_rr rr; fn_ww ww;
     Kernels()
         : bb(pick(cell_bb(), "occ_sel")), bb_plain(pick(cell_bb(), "dense")),
-          bs(pick(cell_bs(), "ilp8")),
-          br(pick(cell_br(), "hybrid4")), bw(pick(cell_bw(), "skip")),
-          ss(pick(cell_ss(), "adaptive2")), sr(pick(cell_sr(), "adaptive2")),
+          bs(pick(cell_bs(), variant_override("STORM_VARIANT_BS", "ilp8"))),
+          br(pick(cell_br(), variant_override("STORM_VARIANT_BR", "hybrid4"))), bw(pick(cell_bw(), "skip")),
+          ss(pick(cell_ss(), variant_override("STORM_VARIANT_SS", "adaptive2"))), sr(pick(cell_sr(), "adaptive2")),
           rr(pick(cell_rr(), "adaptive2")), ww(pick(cell_ww(), "skip2")) {}
 };
 
