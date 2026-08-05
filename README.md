@@ -272,7 +272,7 @@ argument, only within-tile pairs are measured, and bucket width is still tuned.
 Full record: [`results/CORPORA.md`](results/CORPORA.md) · raw runs:
 [`results/corpora/`](results/corpora/) · reproduce: `bench/run_corpora.sh`
 
-Seventeen real corpora. Twelve are the
+Twenty-three real corpora. Twelve are the
 [`real-roaring-datasets`](https://github.com/RoaringBitmap/real-roaring-datasets)
 files **CRoaring's own benchmark harness runs by default** — so this is the
 incumbent's chosen data, not ours — plus five larger modern graphs. CRoaring is
@@ -280,39 +280,57 @@ given `roaring_bitmap_run_optimize()` so it gets its run containers, and all
 ratios are quoted against that tuned variant. Every kernel is checked against
 `roaring_bitmap_and_cardinality` on every pair before anything is timed.
 
-Storm's best cell beats tuned CRoaring on **17 of 17**. Ordered by density,
-which is the independent variable — the deliverable is a map of which
-representation pairing wins where, not one headline number.
+**Online selection beats fixed CRoaring on 22 of 23 corpora.** Reproduce with
+`bench/vs_roaring.sh`; raw table in [`results/vs_roaring.csv`](results/vs_roaring.csv).
 
-| corpus | universe m | sets | mean \|Xi\| | density | best cell | ns/pair | vs CRoaring_ro | vs all-bitmap |
-|---|---:|---:|---:|---:|---|---:|---:|---:|
-| uscensus2000 | 36,974,578 | 200 | 30 | 8.09e-07 | B×S | 7.5 | **2.29x** | 24,919× |
-| com-LiveJournal | 4,036,538 | 256 | 21 | 5.14e-06 | B×B | 28.8 | **2.04x** | 544× |
-| as-skitter | 1,696,415 | 256 | 15 | 9.08e-06 | B×S | 7.2 | **4.02x** | 756× |
-| soc-Pokec | 1,632,804 | 256 | 25 | 1.55e-05 | B×B | 27.1 | **4.36x** | 175× |
-| wiki-Talk | 2,394,385 | 256 | 52 | 2.17e-05 | B×S | 9.2 | **8.80x** | 910× |
-| dimension_003 | 3,866,847 | 256 | 91 | 2.36e-05 | S×S | 2.8 | **1.12x** | 4,042× |
-| com-Orkut | 3,072,627 | 256 | 82 | 2.66e-05 | B×B | 39.7 | **6.07x** | 232× |
-| dimension_008 | 3,866,845 | 256 | 347 | 8.98e-05 | R×R | 3.9 | **1.73x** | 2,846× |
-| census1881_srt | 4,277,735 | 200 | 3,404 | 7.96e-04 | B×R | 30.4 | **2.33x** | 387× |
-| wikileaks-noquotes | 1,353,179 | 200 | 1,377 | 1.02e-03 | B×B | 60.8 | **6.79x** | 67× |
-| wikileaks-noquotes_srt | 1,353,133 | 200 | 1,440 | 1.06e-03 | B×B | 19.8 | **6.06x** | 223× |
-| census1881 | 4,277,806 | 200 | 5,019 | 1.17e-03 | B×B | 79.5 | **16.06x** | 151× |
-| dimension_033 | 3,866,847 | 173 | 22,352 | 5.78e-03 | B×R | 36.7 | **2.82x** | 290× |
-| weather_sept_85 | 1,015,367 | 200 | 64,353 | 6.34e-02 | B×B | 1178.8 | **15.02x** | 2× |
-| weather_sept_85_srt | 1,015,367 | 200 | 80,540 | 7.93e-02 | B×B | 322.7 | **5.44x** | 8× |
-| census-income_srt | 199,523 | 200 | 30,464 | 1.53e-01 | B×B | 136.0 | **9.78x** | 3× |
-| census-income | 199,523 | 200 | 34,610 | 1.73e-01 | B×B | 301.9 | **13.11x** | 1× |
+This is the *dynamic* number — Storm decides per tile, at runtime, from row
+metadata. It is not the best fixed cell chosen with hindsight, which is what
+this table used to report and which no caller can actually obtain. Roaring is
+`run_optimize()`d **plus the C35 array→bitset promotion**, i.e. the tuned
+configuration this project's own findings produce, and it is timed in the same
+process on the same rows and the same pair set. Both sides get one untimed
+warm-up pass and then repeat to a 100 ms floor, minimum taken; the table is the
+median of three whole-process runs, with the observed range beside it.
 
-**The winning cell distribution is the actual result**: B×B ×10, B×S ×3,
-B×R ×2, S×S ×1, R×R ×1. No representation pairing dominates. Had one done so,
-the pairing matrix would be unnecessary. The per-cell matrix in
-[`results/corpora/SUMMARY.md`](results/corpora/SUMMARY.md) shows the cost of
-choosing wrong: on `dimension_033`, B×B gives 1.9× and S×S gives 0.02× — a 95×
-penalty on identical data. That gap is what a selector has to earn back.
+| corpus | domain | universe m | Roaring ns | Storm ns | **vs Roaring** | range | cell mix (per-tile) |
+|---|---|---:|---:|---:|---:|---|---|
+| enwiki-categorylinks | IR | 129,698,523 | 32.2 | 12.3 | **2.62×** | 2.24–4.20 | B×S 89%, ∅ 11% |
+| uscensus2000 | census | 36,974,578 | 14.7 | 5.1 | **2.95×** | 2.37–2.97 | B×S 45%, ∅ 55% |
+| dbpedia-link | graph | 18,268,993 | 101.1 | 57.0 | **1.80×** | 1.78–2.01 | B×S 99% |
+| wikipedia_link_en | graph | 11,206,012 | 110.6 | 60.3 | **1.80×** | 1.80–1.83 | B×S 98% |
+| livejournal-groupmemberships | graph | 7,489,074 | 28.2 | 23.5 | **1.86×** | 1.85–1.87 | B×S 78%, ∅ 22% |
+| com-Orkut | graph | 3,072,627 | 200.8 | 96.3 | **2.11×** | 1.95–2.21 | B×S 99% |
+| com-LiveJournal | graph | 4,036,538 | 49.3 | 33.8 | **1.52×** | 1.49–1.66 | B×S 85%, ∅ 15% |
+| soc-Pokec | graph | 1,632,804 | 95.7 | 39.7 | **2.41×** | 2.40–2.43 | B×S 96% |
+| as-skitter | graph | 1,696,415 | 26.2 | 24.3 | **1.25×** | 1.22–1.25 | B×S 83%, ∅ 17% |
+| wiki-Talk | graph | 2,394,385 | 37.8 | 18.6 | **2.03×** | 1.99–2.29 | B×S 86%, ∅ 14% |
+| dimension_003 | druid | 3,866,847 | 2.9 | 1.7 | **1.72×** | 1.65–1.74 | ∅ 99.5% |
+| dimension_008 | druid | 3,866,845 | 7.5 | 6.9 | **1.07×** | 0.79–1.10 | B×S 61%, B×R 25% |
+| dimension_033 | druid | 3,866,847 | 97.0 | 36.8 | **2.62×** | 2.53–3.16 | B×R 72%, ∅ 28% |
+| census1881 | census | 4,277,806 | 49.9 | 53.1 | *0.93×* | 0.84–0.94 | B×S 20%, B×R 12%, ∅ 63% |
+| census1881_srt | census | 4,277,735 | 58.2 | 20.4 | **2.84×** | 2.32–2.89 | B×S 52%, B×R 12%, ∅ 37% |
+| wikileaks-noquotes | text | 1,353,179 | 377.3 | 81.3 | **4.59×** | 4.42–5.05 | B×R 39%, B×S 25%, ∅ 36% |
+| weather_sept_85 | sensor | 1,015,367 | 1489.6 | 1334.1 | **1.15×** | 1.02–1.36 | B×S 53%, B×B 46% |
+| census-income | census | 199,523 | 453.6 | 263.5 | **1.68×** | 1.68–1.83 | B×S 54%, B×B 46% |
+| usher_sarscov2 | genomics | 8,451,771 | 1032.6 | 585.7 | **1.76×** | 1.60–2.63 | B×S 86%, B×R 14% |
+| gnomad_chr21 (AF≥1e-3) | genomics | 1,461,894 | 62.6 | 23.6 | **3.02×** | 2.87–3.77 | B×S 83%, ∅ 17% |
+| msprime_1M | genomics-sim | 2,000,000 | 2062.4 | 1294.5 | **1.40×** | 1.38–1.69 | B×S 84%, B×B 14% |
+| msprime_100k | genomics-sim | 200,000 | 250.0 | 136.2 | **1.79×** | 1.61–2.19 | B×S 84%, B×B 14% |
+| msprime_10k | genomics-sim | 20,000 | 94.7 | 22.5 | **4.16×** | 4.04–4.22 | B×S 73%, B×B 25% |
 
-W×W (EWAH) is below 1.0× on 16 of 17 and is kept as a **labelled loser**, not a
-contender.
+∅ = pairs settled as provably disjoint by the O(1) span test, no kernel run.
+
+**The cell mix is the actual result.** No single pairing is right everywhere:
+B×S carries the sparse graph corpora, B×R the run-structured Druid and text
+ones, B×B still takes 46% of the dense sensor and census pairs, and on
+`dimension_003` 99.5% of pairs never reach a kernel at all. A library that
+picked any one of these would lose on the corpora the others own.
+
+**The one loss is honest.** `census1881`'s per-pair oracle measures ~42 ns
+against Roaring's ~50, so the decisions that would win exist — tile hoisting
+discards them. Narrower tiles do not recover it (they make it worse; see
+`bench/tile_size.sh` and the note on `allpairs_sum`), so this is not a
+granularity problem and is not yet diagnosed.
 
 ### Why Storm also wins on the *dense* corpora
 
