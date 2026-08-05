@@ -407,4 +407,130 @@ void calibrate(CostModel& m, uint32_t universe, double density) {
     m.calibrated = true;
 }
 
+/* See storm_cost.h. Times each cell on a stride-sampled set of the caller's own
+ * pairs and divides by the work those pairs represent.
+ *
+ * The pair sample STRIDES the upper triangle rather than truncating it. Row
+ * order is never arbitrary -- graph vertex ids follow crawl order, variants
+ * follow genomic position -- so the first k pairs are one neighbourhood, not a
+ * sample of the corpus. That mistake has already invalidated one measurement
+ * campaign here. */
+void calibrate_on_rows(CostModel& m, const std::vector<Row>& rows,
+                       uint32_t max_pairs, double budget_ns)
+{
+    if (rows.size() < 2) return;
+    const uint64_t n = rows.size();
+    const uint64_t T = n * (n - 1) / 2;
+    const uint64_t target = std::min<uint64_t>(max_pairs, T);
+    if (!target) return;
+    const uint64_t step = std::max<uint64_t>(1, T / target);
+
+    struct Pair { uint32_t d, s; };
+    std::vector<Pair> pairs;
+    pairs.reserve(target);
+    for (uint64_t k = 0; k < T && pairs.size() < target; k += step) {
+        const double b = (double)(2 * n - 1);
+        uint64_t i = (uint64_t)((b - std::sqrt(b * b - 8.0 * (double)k)) / 2.0);
+        while (i + 1 < n && (i + 1) * (2 * n - i - 2) / 2 <= k) ++i;
+        while (i > 0    && i * (2 * n - i - 1) / 2 >  k)      --i;
+        const uint64_t j = k - i * (2 * n - i - 1) / 2 + i + 1;
+        if (j <= i || j >= n) continue;
+        /* Span-disjoint pairs must NOT calibrate a kernel.
+         *
+         * allpairs_sum settles them with the O(1) span test before any kernel
+         * runs, so they are not part of the population any constant describes.
+         * Including them is not merely imprecise, it inverts the ranking: a
+         * merge kernel handed two non-overlapping ranges finishes almost
+         * instantly while work_units still charges it ra+rb, so its ns/unit is
+         * deflated in proportion to how many disjoint pairs the corpus has.
+         * On census1881, where 63.3% of pairs are disjoint, that put R x R at
+         * 0.199 ns/unit against the synthetic corpus's 2.046 -- a 10x
+         * under-price -- the selector duly routed 9% of pairs to R x R, and the
+         * corpus went from 0.92x against Roaring to 0.07x. */
+        const RowMeta& mi = rows[i].meta;
+        const RowMeta& mj = rows[j].meta;
+        if (!mi.cardinality || !mj.cardinality ||
+            mi.last_set < mj.first_set || mj.last_set < mi.first_set) continue;
+        const bool id = mi.cardinality >= mj.cardinality;
+        pairs.push_back({(uint32_t)(id ? i : j), (uint32_t)(id ? j : i)});
+    }
+    if (pairs.empty()) return;
+
+    auto V = [](auto list, const char* nm) {
+        for (size_t i = 0; i < list.n; ++i)
+            if (std::string(list.v[i].name) == nm) return list.v[i].fn;
+        return list.v[0].fn;
+    };
+    const auto f_bb = V(cell_bb(), "occ_sel");
+    const auto f_bs = V(cell_bs(), "ilp8");
+    const auto f_br = V(cell_br(), "hybrid4");
+    const auto f_bw = V(cell_bw(), "skip");
+    const auto f_ss = V(cell_ss(), "adaptive2");
+    const auto f_sr = V(cell_sr(), "adaptive2");
+    const auto f_rr = V(cell_rr(), "adaptive2");
+    const auto f_ww = V(cell_ww(), "skip2");
+
+    /* Total work over the sample, computed once: the ratio's denominator does
+     * not depend on how many times the numerator is measured. */
+    auto sample_work = [&](Pairing p) {
+        double w = 0;
+        for (const Pair& q : pairs) {
+            const RowMeta& md = rows[q.d].meta;
+            const RowMeta& ms = rows[q.s].meta;
+            w += (p == Pairing::BB && !(md.has_occ && ms.has_occ))
+               ? (double)std::max(md.n_words, ms.n_words)
+               : work_units(p, md, ms);
+        }
+        return w;
+    };
+
+    /* Time the WHOLE sample under one clock reading, warm, and take the min of
+     * repeats.
+     *
+     * The first version warmed a single pair and then called cost_now_ns()
+     * around every individual kernel call. Both are wrong at these working-set
+     * sizes. A census1881 row is 535 kB and the corpus is 200 MB, so 255 of the
+     * 256 sampled pairs were measuring cold first-touch -- page faults and DRAM
+     * fills for rows built moments earlier -- and on top of that each ~185 ns
+     * kernel carried ~25 ns of clock overhead. B x S calibrated at 1.005
+     * ns/element where the benchmark measures 0.037, a 27x over-price, and the
+     * selector abandoned B x S entirely.
+     *
+     * This is the same warm-up-then-repeat-to-a-floor discipline
+     * bench_allpairs.cpp already applies to the policies themselves; the
+     * calibration had been exempt from it. */
+    /* Warm, whole-sample, min-of-repeats. Ratio of summed time to summed work.
+     *
+     * A median-of-quartile-slopes variant was tried, on the theory that a ratio
+     * of sums is dominated by the largest pairs and so mis-ranks the rest. It
+     * was worse on every corpus that moved (census1881 0.79x -> 0.41x,
+     * weather_sept_85 1.07x -> 0.37x, wikileaks 3.56x -> 2.00x). Recorded so it
+     * is not tried a fourth time. */
+    auto time_cell = [&](Pairing p, auto apply) {
+        const double work = sample_work(p);
+        if (work <= 0) return;
+        volatile uint64_t sink = 0;
+        for (const Pair& q : pairs) sink += apply(rows[q.d], rows[q.s]);  // warm
+        double best = 1e300, spent = 0;
+        for (int rep = 0; rep < 5 && spent < budget_ns; ++rep) {
+            const uint64_t t0 = cost_now_ns();
+            for (const Pair& q : pairs) sink += apply(rows[q.d], rows[q.s]);
+            const double dt = (double)(cost_now_ns() - t0);
+            spent += dt;
+            if (dt < best) best = dt;
+        }
+        (void)sink;
+        m.ns_per_unit[(int)p] = best / work;
+    };
+
+    time_cell(Pairing::BB, [&](const Row& a, const Row& b) { return f_bb(a.B(), b.B()); });
+    time_cell(Pairing::BS, [&](const Row& a, const Row& b) { return f_bs(a.B(), b.S()); });
+    time_cell(Pairing::BR, [&](const Row& a, const Row& b) { return f_br(a.B(), b.R()); });
+    time_cell(Pairing::BW, [&](const Row& a, const Row& b) { return f_bw(a.B(), b.W()); });
+    time_cell(Pairing::SS, [&](const Row& a, const Row& b) { return f_ss(a.S(), b.S()); });
+    time_cell(Pairing::SR, [&](const Row& a, const Row& b) { return f_sr(b.S(), a.R()); });
+    time_cell(Pairing::RR, [&](const Row& a, const Row& b) { return f_rr(a.R(), b.R()); });
+    time_cell(Pairing::WW, [&](const Row& a, const Row& b) { return f_ww(a.W(), b.W()); });
+}
+
 } // namespace storm

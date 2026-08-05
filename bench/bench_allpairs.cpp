@@ -123,6 +123,10 @@ int main(int argc, char** argv) {
      * parameter change. Left as the documented next step rather than a silent
      * regression. */
     CostModel m; calibrate(m);
+    /* Re-calibrating on the caller's own rows is OPT-IN (STORM_ROWCAL=1) and
+     * off by default: it is a net loss. See calibrate_on_rows() for the three
+     * variants tried and what each cost. */
+    if (std::getenv("STORM_ROWCAL")) calibrate_on_rows(m, c.rows);
 
     /* CRoaring on the IDENTICAL rows, so "fixed Roaring vs our best" is one
      * measurement rather than two runs stitched together. Built with

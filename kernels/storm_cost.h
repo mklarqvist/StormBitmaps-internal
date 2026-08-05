@@ -81,6 +81,65 @@ struct CostModel {
  * point and are the right choice only for a cache-resident workload. */
 void calibrate(CostModel& m, uint32_t universe = 1u << 14, double density = 0.02);
 
+/* Calibrate on the CALLER'S OWN ROWS -- the offline corpus optimiser.
+ *
+ * calibrate() times a synthetic corpus, and two attempts to make that
+ * representative have now failed in opposite directions: at the default 2^14
+ * bits it measures an L1-resident workload the real corpora never resemble, and
+ * at a real corpus's universe and density the synthetic rows are too sparse for
+ * per-call work to exceed fixed overhead, so every constant inflates.
+ *
+ * The way out is to stop synthesising. The rows are already built and the pair
+ * distribution is already known, so sample real pairs, time each cell on them,
+ * and divide by the work those pairs actually represent. No generator, no
+ * shape assumption, and the memory regime is the deployment's by construction.
+ *
+ * This is a build-time step, not a query-time one -- the same offline
+ * optimisation Roaring performs with run_optimize(). Bounded by `budget_ns` per
+ * cell so it stays negligible against N^2: a cell that is slow on this corpus
+ * gets fewer sample pairs rather than more time, which is the correct trade
+ * because a slow cell's constant is easy to estimate from few samples.
+ *
+ * Falls back to the measured-synthetic constant for any cell whose sampled work
+ * is zero (a corpus with no runs cannot calibrate B x R).
+ *
+ * --- OFF BY DEFAULT: A NET LOSS, IN ALL THREE VARIANTS TRIED ----------------
+ *
+ * Enable with STORM_ROWCAL=1 in bench_allpairs. Measured against the synthetic
+ * baseline, per-tile vs fixed Roaring, medians of three:
+ *
+ *                    baseline   rowcal(v3)
+ *   dimension_008      0.93x      1.24x     <- helps
+ *   soc-Pokec          2.32x      2.28x
+ *   weather_sept_85    1.07x      1.07x
+ *   as-skitter         1.12x      0.95x
+ *   census1881         0.92x      0.79x
+ *   dimension_033      3.48x      1.53x     <- hurts badly
+ *
+ * v1 (per-pair clock, one warm-up pair) put census1881 at 0.07x: it measured
+ * cold first-touch of 535 kB rows plus ~25 ns of clock overhead on a ~185 ns
+ * kernel, over-pricing B x S by 27x. v2 (whole-sample, warm, min-of-repeats)
+ * is the version kept here. v3, a median-of-quartile-slopes intended to stop
+ * the ratio of sums being dominated by the largest pairs, was worse again
+ * (census1881 0.41x, weather_sept_85 0.37x, wikileaks 3.56x -> 2.00x).
+ *
+ * The pattern across all three: measuring on real data makes predictions more
+ * accurate and SELECTION worse. That is diagnostic. ns_per_unit is one scalar
+ * per cell, and on a real corpus it absorbs memory-hierarchy effects that
+ * work_units() does not model -- so the constant stops being a property of the
+ * kernel and becomes a property of one corpus's size distribution, which is
+ * precisely what a slope is supposed to factor out. The synthetic constant is
+ * worse per pair and better at ranking because it is closer to the kernel's
+ * intrinsic cost.
+ *
+ * So calibration is the wrong lever. The right one is a work_units() that
+ * models the hierarchy -- charging B x S by DISTINCT CACHE LINES touched
+ * rather than by elements, which is the quantity that actually diverges
+ * between an L1-resident universe and a 1.3e8-bit one. That is a model change,
+ * and it is the open item. */
+void calibrate_on_rows(CostModel& m, const std::vector<Row>& rows,
+                       uint32_t max_pairs = 256, double budget_ns = 2e6);
+
 // A hardcoded model, for builds that cannot afford startup calibration. These
 // are this host's measured values and are WRONG on any other machine -- which
 // is the entire argument for calibrating instead. Labelled, not hidden.
