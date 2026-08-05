@@ -1528,3 +1528,95 @@ cheap predictable operation is the whole budget.
 **Still open:** filter build cost remains uncharged; one microarchitecture; and
 the width optimum is stated as a range (2–4 kB) rather than a tuned value
 because the harness cannot resolve finer.
+
+### 15.13 Making the zone map generic — online gate and offline optimizer (C16)
+
+Two products, deliberately different, as with Roaring's runtime containers vs
+`run_optimize()`:
+
+1. **Online gate** — data unknown in advance; decide per tile from a sample.
+2. **Offline corpus optimizer** — data in hand; spend time once, store the
+   configuration.
+
+Run: `bench/bench_bloom.cpp` (`--optimize` for mode 2), `bench/gate_eval.sh`
+for medians over independent processes. Results `results/filter/`.
+
+#### The problem C15 left
+
+The 2 kB coarse map was worth 3.5-4x on sparse graphs and **0.39x on
+weather_sept_85, 0.45x on census-income**. Halving throughput on a third of the
+corpora makes it undeployable however good the best case.
+
+#### (1) Online gate — result
+
+| | always-on | **gated** |
+|---|---:|---:|
+| geomean over 17 corpora | 1.194x | **1.486x** |
+| worst case | **0.39x** | **1.00x** |
+| corpora harmed (<0.98x) | 8 | **0** |
+
+Gating both raises the mean and removes every regression; the filter is selected
+on 9 of 17. Rule:
+
+```
+use_filter  <=>  survival < 0.15  AND  touch < 0.25      (width fixed at 16,384 bits)
+```
+
+`survival` = fraction of sampled probes the filter fails to reject.
+`touch` = |S| divided by the dense side's cache-line count.
+
+**Both terms are necessary and neither is derivable statically.** Fill rate does
+not predict survival — `dimension_008` has fill 0.0002 and survival 0.933,
+because the sparse side's elements land precisely in the dense side's occupied
+buckets; correlated data defeats any closed-form estimate. And a selective
+filter still loses when |S| is large enough that bitmap probes stop being
+random: `dimension_033` has survival 0.063 but touches 2.85 lines per line of
+bitmap, which the prefetcher already streams.
+
+**The thresholds are plateau centres, not fitted points.** Every combination
+with `survival in [0.10, 0.25]` and `touch in [0.20, 0.50]` gives geomean
+1.503-1.508 at worst case 1.00. Flatness across a 2.5x range in each parameter
+is the evidence the gate is not tuned per dataset. Gate cost measured over 2000
+iterations: **0.07-2.53 ns/pair amortised, 0.08-1.2% of runtime**, inside the
+2% Gate-1 budget.
+
+#### (2) Offline corpus optimizer — result
+
+Searches {bypass, 4k..256k bits} by **measured** time on the corpus, so it
+cannot be wrong about its own objective. It selects widths far larger than the
+online gate's fixed 16,384 — commonly 32k-262k — and bypasses on the dense
+corpora, agreeing with the gate there.
+
+Its advantage over the online gate is **smaller than expected**: geomean 1.846
+vs 1.845 on the corpora where both engage, i.e. within run-to-run noise. The
+real difference is coverage — it finds usable configurations on two corpora the
+online gate bypasses (`wiki-Talk` 1.39x, `dimension_033` 1.07x) because it can
+reach widths the gate does not consider.
+
+#### C16, and a negative result that cost the most effort
+
+**Probe-and-commit is WORSE than the two proxies here, which was not expected.**
+Timing candidates on a sample and committing the winner — the project's own
+established mechanism (M3, Micro Adaptivity) — systematically overstates wide
+filters: across ~1,000 repeated sample pairs the filter set stays cache-
+resident, while across the full 20,000 pairs bitmap traffic evicts it.
+`wiki-Talk` measured fast on every sample and ran at **0.45-0.58x** for real. No
+adoption margin up to 1.33x repaired it; the bias is structural, not noise.
+Three successive fixes each repaired one corpus and mispredicted another
+(survival-only ran away to the widest filter; a width cap fixed dimension_003
+but left wiki-Talk; building filters for all rows rather than sampled rows
+helped but did not close it), which is the signature of modelling the wrong
+quantity. **The static proxies win because they measure a property of the
+corpus, not of the sample's cache state.**
+
+**Sampling bugs found and fixed**, both previously seen in this project:
+the gate first sampled `pairs[0..16]`, which in a strided upper-triangle walk
+all share `i=0` — it read as-skitter at survival 0.234 against a true 0.022 and
+bypassed a 3x win; and the sample was sized in *pairs* when at |S|=6 that is
+~190 probes, far too few, so it is now sized in **probes** (>=4096).
+
+**Limitations:** one microarchitecture; `dimension_008` and `wiki-Talk` forgo
+~1.15x by bypassing, though both measured 0.82x and 0.53x on other runs and sit
+inside the noise band; as-skitter's survival varies 0.050-0.137 against a 0.15
+threshold and is the closest to flipping; filter *build* cost is still not
+charged, as with `build_occ`.

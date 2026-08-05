@@ -1,0 +1,12 @@
+# OPTIMIZE search (baseline ilp8 = 82.24 ns/pair)
+#   width         ns/pair   speedup      B/row
+#   bypass          82.24     1.00x          0
+#   4096            52.60     1.56x        264
+#   8192            48.36     1.70x        528
+#   16384           47.53     1.73x       1048
+#   32768           47.40     1.74x       2096
+#   65536           47.43     1.73x       4184
+#   131072          48.69     1.69x       8360
+#   262144          49.00     1.68x      16712
+# OPTIMIZED config: 32768  -> 1.74x over ilp8, 2096 B/row
+# ONLINE gate chose: filter -> 1.60x   [gap to optimum: 1.08x]
