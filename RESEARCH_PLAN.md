@@ -2969,3 +2969,50 @@ Three successive genomic claims were too strong, in alternating directions:
 Each was corrected only when a new measurement forced it. The common failure was
 reasoning from a summary statistic (one dataset, one model, the mean) about a
 distribution that is strongly skewed.
+
+---
+
+## 23. C31 RETRACTED, re-derived against the corrected baseline (C32)
+
+§22.3 (C31) rested on `bench_allpairs` figures produced while
+`Policy::AllBitmap` was silently running the zone-mapped kernel (`occ_sel`)
+instead of plain B x B. Every ratio in it was measured against a filtered
+baseline. Re-run after the fix:
+
+| corpus | shape | all-bitmap ns | per-tile | **probe** | per-pair | sel cost |
+|---|---|---:|---:|---:|---:|---:|
+| usher_sarscov2 | bimodal | 32,431 | 67.4x | **146.5x** | 138.7x | 0.27% |
+| gnomad chr21 AF<1e-3 | homogeneous | 4,803 | 181.6x | **278.2x** | 121.6x | 0.37% |
+
+**What C31 claimed and what is actually true:**
+
+| C31 claim | corrected |
+|---|---|
+| selection worth 5.67x on bimodal | **146.5x** |
+| selection worth 1.29x on homogeneous | **278.2x** |
+| probe beats per-tile by 3.75x on bimodal | 2.17x |
+| "filtering destroys the demonstration" | **not supported** — the filtered corpus scores *higher* |
+
+**C32: the "do not filter" conclusion is withdrawn.** It was derived from a
+5.67x/1.29x contrast that does not exist. The two corpora also differ in
+universe and density, so they were never a clean filtered/unfiltered pair — that
+comparison needed the *same* corpus with and without the AF cut, which was never
+run.
+
+**What survives.** Measured selection (probe) beats model-based selection
+(per-tile) by 2.17x on the bimodal corpus against 1.53x on the homogeneous one.
+The direction matches C31's intuition and the effect is real, but it is an
+effect on *which selector to use*, not evidence about filtering. Per-pair
+selection fails Gate 1 on both (7.40%, 34.87% of runtime); per-tile and probe
+pass comfortably (0.03-0.37%).
+
+**What genomics demonstrates, restated.** Both genomic corpora sit at 147-278x
+under online selection, alongside graphs at 172-1083x and dense corpora at
+1.5-4x. Genomics is neither the motivating case nor an exception; it lands where
+its density says it should. The bimodality (UShER mean 15,769 vs median 404)
+remains a real and unusual property, and it is why measured selection outperforms
+model-based selection there — but the strong claim built on it was an artifact.
+
+This is the fourth genomic claim in this project to be corrected (C8, C25, §19.4,
+now C31). All four shared a cause: a conclusion drawn from a number that had not
+been checked against a second, independent measurement.
