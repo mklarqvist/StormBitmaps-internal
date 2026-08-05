@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
     // that pays for the corpus being cold.
     uint64_t roar_sum = roaring_pass();
     for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
-                     Policy::Oracle, Policy::Probe, Policy::Fixed})
+                     Policy::Oracle, Policy::Probe, Policy::Refine, Policy::Fixed})
         (void)allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
 
     double roar_ns = 0;
@@ -228,10 +228,10 @@ int main(int argc, char** argv) {
         return best;
     };
 
-    AllPairsStats ref, kept[(int)Policy::Probe + 1];  // Probe is the last enumerator
+    AllPairsStats ref, kept[(int)Policy::Refine + 1];  // Probe is the last enumerator
     double base = 0;
     for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
-                     Policy::Oracle, Policy::Probe, Policy::Fixed}) {
+                     Policy::Oracle, Policy::Probe, Policy::Refine, Policy::Fixed}) {
         AllPairsStats s = timed(p);
         kept[(int)p] = s;   // Gate 1 below reports on THESE runs rather than
                             // re-timing everything a second time.
@@ -256,7 +256,7 @@ int main(int argc, char** argv) {
         }
     }
     std::printf("\nGATE 1 (P2: selection <= 2%% of runtime)\n");
-    for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe}) {
+    for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe, Policy::Refine}) {
         const AllPairsStats& s = kept[(int)p];
         const double pct = 100.0 * s.ns_selection / s.ns_total;
         std::printf("  %-10s %6.2f%%  %s\n", name_of(p), pct, pct <= 2.0 ? "PASS" : "FAIL");

@@ -51,6 +51,26 @@ enum class Policy : uint8_t {
                   // the gap is dispatch, not selection.
     Probe,        // M3 + measured commit: time the candidates on a few pairs of
                   // the tile, then commit for the rest. See storm_allpairs.cpp.
+    /* Hoist the decision BOUNDARY, not the decision.
+     *
+     * PerTile commits one cell for a whole tile, and on a heterogeneous corpus
+     * one cell cannot be right for every pair in it. census1881 is the clean
+     * case: a free per-pair selector (Oracle) measures 46.70 ns/pair against
+     * fixed Roaring's 51.91 and wins, while PerTile measures 54.47 and loses --
+     * the winning decisions exist and tile granularity discards them. The mix
+     * says exactly what is lost: Oracle routes 9.1% of pairs to B x R, PerTile
+     * folds all of them into B x S.
+     *
+     * PerPair is not the answer either; deciding from scratch costs ~25 ns/pair
+     * against a 2 ns budget, because select_pairing() prices ten candidates.
+     *
+     * But almost all of that cost is spent discarding candidates that were
+     * never plausible for this tile. So: rank the candidates ONCE per tile,
+     * keep the top two, and let each pair choose between just those two -- two
+     * predict() calls on metadata already in registers. The expensive part of
+     * selection is hoisted and the part that actually varies per pair is not.
+     */
+    Refine,
 };
 
 const char* name_of(Policy p);

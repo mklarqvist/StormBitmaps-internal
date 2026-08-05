@@ -64,9 +64,9 @@ fb(){ for d in data/corpora "$SP/stormbin"; do [ -f "$d/$1.bin" ] && { echo "$d/
 # the observed range says what actually happened.
 REPS=${REPS:-3}
 
-echo "corpus,domain,universe,rows,roaring_ns,allbitmap_ns,pertile_ns,probe_ns,best_ns,vs_roaring,vs_roaring_lo,vs_roaring_hi,cells" > "$OUT"
+echo "corpus,domain,universe,rows,roaring_ns,allbitmap_ns,refine_ns,probe_ns,best_ns,vs_roaring,vs_roaring_lo,vs_roaring_hi,cells" > "$OUT"
 printf "%-30s %-11s %12s %10s %10s %9s %-15s %s\n" \
-       corpus domain universe roaring per-tile "vs roar" "(range)" "cell mix (per-tile)"
+       corpus domain universe roaring refine "vs roar" "(range)" "cell mix (refine)"
 win=0; tot=0
 while read -r n total dom; do
   [ -z "$n" ] && continue
@@ -86,18 +86,19 @@ t=sys.stdin.read()
 f=lambda p:[float(x) for x in re.findall(p,t,re.M)]
 ro=f(r'^roaring(?:-FIX)?\s+([\d.]+)'); ab=f(r'^all-bitmap\s+([\d.]+)')
 pt=f(r'^per-tile\s+([\d.]+)');        pb=f(r'^probe\s+([\d.]+)')
-mix=re.findall(r'^per-tile.*\n.*\n\s+(.*?)\s*\$', t, re.M)
+rf=f(r'^refine\s+([\d.]+)')
+mix=re.findall(r'^refine.*\n.*\n\s+(.*?)\s*\$', t, re.M)
 mix=(mix[-1] if mix else '').strip()
-if not(ro and ab and pt and pb): print('FAIL|%-30s (parse failed)'%'$n'); sys.exit()
-k=min(len(ro),len(pt),len(pb))
-best=[min(pt[i],pb[i]) for i in range(k)]
+if not(ro and ab and pt and pb and rf): print('FAIL|%-30s (parse failed)'%'$n'); sys.exit()
+k=min(len(ro),len(pt),len(pb),len(rf))
+best=[min(pt[i],pb[i],rf[i]) for i in range(k)]
 rat=sorted(ro[i]/best[i] for i in range(k))
 med=st.median(rat)
 print('%s|%-30s %-11s %12s %10.2f %10.2f %8.2fx %-15s %s'%(
       'WIN' if med>=1.0 else 'LOSS','$n','$dom',format(int($u),','),
-      st.median(ro),st.median(pt),med,'[%.2f-%.2f]'%(rat[0],rat[-1]),mix))
+      st.median(ro),st.median(rf),med,'[%.2f-%.2f]'%(rat[0],rat[-1]),mix))
 print('CSV|%s,%s,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%s'%(
-      '$n','$dom',$u,'$r',st.median(ro),st.median(ab),st.median(pt),st.median(pb),
+      '$n','$dom',$u,'$r',st.median(ro),st.median(ab),st.median(rf),st.median(pb),
       st.median(best),med,rat[0],rat[-1],mix.replace(',',';')))
 ")
   echo "$line" | grep -v '^CSV|' | sed 's/^WIN|/  /; s/^LOSS|/! /; s/^FAIL|/? /'

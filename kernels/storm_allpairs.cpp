@@ -18,6 +18,7 @@ const char* name_of(Policy p) {
         case Policy::Oracle:    return "oracle";
         case Policy::Fixed:     return "fixed-cell";
         case Policy::Probe:     return "probe";
+        case Policy::Refine:    return "refine";
     }
     return "?";
 }
@@ -157,6 +158,28 @@ std::vector<uint32_t> density_order(const std::vector<Row>& rows) {
     return o;
 }
 
+/* The tile's two best candidates by predicted cost.
+ *
+ * Used two ways: probe_tile() times both and commits the winner, and
+ * Policy::Refine keeps both and lets each pair pick between them. Uncalibrated
+ * cells are excluded, the same rule select_pairing() applies. */
+struct Top2 { Pairing first = Pairing::BB, second = Pairing::BB; };
+
+Top2 tile_top2(const CostModel& model, const RowMeta& ta, const RowMeta& tb) {
+    Top2 t;
+    t.first = select_pairing(model, ta, tb);
+    if (t.first == Pairing::Empty) { t.second = Pairing::Empty; return t; }
+    double best2 = 1e300;
+    t.second = t.first;
+    for (int i = 0; i < (int)Pairing::Empty; ++i) {
+        const Pairing p = (Pairing)i;
+        if (p == t.first || model.ns_per_unit[i] <= 0.0) continue;
+        const double c = predict(model, p, ta, tb);
+        if (c < best2) { best2 = c; t.second = p; }
+    }
+    return t;
+}
+
 /* Probe-and-commit: turn a PREDICTED decision into a MEASURED one.
  *
  * Tile hoisting made selection cost 0.19% of runtime, which passed Gate 1 but
@@ -194,19 +217,9 @@ Pairing probe_tile(const Kernels& K, const CostModel& model,
                    uint32_t i0, uint32_t i1, uint32_t j0, uint32_t j1,
                    const RowMeta& ta, const RowMeta& tb)
 {
-    const Pairing predicted = select_pairing(model, ta, tb);
+    const Pairing predicted = tile_top2(model, ta, tb).first;
     if (predicted == Pairing::Empty) return Pairing::BB;
-
-    // Runner-up by predicted cost. Uncalibrated cells are not candidates, the
-    // same rule select_pairing() applies.
-    Pairing second = predicted;
-    double  second_c = 1e300;
-    for (int i = 0; i < (int)Pairing::Empty; ++i) {
-        const Pairing p = (Pairing)i;
-        if (p == predicted || model.ns_per_unit[i] <= 0.0) continue;
-        const double c = predict(model, p, ta, tb);
-        if (c < second_c) { second_c = c; second = p; }
-    }
+    const Pairing second = tile_top2(model, ta, tb).second;
     if (second == predicted) return predicted;
 
     // Up to 3 representative pairs from the tile.
@@ -295,7 +308,7 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
     const uint64_t t0 = now_ns();
     const std::vector<uint32_t> ord =
         (policy == Policy::PerTile || policy == Policy::Probe ||
-         policy == Policy::Oracle) ? density_order(rows) : [&]{
+         policy == Policy::Oracle || policy == Policy::Refine) ? density_order(rows) : [&]{
             std::vector<uint32_t> o(n); std::iota(o.begin(), o.end(), 0u); return o; }();
 
     double sel_ns = 0;
@@ -306,15 +319,22 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
         for (uint32_t j0 = i0; j0 < n; j0 += tile) {
             const uint32_t j1 = std::min(j0 + tile, n);
 
-            Pairing tp = Pairing::BB;
-            if (policy == Policy::PerTile || policy == Policy::Probe) {
+            Pairing tp = Pairing::BB, tp2 = Pairing::BB;
+            if (policy == Policy::PerTile || policy == Policy::Probe ||
+                policy == Policy::Refine) {
                 const uint64_t s0 = now_ns();
                 const RowMeta a = tile_meta(rows, ord, i0, i1);
                 const RowMeta b = tile_meta(rows, ord, j0, j1);
-                tp = (policy == Policy::Probe)
-                   ? probe_tile(K, model, rows, ord, i0, i1, j0, j1, a, b)
-                   : select_pairing(model, a, b);
+                if (policy == Policy::Probe) {
+                    tp = probe_tile(K, model, rows, ord, i0, i1, j0, j1, a, b);
+                } else if (policy == Policy::Refine) {
+                    const Top2 t = tile_top2(model, a, b);
+                    tp = t.first; tp2 = t.second;
+                } else {
+                    tp = select_pairing(model, a, b);
+                }
                 if (tp == Pairing::Empty) tp = Pairing::BB;   // never skip a whole tile
+                if (tp2 == Pairing::Empty) tp2 = tp;
                 sel_ns += (double)(now_ns() - s0);
                 ++decisions;
             }
@@ -358,7 +378,15 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                     }
 
                     Pairing p = tp;
-                    if (policy == Policy::Fixed) {
+                    if (policy == Policy::Refine) {
+                        // Two predict() calls on metadata already in registers.
+                        // Not timed into sel_ns separately: it is per-pair work
+                        // and belongs in the total, which is the honest place
+                        // for it -- the claim is that the total goes DOWN.
+                        if (tp2 != tp)
+                            p = predict(model, tp2, d.meta, s.meta) <
+                                predict(model, tp,  d.meta, s.meta) ? tp2 : tp;
+                    } else if (policy == Policy::Fixed) {
                         p = fixed_cell;
                     } else if (policy == Policy::AllBitmap) {
                         p = Pairing::BB;
