@@ -2629,3 +2629,91 @@ on two of three, consistent with C19's finding that it sits inside the noise ban
 4. **My agent prompt was wrong** to state these datasets appear in
    `data/README.md` "Candidates identified but not yet used" — they do not
    (0 matches). Corrected below.
+
+---
+
+## 19. gnomAD empirical spectrum — C25 was right about the model, wrong about reality (C28)
+
+Source: gnomAD **v4.1 exomes**, chr21 sites-only VCF (730,947 exomes ⇒ max
+AN = 1,461,894 haplotypes), streamed via `bcftools query` over HTTP range
+requests — 2.25 GB transferred, 22 MB written. **739,609 PASS sites.**
+
+### 19.1 The correction to C25
+
+§17 concluded that reaching density ≤1e-3 needs n ≈ e⁹⁹⁹ genomes, i.e.
+**impossible**. That bound is exact *for a constant-Ne neutral coalescent*, and I
+presented it as a statement about genomic data in general. It is not.
+
+| | effective H = 1/mean AF | implied density |
+|---|---:|---:|
+| neutral constant-Ne at n=1.46M (§17 formula) | 14.77 | 0.0677 |
+| **gnomAD v4.1 exomes, measured** | **300.3** | **0.00333** |
+| required for the regime | 1000 | 0.001 |
+
+**Real demography plus ascertainment buys 20.3x over neutral** — far more than
+the ~3x that chr20 at 5,008 haplotypes suggested, because at 1.46M haplotypes far
+more singletons are visible (48.2% of sites are singletons, 84.0% have AC ≤ 10).
+
+**So the honest statement is not "impossible" but "3.3x away."** C25's
+arithmetic stands as a property of the neutral model; its extension to real data
+was an over-generalisation, and this is the second time in this project that a
+genomic claim has been too strong (cf. C8 → C25). Recorded rather than quietly
+amended.
+
+### 19.2 But the gap still does not close with sample size — for a different reason
+
+Under the coalescent, density is *analytically tied* to n via 1/H(n−1), so more
+samples help logarithmically. Here it is not tied to n at all: gnomAD's AF values
+are **fixed empirical frequencies from a fixed cohort**. Drawing carriers as
+Binomial(n_bits, AF) for larger n_bits draws more columns from the *same*
+probabilities — mean density is pinned at ~0.0033 for **any** n_bits.
+
+Moving it would require a genuinely larger real ascertainment, not a rescaling
+knob. And the concentration explains why: **the top 1% of sites hold 95.7% of
+total AF mass.** Same mechanism as C25 and as UShER's 39x mean/median gap — the
+mean is a common-variant-tail artifact.
+
+### 19.3 Filtered subsets: the regime is reachable, and it names a real workload
+
+| filter | sites surviving | mean AF | verdict |
+|---|---:|---:|---|
+| none (whole spectrum) | 739,609 (100%) | 3.330e-03 | FAIL, 3.3x over |
+| `AC ≤ 10` (naive) | 621,083 (84.0%) | 6.835e-04 | **fragile — see below** |
+| `AC ≤ 10 & AN > 1e6` | ~383,000 (51.8%) | 1.660e-06 | PASS |
+| **`AF < 0.001`** | **720,444 (97.4%)** | **1.676e-05** | **PASS, 60x under** |
+
+`AC ≤ 10` alone is a trap worth recording: call rate varies wildly (min AN = 2),
+so an integer allele-count threshold does not bound frequency. 0.16% of that
+subset has AF > 0.1 (up to 1.0), and those outliers alone drag the generated
+corpus to density 6.70e-4 — nominally passing, but riding on low-coverage sites
+rather than genuine rarity. **Filter on AF directly.**
+
+Generated corpus (`tools/gnomad2bin.py`, AF < 0.001, carriers drawn
+Binomial(n_hap, AF)), structurally verified — 0 non-ascending, 0 out-of-range,
+row count matches header:
+
+| universe m | rows | mean \|Xi\| | density | max \|Xi\| | top-1% | regime |
+|---:|---:|---:|---:|---:|---:|---|
+| 1,461,894 | 625,656 | 28.2 | 1.93e-05 | 1,567 | 33.4% | **QUALIFIES** |
+
+`bench_real`: all-bitmap 3932.90 ns/pair, **B×S 34.04 ns/pair = 115.5x**, B×R
+111.6x, S×S 98.2x, B×B zone-mapped 79.3x. The sparse cells win, as the map
+predicts at d=1.9e-5.
+
+### 19.4 What this settles for the paper
+
+**Genomics reaches the target regime only under an explicit rare-variant
+filter** — but that filter is not a contrivance. Rare-variant burden testing
+operates exactly there, 97.4% of gnomAD sites survive `AF < 0.001`, and the
+resulting corpus qualifies comfortably. The framing should be: *the whole
+spectrum is mid-band and the rare-variant subset is in-regime*, which names a
+real workload rather than ruling genomics out (C25's over-reach) or claiming it
+wholesale (the original premise).
+
+### 19.5 Process note
+
+`tools/gnomad2bin.py` was swept into commit `44e91e0` (about the KONECT/UShER
+corpora) by a `git add -A` I ran while the agent was still writing it. The file
+is legitimate work and nothing was lost, but it is mis-attributed to an unrelated
+commit. Flagged by the agent; recorded rather than rewritten, since history
+rewriting mid-session is worse than the mis-attribution.
