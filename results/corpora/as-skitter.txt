@@ -1,0 +1,19 @@
+# host=as-skitter corpus=real/real d=9.07935e-06 rows=256 universe=1696415 pairs=20000 card_mean=15.4 runs_mean=11.0
+# footprint storm_B=53014kB roaring=17kB roaring_ro=16kB zonemap=104.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                      31.98        0.97x
+CRoaring run_optimize         31.08        1.00x
+storm B x B dense           6539.49        0.00x
+storm B x B zonemap           16.13        1.93x
+storm B x S                    5.54        5.61x
+storm B x R                    9.68        3.21x
+storm B x W                   35.29        0.88x
+storm S x S                   28.84        1.08x
+storm S x R                   43.50        0.71x
+storm R x R                   34.58        0.90x
+storm W x W                   94.84        0.33x
+
+BEST storm cell: B x S at 5.54 ns/pair
+  vs CRoaring(run_optimize):     5.61x
+  vs CRoaring(default):          5.78x
+  vs storm all-bitmap:        1181.39x   [claim P1]

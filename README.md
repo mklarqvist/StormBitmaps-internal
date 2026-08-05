@@ -44,6 +44,97 @@ The core algorithms are described in the papers:
 * [Consistently faster and smaller compressed bitmaps with Roaring](https://arxiv.org/abs/1603.06549) by D. Lemire, G. Ssi-Yan-Kai,
   and O. Kaser (21 Mar 2016).
 
+## Real-corpus benchmark vs CRoaring
+
+Full record: [`results/CORPORA.md`](results/CORPORA.md) · raw runs:
+[`results/corpora/`](results/corpora/) · reproduce: `bench/run_corpora.sh`
+
+Seventeen real corpora. Twelve are the
+[`real-roaring-datasets`](https://github.com/RoaringBitmap/real-roaring-datasets)
+files **CRoaring's own benchmark harness runs by default** — so this is the
+incumbent's chosen data, not ours — plus five larger modern graphs. CRoaring is
+given `roaring_bitmap_run_optimize()` so it gets its run containers, and all
+ratios are quoted against that tuned variant. Every kernel is checked against
+`roaring_bitmap_and_cardinality` on every pair before anything is timed.
+
+Storm's best cell beats tuned CRoaring on **17 of 17**. Ordered by density,
+which is the independent variable — the deliverable is a map of which
+representation pairing wins where, not one headline number.
+
+| corpus | universe m | sets | mean \|Xi\| | density | best cell | ns/pair | vs CRoaring_ro | vs all-bitmap |
+|---|---:|---:|---:|---:|---|---:|---:|---:|
+| uscensus2000 | 36,974,578 | 200 | 30 | 8.1e-07 | B×R | 8.9 | **1.4×** | 23,080× |
+| com-LiveJournal | 4,036,538 | 256 | 21 | 5.1e-06 | B×S | 18.7 | **3.3×** | 572× |
+| as-skitter | 1,696,415 | 256 | 15 | 9.1e-06 | B×S | 5.5 | **5.6×** | 1,180× |
+| soc-Pokec | 1,632,804 | 256 | 25 | 1.6e-05 | B×B | 20.9 | **7.2×** | 201× |
+| wiki-Talk | 2,394,385 | 256 | 52 | 2.2e-05 | B×S | 8.0 | **12.5×** | 1,507× |
+| dimension_003 | 3,866,847 | 256 | 91 | 2.4e-05 | S×S | 2.9 | **1.1×** | 4,770× |
+| com-Orkut | 3,072,627 | 256 | 82 | 2.7e-05 | B×B | 38.1 | **6.1×** | 211× |
+| dimension_008 | 3,866,845 | 256 | 347 | 9.0e-05 | R×R | 3.9 | **1.8×** | 4,160× |
+| census1881_srt | 4,277,735 | 200 | 3,404 | 8.0e-04 | B×B | 31.4 | **2.0×** | 355× |
+| wikileaks-noquotes | 1,353,179 | 200 | 1,377 | 1.0e-03 | B×B | 57.8 | **7.4×** | 61× |
+| wikileaks-noquotes_srt | 1,353,133 | 200 | 1,440 | 1.1e-03 | B×B | 19.0 | **5.3×** | 201× |
+| census1881 | 4,277,806 | 200 | 5,019 | 1.2e-03 | B×S | 79.8 | **15.8×** | 140× |
+| dimension_033 | 3,866,847 | 173 | 22,352 | 5.8e-03 | B×B | 51.7 | **1.9×** | 275× |
+| weather_sept_85 | 1,015,367 | 200 | 64,353 | 6.3e-02 | B×B | 1823.0 | **10.8×** | 2× |
+| weather_sept_85_srt | 1,015,367 | 200 | 80,540 | 7.9e-02 | B×B | 656.7 | **3.8×** | 8× |
+| census-income_srt | 199,523 | 200 | 30,464 | 1.5e-01 | B×B | 134.9 | **10.6×** | 3× |
+| census-income | 199,523 | 200 | 34,610 | 1.7e-01 | B×B | 298.2 | **12.8×** | 1× |
+
+**The winning cell distribution is the actual result**: B×B ×10, B×S ×4,
+B×R ×1, S×S ×1, R×R ×1. No representation pairing dominates. Had one done so,
+the pairing matrix would be unnecessary. The per-cell matrix in
+[`results/corpora/SUMMARY.md`](results/corpora/SUMMARY.md) shows the cost of
+choosing wrong: on `dimension_033`, B×B gives 1.9× and S×S gives 0.02× — a 95×
+penalty on identical data. That gap is what a selector has to earn back.
+
+W×W (EWAH) is below 1.0× on 16 of 17 and is kept as a **labelled loser**, not a
+contender.
+
+### Why Storm also wins on the *dense* corpora
+
+At 6–17% density both sides should be doing near-identical popcount work. They
+are not. A container census via `roaring_bitmap_statistics()` after
+`run_optimize()`:
+
+| corpus | array | bitset | run | global density |
+|---|---:|---:|---:|---:|
+| weather_sept_85 | **2,274** | 561 | 21 | 6.3e-02 |
+| census-income | **553** | 180 | 35 | 1.7e-01 |
+| census1881 | **1,332** | 0 | 132 | 1.2e-03 |
+| uscensus2000 | **2,219** | 0 | 2 | 8.1e-07 |
+
+Roaring picks its container by testing **per-2¹⁶-chunk cardinality against a
+fixed threshold of 4096**. With a large universe the set mass spreads thinly
+enough that chunks stay under that threshold even when *global* density is 6% or
+17%, so CRoaring runs array merges where Storm popcounts. census1881 has **zero**
+bitset containers at density 1.2e-3. This is a "do the right kind of work"
+result, not a SIMD result.
+
+### Measurement caveats — read before quoting any number above
+
+1. **Ratios are reliable to about ±1 significant figure, no better.** Repeating
+   individual corpora as independent processes gives spreads of 16.1–18.2×
+   (census1881), 7.6–13.9× (census-income) and **1.2–3.7× (dimension_003)**.
+   The fastest corpora are the noisiest, which is expected: at 2.9 ns/pair a
+   20,000-pair batch lasts 58 µs, short enough for scheduling and frequency
+   ramp to dominate.
+2. **The table is systematically pessimistic.** Values were collected in one
+   back-to-back batch of 17 corpora; standalone repeats land at or *above* the
+   recorded figure in every case checked. Likely thermal accumulation and
+   cross-corpus cache pollution.
+3. **One microarchitecture** (Apple M4). Zone-map growth is known ARM-only and
+   flat on Sapphire Rapids, so x86 numbers will differ and must be measured.
+4. **Selection cost is excluded** — cells are timed directly. The near-free
+   selection claim is measured separately.
+5. **`vs all-bitmap` is a weak baseline** at large universe (104 MB for
+   census1881 at 200 rows). The CRoaring column is the defensible one.
+
+The fix for (1) and (2) is interleaved round-robin timing across corpora plus
+median-and-IQR over N independent runs, which is what `bench_cells` already does
+per-variant. Until that lands, treat the ordering as sound and the exact ratios
+as provisional.
+
 ## Performance
 
 All performance tests were run on a host machine with a 10 nm Cannon Lake Core

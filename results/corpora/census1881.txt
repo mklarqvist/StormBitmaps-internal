@@ -1,0 +1,19 @@
+# host=census1881 corpus=real/real d=0.00117334 rows=200 universe=4277806 pairs=19900 card_mean=5019.3 runs_mean=4616.4
+# footprint storm_B=104439kB roaring=1958kB roaring_ro=1848kB zonemap=204.7kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                    1272.32        0.99x
+CRoaring run_optimize       1263.30        1.00x
+storm B x B dense          11204.94        0.11x
+storm B x B zonemap           79.88       15.81x
+storm B x S                   79.81       15.83x
+storm B x R                  197.53        6.40x
+storm B x W                  515.06        2.45x
+storm S x S                  435.96        2.90x
+storm S x R                 2434.65        0.52x
+storm R x R                 1232.11        1.03x
+storm W x W                 6536.64        0.19x
+
+BEST storm cell: B x S at 79.81 ns/pair
+  vs CRoaring(run_optimize):    15.83x
+  vs CRoaring(default):         15.94x
+  vs storm all-bitmap:         140.39x   [claim P1]

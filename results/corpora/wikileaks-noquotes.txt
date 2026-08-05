@@ -1,0 +1,19 @@
+# host=wikileaks-noquotes corpus=real/real d=0.00101744 rows=200 universe=1353179 pairs=19900 card_mean=1376.8 runs_mean=244.5
+# footprint storm_B=33038kB roaring=554kB roaring_ro=198kB zonemap=65.6kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                     755.74        0.57x
+CRoaring run_optimize        429.10        1.00x
+storm B x B dense           3540.51        0.12x
+storm B x B zonemap           57.80        7.42x
+storm B x S                  114.64        3.74x
+storm B x R                   99.24        4.32x
+storm B x W                  320.01        1.34x
+storm S x S                  572.19        0.75x
+storm S x R                  863.69        0.50x
+storm R x R                  324.70        1.32x
+storm W x W                 1570.16        0.27x
+
+BEST storm cell: B x B at 57.80 ns/pair
+  vs CRoaring(run_optimize):     7.42x
+  vs CRoaring(default):         13.07x
+  vs storm all-bitmap:          61.25x   [claim P1]

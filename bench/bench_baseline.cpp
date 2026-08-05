@@ -61,6 +61,60 @@ static auto pick(L list, const char* nm) -> decltype(list.v[0].fn) {
 
 struct P { uint32_t d, s; };
 
+/* Load a STORMBIN corpus (tools/sets2bin.py, tools/gt2bin.py) instead of
+ * generating one. Without this the only head-to-head against CRoaring was on
+ * synthetic data, so "1.7-19.1x over tuned CRoaring" rested entirely on our own
+ * generator -- and a generator can encode the very structure the kernels
+ * exploit. Real corpora in the target regime (large universe AND sparse AND
+ * skewed) are what make the comparison falsifiable. */
+static bool load_stormbin(Corpus& c, const char* path, uint32_t want_rows,
+                          uint32_t stride)
+{
+    FILE* f = std::fopen(path, "rb");
+    if (!f) return false;
+    char magic[8]; uint32_t ver, nr, nb, pad;
+    if (std::fread(magic, 1, 8, f) != 8 || std::memcmp(magic, "STORMBIN", 8) ||
+        std::fread(&ver, 4, 1, f) != 1 || std::fread(&nr, 4, 1, f) != 1 ||
+        std::fread(&nb, 4, 1, f) != 1  || std::fread(&pad, 4, 1, f) != 1) {
+        std::fclose(f); return false;
+    }
+    c.spec.universe = nb;
+    c.rows.clear();
+    std::vector<uint32_t> pos;
+    double sum_card = 0, sum_runs = 0, bB = 0, bS = 0, bR = 0, bW = 0, bK = 0, bO = 0;
+    uint32_t seen = 0;
+    while (c.rows.size() < want_rows) {
+        uint32_t n;
+        if (std::fread(&n, 4, 1, f) != 1) break;
+        pos.resize(n);
+        if (n && std::fread(pos.data(), 4, n, f) != n) break;
+        // Stride so the sample spans the corpus. Row order is never arbitrary:
+        // vertex ids follow crawl/BFS order, variants follow genomic position.
+        if (seen % stride == 0 && n > 0) {
+            c.rows.emplace_back();
+            build_row(c.rows.back(), pos.data(), pos.size(), nb);
+            const RowMeta& m = c.rows.back().meta;
+            sum_card += m.cardinality; sum_runs += m.n_runs;
+            bB += (double)m.n_words * 8.0;
+            bS += (double)m.cardinality * 4.0;
+            bR += (double)m.n_runs * 8.0;
+            bW += (double)c.rows.back().ewah.size() * 8.0;
+            bK += (double)c.rows.back().rank.size() * 8.0;
+            bO += (double)c.rows.back().occ.size() * 8.0;
+        }
+        ++seen;
+    }
+    std::fclose(f);
+    if (c.rows.size() < 2) return false;
+    c.mean_card = sum_card / c.rows.size();
+    c.mean_runs = sum_runs / c.rows.size();
+    c.spec.n_rows = (uint32_t)c.rows.size();
+    c.spec.density = c.mean_card / (double)nb;
+    c.bytes_B = bB; c.bytes_S = bS; c.bytes_R = bR; c.bytes_W = bW;
+    c.bytes_rank = bK; c.bytes_occ = bO;
+    return true;
+}
+
 int main(int argc, char** argv) {
     CorpusSpec spec;
     spec.n_rows = 128;
@@ -69,6 +123,8 @@ int main(int argc, char** argv) {
     std::string structure = "clustered", spectrum = "inverse", tag = "host";
     size_t pair_cap = 6000;
     int repeats = 5;
+    const char* infile = nullptr;
+    uint32_t in_stride = 1;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -82,7 +138,10 @@ int main(int argc, char** argv) {
         else if (a == "--pairs")     pair_cap      = (size_t)atoll(nx());
         else if (a == "--repeats")   repeats       = atoi(nx());
         else if (a == "--tag")       tag           = nx();
+        else if (a == "--file")      infile        = nx();
+        else if (a == "--in-stride") in_stride     = (uint32_t)atoi(nx());
     }
+    if (in_stride == 0) in_stride = 1;
     spec.structure = structure == "uniform" ? Structure::Uniform
                    : structure == "runs"    ? Structure::Runs
                                             : Structure::Clustered;
@@ -91,7 +150,17 @@ int main(int argc, char** argv) {
                                             : Spectrum::Inverse;
 
     Corpus c;
-    generate(c, spec);
+    if (infile) {
+        c.spec = spec;
+        if (!load_stormbin(c, infile, spec.n_rows, in_stride)) {
+            std::printf("FATAL: cannot load STORMBIN corpus %s\n", infile);
+            return 1;
+        }
+        spec = c.spec;
+        structure = "real"; spectrum = "real";
+    } else {
+        generate(c, spec);
+    }
 
     // --- the CRoaring corpus, built from the identical positions ------------
     std::vector<roaring_bitmap_t*> rb(c.rows.size()), rbro(c.rows.size());

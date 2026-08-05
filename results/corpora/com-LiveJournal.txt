@@ -1,0 +1,19 @@
+# host=com-LiveJournal corpus=real/real d=5.14441e-06 rows=256 universe=4036538 pairs=20000 card_mean=20.8 runs_mean=18.1
+# footprint storm_B=126142kB roaring=27kB roaring_ro=27kB zonemap=248.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                      58.76        1.05x
+CRoaring run_optimize         61.46        1.00x
+storm B x B dense          10704.41        0.01x
+storm B x B zonemap           28.78        2.14x
+storm B x S                   18.72        3.28x
+storm B x R                   22.26        2.76x
+storm B x W                   54.84        1.12x
+storm S x S                   38.29        1.61x
+storm S x R                   73.19        0.84x
+storm R x R                   58.74        1.05x
+storm W x W                  177.48        0.35x
+
+BEST storm cell: B x S at 18.72 ns/pair
+  vs CRoaring(run_optimize):     3.28x
+  vs CRoaring(default):          3.14x
+  vs storm all-bitmap:         571.92x   [claim P1]

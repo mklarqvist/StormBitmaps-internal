@@ -1,0 +1,19 @@
+# host=soc-Pokec corpus=real/real d=1.5524e-05 rows=256 universe=1632804 pairs=20000 card_mean=25.3 runs_mean=24.9
+# footprint storm_B=51026kB roaring=33kB roaring_ro=33kB zonemap=100.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                     164.76        0.91x
+CRoaring run_optimize        149.88        1.00x
+storm B x B dense           4194.27        0.04x
+storm B x B zonemap           20.87        7.18x
+storm B x S                   35.88        4.18x
+storm B x R                   26.38        5.68x
+storm B x W                  120.48        1.24x
+storm S x S                   51.62        2.90x
+storm S x R                  136.30        1.10x
+storm R x R                   95.96        1.56x
+storm W x W                  291.97        0.51x
+
+BEST storm cell: B x B at 20.87 ns/pair
+  vs CRoaring(run_optimize):     7.18x
+  vs CRoaring(default):          7.90x
+  vs storm all-bitmap:         200.98x   [claim P1]

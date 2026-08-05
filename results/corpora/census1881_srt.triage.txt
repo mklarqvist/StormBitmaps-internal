@@ -1,0 +1,9 @@
+# source          /private/tmp/claude-501/-Volumes-SabrentM2-ML-projects-science-StormBitmaps/4d0fb93a-5e8d-46c3-aa16-fe051b5e5b1f/scratchpad/rrd/census1881_srt
+# universe m      4,277,735
+# sets (kept)     200 of 200
+# mean |Xi|       3,404.0
+# mean density    7.957e-04
+# max |Xi|        103,386
+# skew            top 1% of sets hold 30.0% of all elements
+# REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
+# wrote           /private/tmp/claude-501/-Volumes-SabrentM2-ML-projects-science-StormBitmaps/4d0fb93a-5e8d-46c3-aa16-fe051b5e5b1f/scratchpad/stormbin/census1881_srt.bin

@@ -1093,9 +1093,9 @@ as Roaring (SPE) and the popcount papers.
 | **C3** | The cost curve is **U-shaped in density**; the operative variable is distance from ½, not sparsity | **MEASURED** | Dense tail measured only via R×R incidentally — see C4 |
 | **C4** | Computing on the **complement** above density ½ is a systematic strategy for intersection cardinality, and is unclaimed in the literature | **MEASURED** (F13) | Cell built (`cell_comp.cpp`), oracle-tested, crossover measured at complement density ~0.1–1%, mirroring the sparse side's ~0.4%. **Win over the accidental R×R is only ~20%** — the contribution is that the strategy is now selectable and statable, not that it is much faster. State it that way |
 | **C5** | A rank index makes B×R cost Θ(runs), independent of run length | **MEASURED** | 1 host; crossover ~256 bits |
-| **C6** | Adaptive pairing beats a `run_optimize`-tuned CRoaring by 1.7–19.1× | **MEASURED**, 4 ISAs | — |
+| **C6** | Adaptive pairing beats a `run_optimize`-tuned CRoaring by 1.7–19.1× | **SUPERSEDED by §15** — restated on real corpora as **1.09–15.83×, 16/16**, including CRoaring's own default benchmark data | Synthetic 4-ISA figure retained as a secondary result; the real-corpus figure is 1 ISA and needs the other three |
 | **C7** | Per-pair selection costs 28–48% of runtime; tile hoisting brings it to 0.10–0.29%, and probe-and-commit has **59.0% regret** against a bucket oracle vs all-bitmap's 118.0% | **MEASURED** (F15) | Regret is a *lower bound* (bucket oracle, not per-pair — the latter is below clock granularity). Neoverse V1 still absent from the Gate-1 table |
-| **C8** | The asymptotic win requires a large universe **and** sparsity **simultaneously**, and no public dataset we can reach has both | **MEASURED, both orientations** (F14) | Variant-major: 1/i spectrum, 5,008-bit universe → **2.15×**. Haplotype-major: 1,048,576-bit universe, ~uniform 3.14% density → **0.93×, nothing beats all-bitmap**. The 10²–10⁵× regime is **synthetic-only** and must be labelled as such |
+| **C8** | ~~The asymptotic win requires a large universe **and** sparsity **simultaneously**, and no public dataset we can reach has both~~ | **REFUTED by §15.** The first clause stands; the second was false | The clause "no public dataset has both" was an over-generalisation from a single *genomic* corpus. Graphs, web-attribute and census data reach the regime routinely: `uscensus2000` (m=3.7e7, d=8.1e-7), `as-skitter` (m=1.7e6, d=9.1e-6), `com-LiveJournal` (m=4.0e6, d=5.1e-6). Restated correctly: **human variant data specifically gives a large universe *or* sparsity, never both** — genomics sits mid-band and is a scoping remark, not a limit on the method |
 | **C9** | Negative results: Harley-Seal (0.38–0.72×), D2 run-collapsing (0.25–0.51×), register blocking (refuted at L2 *and* DRAM), prefetch, NEON index arithmetic | **MEASURED** | — |
 | **C10** | At small universes the binding constraint is per-pair overhead, not kernel work; moving decisions per-pair→per-row gives 2.9×. The residual is **scattered L2 latency, not issue width** | **MEASURED** (F16) | Disassembly: 45 instructions / 6 pairs, floors of 0.78–0.94 cyc/pair against 7.2 measured. The "port-bound" reading in §13.1 was **inferred and is wrong** |
 
@@ -1155,3 +1155,128 @@ reviewer from rejecting it on rigor.
 and one (1) delivered far less than hoped. That is the point of running them.
 The claims that survive are the ones worth publishing, and they are now stated
 at the strength the evidence actually supports.
+
+---
+
+## 15. Real-corpus run, 2026-08-05 — 1:1 overlap with the Roaring papers
+
+Full record: [`results/CORPORA.md`](results/CORPORA.md). Raw output:
+`results/corpora/`. Reproduce: `bench/run_corpora.sh`, collate with
+`bench/summarize_corpora.py`.
+
+### 15.1 What was run and why
+
+Every Storm-vs-CRoaring number before this came from our own generator, which
+made C6 unfalsifiable in principle: a generator can encode the structure the
+kernels exploit. This run uses the **twelve `real-roaring-datasets` corpora that
+CRoaring's own harness runs by default** (its README names `census1881` as the
+default), plus four larger modern graphs. `tools/sets2bin.py` reproduces
+census1881's published statistics exactly (m=4,277,806, mean |Xi|=5,019.3,
+matching arXiv:1603.06549), which validates the loader against the source paper.
+
+`_srt` variants are the row-sorted versions the Roaring papers report
+separately, giving two clustering points per corpus.
+
+### 15.2 Result
+
+**17 of 17 corpora: Storm's best cell beats `run_optimize`-tuned CRoaring.**
+Range **1.09×–15.83×**, median ≈5.6×. Density spans 8.1e-7 to 1.7e-1 and
+universe spans 2.0e5 to 3.7e7 across 17 corpora.
+
+Winning-cell distribution: **B×B ×10, B×S ×4, B×R ×1, S×S ×1, R×R ×1.**
+
+That distribution is the result, more than any ratio. Had one column dominated,
+the pairing matrix would be unnecessary and the paper would refute itself. The
+winner migrates with density — B×R / S×S / B×S at the sparse end, B×B at the
+dense end — and the losing columns lose badly (W×W is below 1.0× on 16 of 17).
+
+### 15.3 New claim C11 — Roaring's container threshold is tested on the wrong statistic
+
+The dense-corpus wins (weather_sept_85 10.75×, census-income 12.82×) initially
+looked like a measurement error: at 6–17% density both sides should be doing
+near-identical popcount work. A container census via
+`roaring_bitmap_statistics()` after `run_optimize()` shows why they are not.
+
+| corpus | array | bitset | run | global density |
+|---|---:|---:|---:|---:|
+| weather_sept_85 | **2,274** | 561 | 21 | 6.3e-02 |
+| census-income | **553** | 180 | 35 | 1.7e-01 |
+| census1881 | **1,332** | 0 | 132 | 1.2e-03 |
+| wikileaks-noquotes | 199 | 0 | **1,693** | 1.0e-03 |
+| uscensus2000 | **2,219** | 0 | 2 | 8.1e-07 |
+
+Roaring picks its container by testing **per-2^16-chunk cardinality against a
+fixed threshold of 4096**. With a large universe the mass spreads thinly enough
+that individual chunks stay under that threshold even when *global* density is
+6% or 17% — so CRoaring runs array merges where Storm popcounts. census1881 has
+**zero** bitset containers at density 1.2e-3.
+
+This is the fixed-chunk/fixed-threshold weakness the pairing-matrix argument
+targets, **observed directly rather than inferred**. It is a "do the right kind
+of work" result, not a SIMD result — consistent with C1.
+
+**Evidence tier 3 (measured).** Threshold value and container semantics are
+tier 2 (CRoaring v4.7.2 source, vendored at `third_party/croaring_amalg`).
+
+### 15.4 Consequences for the paper
+
+1. **C8's second clause is withdrawn.** "No public dataset has both" was
+   generalised from one genomic corpus and is false. Genomics is mid-band; that
+   is now a one-line scoping remark, not a wound. The 10²–10⁵× regime is **no
+   longer synthetic-only** — `uscensus2000` measures 23,080× over all-bitmap.
+2. **The publish-alone decision is settled.** Standalone, Roaring-paper-shaped
+   (§8b unchanged: Storm then Tomahawk). The bundling question was conditioned
+   on this experiment failing; it did not fail. See §15.5.
+3. **Positioning must be precise about Roaring.** Roaring *already* dispatches
+   pairwise on container types. The contribution is not "dispatch on
+   representation pairs" — it is (a) bin-resolution zone maps, 128× finer than
+   Roaring's 2^16 chunk; (b) adaptive rather than static selection
+   (probe-and-commit, Gate 1 at 0.10–0.48%); (c) representation chosen per
+   row/tile over the whole universe rather than per fixed chunk; (d) the
+   measured density map. C11 is the sharpest evidence for (a) and (c).
+
+### 15.5 Bundle-vs-standalone — resolved
+
+Decision rule set by the author: bundle with Tomahawk **iff** a real dataset in
+the target regime could not be found. One was found — sixteen were. **Standalone.**
+
+Tomahawk (`/Volumes/SabrentM2/ML/projects/science/tomahawk`, ~21k LOC, 50
+commits, dormant since 2019-04-25) is prior art by the same author and already
+implements list / bitvector / EWAH / runlength dispatch (`lib/ld/ld_structs.h`,
+`ld_engine.cpp`). It is an **application** of the result and a citation, not a
+competitor and not a co-paper. Bundling would bury the kernel work in a Methods
+section and force genomics — the one measured mid-band domain — to carry the
+entire evaluation.
+
+### 15.6 What this run does not establish
+
+1. **One microarchitecture.** Apple M4 only. Zone-map growth is known ARM-only
+   and flat on Sapphire (C2), so the x86 numbers will differ and must be
+   measured, not extrapolated. Rerunning on `fpga-neo1` / `fpga-neo2` /
+   `fpga-sapphire` is the top remaining task.
+2. **17/17 stands; the "15/17" caution was wrong.** `dimension_003` and
+   `uscensus2000` were provisionally called ties on the guess that noise had
+   lifted them above 1.0. Independent repeats refute it — dimension_003 returns
+   1.21–1.44 (one outlier at 3.72), uscensus2000 returns 2.05–3.29, i.e. every
+   repeat exceeds the recorded 1.09× and 1.39×. Both are genuine wins.
+3. **No error bars anywhere, and the variance is large.** Repeats span 16.1–18.2×
+   (census1881), 7.6–13.9× (census-income), 1.2–3.7× (dimension_003) — worst on
+   the fastest corpora, where a 20,000-pair batch lasts only ~58 µs. The bias is
+   also **systematic**: every standalone repeat checked exceeds its batch-run
+   value, implicating thermal accumulation and cross-corpus cache pollution
+   across the 17-corpus sequential run. Quote the ordering, not the digits, until
+   round-robin interleaving and median/IQR reporting land.
+4. **Selection cost excluded** — cells are timed directly. End-to-end numbers
+   including selection have not been rerun on these corpora.
+5. **`vs all-bitmap` is a weak baseline** at large universe (104 MB for
+   census1881 at 200 rows). The CRoaring column is the defensible one.
+
+### 15.7 Next
+
+1. Cross-ISA rerun of §15 on all four hosts.
+2. Error bars; downgrade the two marginal wins to ties if they do not survive.
+3. End-to-end including selection cost.
+4. `UShER SARS-CoV-2` — 8.45M genomes, open, 678 MB variant-major VCF; the one
+   real *genomic* dataset reaching the regime. Density unmeasured.
+5. msprime/stdpopsim scale sweep, replacing the hand-rolled 1/i draw in
+   `kernels/storm_gen.cpp` with a coalescent generator.

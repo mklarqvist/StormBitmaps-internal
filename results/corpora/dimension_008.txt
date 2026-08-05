@@ -1,0 +1,19 @@
+# host=dimension_008 corpus=real/real d=8.98211e-05 rows=256 universe=3866845 pairs=20000 card_mean=347.3 runs_mean=1.8
+# footprint storm_B=120840kB roaring=120kB roaring_ro=5kB zonemap=238.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                      23.60        0.30x
+CRoaring run_optimize          7.14        1.00x
+storm B x B dense          16224.28        0.00x
+storm B x B zonemap           61.41        0.12x
+storm B x S                    8.03        0.89x
+storm B x R                    4.31        1.66x
+storm B x W                   12.40        0.58x
+storm S x S                   63.05        0.11x
+storm S x R                    7.92        0.90x
+storm R x R                    3.90        1.83x
+storm W x W                   19.66        0.36x
+
+BEST storm cell: R x R at 3.90 ns/pair
+  vs CRoaring(run_optimize):     1.83x
+  vs CRoaring(default):          6.04x
+  vs storm all-bitmap:        4155.65x   [claim P1]

@@ -1,0 +1,19 @@
+# host=com-Orkut corpus=real/real d=2.65805e-05 rows=256 universe=3072627 pairs=20000 card_mean=81.7 runs_mean=79.1
+# footprint storm_B=96020kB roaring=82kB roaring_ro=82kB zonemap=188.0kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                     228.47        1.01x
+CRoaring run_optimize        230.68        1.00x
+storm B x B dense           8044.60        0.03x
+storm B x B zonemap           38.09        6.06x
+storm B x S                   81.09        2.84x
+storm B x R                  155.38        1.48x
+storm B x W                  367.23        0.63x
+storm S x S                  128.39        1.80x
+storm S x R                  403.23        0.57x
+storm R x R                  301.69        0.76x
+storm W x W                  631.58        0.37x
+
+BEST storm cell: B x B at 38.09 ns/pair
+  vs CRoaring(run_optimize):     6.06x
+  vs CRoaring(default):          6.00x
+  vs storm all-bitmap:         211.18x   [claim P1]

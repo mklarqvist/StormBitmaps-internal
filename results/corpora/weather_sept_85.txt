@@ -1,0 +1,19 @@
+# host=weather_sept_85 corpus=real/real d=0.0633792 rows=200 universe=1015367 pairs=19900 card_mean=64353.1 runs_mean=30225.0
+# footprint storm_B=24791kB roaring=8546kB roaring_ro=8454kB zonemap=48.4kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                   24092.37        0.81x
+CRoaring run_optimize      19602.30        1.00x
+storm B x B dense           2793.88        7.02x
+storm B x B zonemap         1822.97       10.75x
+storm B x S                 3116.57        6.29x
+storm B x R                 9419.60        2.08x
+storm B x W                 9088.69        2.16x
+storm S x S                52568.37        0.37x
+storm S x R               124505.03        0.16x
+storm R x R                70916.35        0.28x
+storm W x W                18565.42        1.06x
+
+BEST storm cell: B x B at 1822.97 ns/pair
+  vs CRoaring(run_optimize):    10.75x
+  vs CRoaring(default):         13.22x
+  vs storm all-bitmap:           1.53x   [claim P1]

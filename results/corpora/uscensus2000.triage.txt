@@ -1,0 +1,9 @@
+# source          /private/tmp/claude-501/-Volumes-SabrentM2-ML-projects-science-StormBitmaps/4d0fb93a-5e8d-46c3-aa16-fe051b5e5b1f/scratchpad/rrd/uscensus2000
+# universe m      36,974,578
+# sets (kept)     200 of 200
+# mean |Xi|       29.9
+# mean density    8.093e-07
+# max |Xi|        2,755
+# skew            top 1% of sets hold 56.4% of all elements
+# REGIME          universe>=1e6: PASS   density<=1e-3: PASS   => QUALIFIES
+# wrote           /private/tmp/claude-501/-Volumes-SabrentM2-ML-projects-science-StormBitmaps/4d0fb93a-5e8d-46c3-aa16-fe051b5e5b1f/scratchpad/stormbin/uscensus2000.bin

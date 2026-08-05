@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 #include <time.h>
 using namespace storm;
 
@@ -87,12 +88,38 @@ int main(int argc,char**argv){
   }
 
   // Cell ranking on real data.
+  //
+  // The pair sample must STRIDE the pair space, not truncate it. Filling a
+  // 20k cap in row-major order stops at i ~= 40 for a 512-row corpus, so every
+  // pair's dense side comes from the first few rows -- and row order is never
+  // arbitrary in practice (variants are position-ordered and in LD locally;
+  // graph vertex ids follow crawl or BFS order). Truncating therefore measures
+  // one locus or one neighbourhood and calls it the corpus. That exact mistake
+  // already invalidated a whole optimisation campaign here, where it made every
+  // absolute number 2.4x too optimistic.
+  //
+  // Walk the linearised upper triangle at a fixed stride instead, decoding each
+  // index back to (i,j), which spans the full row range at any target count.
   struct K{const char*n;double t;};
   std::vector<std::pair<uint32_t,uint32_t>> pr;
-  for(size_t i=0;i<rows.size()&&pr.size()<20000;++i)
-    for(size_t j=i+1;j<rows.size()&&pr.size()<20000;++j){
+  {
+    const uint64_t n = rows.size();
+    const uint64_t T = n*(n-1)/2;
+    const uint64_t target = std::min<uint64_t>(20000, T);
+    const uint64_t step = target ? std::max<uint64_t>(1, T/target) : 1;
+    pr.reserve(target);
+    for(uint64_t k=0; k<T && pr.size()<target; k+=step){
+      // Largest i with i*(2n-i-1)/2 <= k.
+      const double b = (double)(2*n-1);
+      uint64_t i = (uint64_t)((b - std::sqrt(b*b - 8.0*(double)k))/2.0);
+      while(i+1<n && (i+1)*(2*n-i-2)/2 <= k) ++i;      // correct fp drift
+      while(i>0    && i*(2*n-i-1)/2 > k)      --i;
+      const uint64_t j = k - i*(2*n-i-1)/2 + i + 1;
+      if(j<=i || j>=n) continue;
       const bool id=rows[i].meta.cardinality>=rows[j].meta.cardinality;
-      pr.push_back({(uint32_t)(id?i:j),(uint32_t)(id?j:i)});}
+      pr.push_back({(uint32_t)(id?i:j),(uint32_t)(id?j:i)});
+    }
+  }
 
   const auto f_dense=pick(cell_bb(),"dense");
   const auto f_occ  =pick(cell_bb(),"occ_sel");

@@ -1,0 +1,19 @@
+# host=census-income_srt corpus=real/real d=0.152686 rows=200 universe=199523 pairs=19900 card_mean=30464.3 runs_mean=674.4
+# footprint storm_B=4872kB roaring=2222kB roaring_ro=445kB zonemap=10.9kB
+kernel                      ns/pair vs roaring_ro
+CRoaring                    1349.65        1.06x
+CRoaring run_optimize       1428.63        1.00x
+storm B x B dense            378.52        3.77x
+storm B x B zonemap          134.95       10.59x
+storm B x S                 1696.12        0.84x
+storm B x R                  584.47        2.44x
+storm B x W                  903.47        1.58x
+storm S x S                17064.37        0.08x
+storm S x R                 4104.90        0.35x
+storm R x R                 1602.95        0.89x
+storm W x W                 1572.62        0.91x
+
+BEST storm cell: B x B at 134.95 ns/pair
+  vs CRoaring(run_optimize):    10.59x
+  vs CRoaring(default):         10.00x
+  vs storm all-bitmap:           2.80x   [claim P1]

@@ -1,0 +1,9 @@
+# source          /private/tmp/claude-501/-Volumes-SabrentM2-ML-projects-science-StormBitmaps/4d0fb93a-5e8d-46c3-aa16-fe051b5e5b1f/scratchpad/rrd/dimension_033
+# universe m      3,866,847
+# sets (kept)     173 of 173
+# mean |Xi|       22,351.7
+# mean density    5.780e-03
+# max |Xi|        689,798
+# skew            top 1% of sets hold 27.9% of all elements
+# REGIME          universe>=1e6: PASS   density<=1e-3: FAIL   => OUT OF REGIME
+# wrote           /private/tmp/claude-501/-Volumes-SabrentM2-ML-projects-science-StormBitmaps/4d0fb93a-5e8d-46c3-aa16-fe051b5e5b1f/scratchpad/stormbin/dimension_033.bin
