@@ -96,30 +96,55 @@ struct Filter {
     }
 };
 
-// Coarse positional zone map at a chosen bit budget -- the fairness control.
+// Coarse positional zone map at a chosen bit budget -- the fairness control,
+// and after C14 the winning structure.
 struct CoarseOcc {
     std::vector<uint64_t> w;
-    uint32_t shift = 0, nbits = 0;
+    uint32_t shift = 0, nbits = 0, nwords = 0;
 
     void init(uint32_t bits, uint32_t universe) {
         nbits = bits;
         uint32_t width = (universe + bits - 1) / bits;   // bits of universe per bucket
         shift = 0; while ((1u << shift) < width) ++shift; // round up to a power of two
-        w.assign((bits + 63) / 64, 0ull);
+        // The shift, not the requested budget, decides how many buckets the
+        // universe actually spans. Allocating `bits` when the rounded-up shift
+        // needs fewer would leave a tail that add() must bounds-check on every
+        // call; sizing from the shift lets the hot path drop the check.
+        nwords = (uint32_t)((((uint64_t)universe >> shift) + 1 + 63) / 64);
+        w.assign(nwords, 0ull);
     }
     inline void add(uint32_t x) {
         const uint32_t i = x >> shift;
-        if ((i >> 6) < w.size()) w[i >> 6] |= 1ull << (i & 63);
+        w[i >> 6] |= 1ull << (i & 63);
     }
     inline bool maybe(uint32_t x) const {
         const uint32_t i = x >> shift;
-        return (i >> 6) < w.size() && ((w[i >> 6] >> (i & 63)) & 1u);
+        return (w[i >> 6] >> (i & 63)) & 1u;
     }
+    size_t bytes() const { return w.size() * 8; }
 };
+
+/* Size the filter to the ROW's cardinality, not to the universe or a global
+ * constant.
+ *
+ * C14 found a fixed 2 kB budget beats the m/512-proportional map, but a fixed
+ * budget is only right on average: it over-provisions a 15-element neighbourhood
+ * (as-skitter) and under-provisions a 5,019-element census attribute. Fill rate
+ * is what governs selectivity, so hold fill roughly constant at 1/K and let the
+ * width follow |A|. For as-skitter that is a 64-byte filter -- comfortably
+ * L1-resident, and the probe is then a guaranteed L1 hit rather than a hopeful
+ * one. Clamped so a huge row cannot reintroduce the cache problem the fixed
+ * budget was solving. */
+static uint32_t adaptive_bits(uint32_t card, uint32_t K, uint32_t lo, uint32_t hi) {
+    uint64_t want = (uint64_t)card * K;
+    uint32_t b = lo;
+    while (b < want && b < hi) b <<= 1;
+    return b > hi ? hi : b;
+}
 
 int main(int argc, char** argv) {
     const char* path = nullptr;
-    uint32_t want_rows = 200, stride = 1, fbits = 4096;
+    uint32_t want_rows = 200, stride = 1, fbits = 4096, kfill = 32;
     size_t pair_cap = 20000; int repeats = 7;
     std::string tag = "host";
     for (int i = 1; i < argc; ++i) {
@@ -129,6 +154,7 @@ int main(int argc, char** argv) {
         else if (a == "--rows")   want_rows = atoi(nx());
         else if (a == "--stride") stride = atoi(nx());
         else if (a == "--bits")   fbits = atoi(nx());
+        else if (a == "--kfill")  kfill = atoi(nx());
         else if (a == "--pairs")  pair_cap = atoll(nx());
         else if (a == "--repeats")repeats = atoi(nx());
         else if (a == "--tag")    tag = nx();
@@ -144,7 +170,7 @@ int main(int argc, char** argv) {
         fread(&nb,4,1,f)!=1  || fread(&pad,4,1,f)!=1) { std::printf("bad header\n"); return 1; }
 
     std::vector<Row> rows; std::vector<uint32_t> pos;
-    std::vector<Filter> bl, blb; std::vector<CoarseOcc> co;
+    std::vector<Filter> bl, blb; std::vector<CoarseOcc> co, ad;
     uint32_t seen = 0;
     while (rows.size() < want_rows) {
         uint32_t n; if (fread(&n,4,1,f)!=1) break;
@@ -155,8 +181,9 @@ int main(int argc, char** argv) {
             bl.emplace_back();  bl.back().init(fbits, false);
             blb.emplace_back(); blb.back().init(fbits, true);
             co.emplace_back();  co.back().init(fbits, nb);
+            ad.emplace_back();  ad.back().init(adaptive_bits(n, kfill, 512u, fbits), nb);
             for (uint32_t k = 0; k < n; ++k) {
-                bl.back().add(pos[k]); blb.back().add(pos[k]); co.back().add(pos[k]);
+                bl.back().add(pos[k]); blb.back().add(pos[k]); co.back().add(pos[k]); ad.back().add(pos[k]);
             }
         }
         ++seen;
@@ -196,6 +223,26 @@ int main(int argc, char** argv) {
         return hit;
     };
 
+    /* Group-collapsing probe. The list is sorted, so consecutive elements often
+     * share a bucket; probe once per distinct bucket and skip the whole group on
+     * a miss. Replaces repeated filter lookups with a shift-and-compare scan,
+     * which is where the large-|S| corpora were losing. */
+    auto probe_skip = [&](const CoarseOcc& f, const BitmapView& B, const ListView& S) {
+        uint64_t hit = 0; uint32_t i = 0;
+        while (i < S.n) {
+            const uint32_t b = S.v[i] >> f.shift;
+            uint32_t j = i + 1;
+            while (j < S.n && (S.v[j] >> f.shift) == b) ++j;
+            if ((f.w[b >> 6] >> (b & 63)) & 1u)
+                for (uint32_t k = i; k < j; ++k) {
+                    const uint32_t x = S.v[k];
+                    hit += (B.w[x >> 6] >> (x & 63)) & 1ull;
+                }
+            i = j;
+        }
+        return hit;
+    };
+
     // --- correctness before timing -----------------------------------------
     size_t bad = 0, empties = 0;
     for (const P& p : pairs) {
@@ -204,6 +251,9 @@ int main(int argc, char** argv) {
         if (probe(bl [p.d], rows[p.d].B(), rows[p.s].S()) != want ||
             probe(blb[p.d], rows[p.d].B(), rows[p.s].S()) != want ||
             probe(co [p.d], rows[p.d].B(), rows[p.s].S()) != want ||
+            probe(ad [p.d], rows[p.d].B(), rows[p.s].S()) != want ||
+            probe_skip(co[p.d], rows[p.d].B(), rows[p.s].S()) != want ||
+            probe_skip(ad[p.d], rows[p.d].B(), rows[p.s].S()) != want ||
             (f_occ && f_occ(rows[p.d].B(), rows[p.s].S()) != want)) ++bad;
     }
     if (bad) { std::printf("FATAL: %zu/%zu disagree\n", bad, pairs.size()); return 1; }
@@ -224,9 +274,10 @@ int main(int argc, char** argv) {
     // Round-robin across variants inside each repeat, so thermal drift and
     // frequency ramp hit every variant equally. Timing each variant to
     // completion in turn is what made the corpus sweep drift up to 1.65x.
-    enum { V_ILP8, V_OCC, V_BLOOM, V_BLOCKED, V_COARSE, NV };
+    enum { V_ILP8, V_OCC, V_BLOOM, V_COARSE, V_ADAPT, V_CSKIP, V_ASKIP, NV };
     const char* names[NV] = {"B x S ilp8 (no filter)", "B x S zone map (512b bins)",
-                             "bloom k=2", "blocked bloom k=2", "coarse zone map"};
+                             "bloom k=2", "coarse fixed", "coarse adaptive",
+                             "coarse fixed +skip", "coarse adaptive +skip"};
     double best[NV]; for (int v = 0; v < NV; ++v) best[v] = 1e30;
     for (int r = 0; r < repeats; ++r) {
         for (int v = 0; v < NV; ++v) {
@@ -238,8 +289,10 @@ int main(int argc, char** argv) {
                     case V_ILP8:    sink += f_ilp8(rows[p.d].B(), rows[p.s].S()); break;
                     case V_OCC:     sink += f_occ (rows[p.d].B(), rows[p.s].S()); break;
                     case V_BLOOM:   sink += probe(bl [p.d], rows[p.d].B(), rows[p.s].S()); break;
-                    case V_BLOCKED: sink += probe(blb[p.d], rows[p.d].B(), rows[p.s].S()); break;
                     case V_COARSE:  sink += probe(co [p.d], rows[p.d].B(), rows[p.s].S()); break;
+                    case V_ADAPT:   sink += probe(ad [p.d], rows[p.d].B(), rows[p.s].S()); break;
+                    case V_CSKIP:   sink += probe_skip(co[p.d], rows[p.d].B(), rows[p.s].S()); break;
+                    case V_ASKIP:   sink += probe_skip(ad[p.d], rows[p.d].B(), rows[p.s].S()); break;
                 }
             }
             const double dt = (double)(ns_now() - t0) / (double)pairs.size();
@@ -253,6 +306,9 @@ int main(int argc, char** argv) {
                 "bitmap=%.0f kB/row disjoint=%.1f%%\n",
                 tag.c_str(), nb, rows.size(), pairs.size(), fbits, fbits/8.0,
                 bitmap_kb, 100.0*(double)empties/(double)pairs.size());
+    { double abytes=0; for (const auto& a : ad) abytes += (double)a.bytes();
+      std::printf("# adaptive filter: mean %.0f B/row (K=%u), fixed %.0f B/row\n",
+                  abytes/(double)ad.size(), kfill, fbits/8.0); }
     std::printf("# filter survival: bloom %.3f%%  blocked %.3f%%  coarse-occ %.3f%%  "
                 "(of %llu probes)\n",
                 100.0*(double)surv_bl/(double)tot_probes,

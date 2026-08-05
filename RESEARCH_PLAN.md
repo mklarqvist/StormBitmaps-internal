@@ -1471,3 +1471,60 @@ choice as something the cost model must set, and it has a clean predictor
 `build_occ`); one microarchitecture; the 512–65,536-bit sweep is visibly noisy
 and the 2 kB optimum should be re-established with error bars before it is
 quoted as a tuned value.
+
+### 15.12 Optimizing the zone map — two ideas tried, both lost (C15)
+
+Run: `bench/bench_bloom.cpp`, 15 repeats, round-robin interleaved. Baseline is
+`B x S ilp8`, no filter.
+
+**Headline, with error bars.** Coarse positional zone map at a **fixed 16,384-bit
+(2 kB) budget**, 9 independent processes per corpus, 9 interleaved repeats each:
+
+| corpus | median | IQR | min–max |
+|---|---:|---|---|
+| com-LiveJournal | **4.03x** | [3.75, 4.31] | 3.57–5.02 |
+| com-Orkut | **3.62x** | [3.46, 3.83] | 3.41–3.89 |
+| as-skitter | **3.62x** | [2.75, 3.93] | 2.48–3.96 |
+| soc-Pokec | **3.51x** | [3.10, 3.77] | 3.00–3.84 |
+
+No IQR comes near 1.0, so the effect is real at ~3.5–4x on the
+emptiness-dominated graph corpora. This is the first number in the project
+reported with a dispersion estimate rather than a best-of-N point.
+
+**Attempt 1 — size the filter to cardinality instead of a fixed budget. FAILED.**
+Width `clamp(next_pow2(32*|A|), 512, 16384)` gives 82–317 B/row instead of
+2 kB, and loses on 7 of 9 corpora (as-skitter 3.34x vs 4.69x; uscensus2000
+2.67x vs 3.73x). The reasoning behind it was wrong: **survival rate dominates,
+not filter footprint.** Both variants are cache-resident, so shrinking the
+filter buys no cache benefit and costs selectivity — for as-skitter the adaptive
+map has 512 buckets vs 16,384, so survival rises from 0.09% to 2.9%, roughly 32x
+more fall-throughs, and every fall-through is a genuine DRAM miss into a
+207 kB/row bitmap. Cheap-to-hold beats small.
+
+**Attempt 2 — collapse consecutive same-bucket probes. FAILED badly.** The list
+is sorted, so neighbouring elements often share a bucket; probing once per
+distinct bucket and skipping the group should have helped exactly where the
+filter was losing (large |S|). It made things worse everywhere: 2.45x vs 3.73x
+on uscensus2000, and **0.13x vs 0.41x on weather_sept_85**. The group-scan
+`while (j < n && (S.v[j] >> shift) == b) ++j` is a serial dependent loop with a
+data-dependent branch per element, which is worse than the branchless
+shift-load-test it replaces. Branch-free per-element probing wins even when it
+does strictly more lookups.
+
+**Attempt 3 — tune the width.** Optimum is 16,384–32,768 bits (2–4 kB) on the
+graph corpora (com-Orkut 3.69x/3.75x at 16k/32k, falling to 2.59x at 256k;
+com-LiveJournal peaks at 16k). `uscensus2000` and `as-skitter` are too noisy to
+call — adjacent sizes swing 2.69x to 5.11x. **Finer tuning is not meaningful
+with this harness**, which is the third time run-to-run variance has blocked a
+conclusion (cf. 15.6, 15.11).
+
+**C15, the design rule.** Make the filter **as large as stays cache-resident,
+with a branchless single-load probe**, and let the selector disable it when |S|
+is large. Every attempt to be cleverer — hashing (C14), adaptive sizing,
+group-collapsing — lost to that. The two failures share a cause: they traded a
+cheap predictable operation for a smarter expensive one, and at 3–30 ns/pair the
+cheap predictable operation is the whole budget.
+
+**Still open:** filter build cost remains uncharged; one microarchitecture; and
+the width optimum is stated as a range (2–4 kB) rather than a tuned value
+because the harness cannot resolve finer.
