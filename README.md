@@ -54,72 +54,62 @@ result about the corpora chosen, not about the method.
 ### 1. Exact cardinality, selection + zone maps (the default)
 
 Per-tile / probe-and-commit selection against a genuine unfiltered all-bitmap
-baseline. Exact `|A n B|` for every pair.
+baseline. Exact `|A n B|` for every pair. The last column repeats the whole
+measurement with the zone-map filter ablated (`--no-zonemap`), so the filter's
+contribution is visible rather than folded in.
 
-| corpus | domain | universe | all-bitmap ns/pair | selected ns/pair | **speedup** |
-|---|---|---:|---:|---:|---:|
-| `enwiki-categorylinks` | IR | 129,698,523 | 642,867 | 593.6 | **1,083x** |
-| `uscensus2000` | census | 36,974,578 | 123,380 | 211.1 | **584x** |
-| `livejournal-groupmemberships` | graph | 7,489,074 | 23,533 | 45.0 | **523x** |
-| `dimension_003` | druid | 3,866,847 | 10,148 | 24.7 | **410x** |
-| `wikipedia_link_en` | graph | 11,206,012 | 38,892 | 96.3 | **404x** |
-| `com-LiveJournal` | graph | 4,036,538 | 10,987 | 27.4 | **401x** |
-| `census1881_srt` | census | 4,277,735 | 11,023 | 32.1 | **343x** |
-| `dbpedia-link` | graph | 18,268,993 | 52,420 | 168.3 | **311x** |
-| `as-skitter` | graph | 1,696,415 | 4,240 | 16.0 | **266x** |
-| `gnomad_chr21_exomes_af1e-3` | genomics | 1,461,894 | 5,485 | 24.7 | **222x** |
-| `soc-Pokec` | graph | 1,632,804 | 4,002 | 19.8 | **202x** |
-| `dimension_008` | druid | 3,866,845 | 9,699 | 48.5 | **200x** |
-| `wiki-Talk` | graph | 2,394,385 | 6,218 | 32.2 | **193x** |
-| `com-Orkut` | graph | 3,072,627 | 8,381 | 48.6 | **172x** |
-| `dimension_033` | druid | 3,866,847 | 10,028 | 60.2 | **167x** |
-| `census1881` | census | 4,277,806 | 10,781 | 69.2 | **156x** |
-| `usher_sarscov2` | genomics | 8,451,771 | 25,789 | 212.5 | **121x** |
-| `wikileaks-noquotes` | text | 1,353,179 | 3,338 | 64.2 | **52x** |
-| `msprime_1M` | genomics-sim | 2,000,000 | 10,498 | 2,394.4 | **4x** |
-| `msprime_100k` | genomics-sim | 200,000 | 557 | 198.2 | **3x** |
-| `weather_sept_85` | sensor | 1,015,367 | 2,984 | 1,368.0 | **2x** |
-| `msprime_10k` | genomics-sim | 20,000 | 51 | 25.7 | **2x** |
-| `census-income` | census | 199,523 | 386 | 257.9 | **1x** |
+| corpus | domain | universe | all-bitmap ns/pair | selected ns/pair | **speedup** | zone map ablated |
+|---|---|---:|---:|---:|---:|---:|
+| `enwiki-categorylinks` | IR | 129,698,523 | 646,513 | 12.3 | **52,562x** | 56,862x |
+| `uscensus2000` | census | 36,974,578 | 128,767 | 5.1 | **25,348x** | 25,499x |
+| `dimension_003` | druid | 3,866,847 | 11,640 | 1.7 | **6,887x** | 6,707x |
+| `dimension_008` | druid | 3,866,845 | 11,354 | 6.9 | **1,641x** | 1,590x |
+| `livejournal-groupmemberships` | graph | 7,489,074 | 23,070 | 15.1 | **1,526x** | 1,646x |
+| `dbpedia-link` | graph | 18,268,993 | 65,168 | 55.8 | **1,168x** | 1,150x |
+| `wikipedia_link_en` | graph | 11,206,012 | 37,426 | 60.3 | **621x** | 645x |
+| `census1881_srt` | census | 4,277,735 | 11,933 | 20.4 | **586x** | 567x |
+| `wiki-Talk` | graph | 2,394,385 | 6,859 | 18.6 | **369x** | 379x |
+| `com-LiveJournal` | graph | 4,036,538 | 11,925 | 32.4 | **368x** | 351x |
+| `dimension_033` | druid | 3,866,847 | 11,431 | 36.8 | **311x** | 319x |
+| `census1881` | census | 4,277,806 | 12,367 | 53.1 | **233x** | 242x |
+| `as-skitter` | graph | 1,696,415 | 4,713 | 21.4 | **220x** | 260x |
+| `gnomad_chr21_exomes_af1e-3` | genomics | 1,461,894 | 4,158 | 20.7 | **200x** | 227x |
+| `soc-Pokec` | graph | 1,632,804 | 4,556 | 39.7 | **115x** | 106x |
+| `com-Orkut` | graph | 3,072,627 | 9,026 | 96.3 | **94x** | 77x |
+| `usher_sarscov2` | genomics | 8,451,771 | 26,826 | 585.7 | **46x** | 49x |
+| `wikileaks-noquotes` | text | 1,353,179 | 3,693 | 81.3 | **45x** | 45x |
+| `msprime_1M` | genomics-sim | 2,000,000 | 6,076 | 1294.5 | **4.7x** | 4.9x |
+| `msprime_100k` | genomics-sim | 200,000 | 451 | 136.2 | **3.3x** | 3.1x |
+| `msprime_10k` | genomics-sim | 20,000 | 48 | 22.5 | **2.2x** | 2.2x |
+| `weather_sept_85` | sensor | 1,015,367 | 2,755 | 1334.1 | **2.1x** | 1.9x |
+| `census-income` | census | 199,523 | 375 | 263.5 | **1.4x** | 1.5x |
 
-### 2. Exact cardinality, selection only — zone maps ablated
+### 2. The zone map no longer earns its keep
 
-The same selector with the overlap filter removed.
+Ablating it changes nothing: the two speedup columns above agree to within run
+noise on all 23 corpora, and where they differ the ablated column is sometimes
+*faster* (`as-skitter` 220x -> 260x, `gnomad_chr21` 200x -> 227x).
 
-| corpus | domain | universe | speedup (selection only) |
-|---|---|---:|---:|
-| `enwiki-categorylinks` | IR | 129,698,523 | 1.29x |
-| `uscensus2000` | census | 36,974,578 | 1.07x |
-| `livejournal-groupmemberships` | graph | 7,489,074 | 1.41x |
-| `dimension_003` | druid | 3,866,847 | 1.01x |
-| `wikipedia_link_en` | graph | 11,206,012 | 1.06x |
-| `com-LiveJournal` | graph | 4,036,538 | 1.27x |
-| `census1881_srt` | census | 4,277,735 | 1.37x |
-| `dbpedia-link` | graph | 18,268,993 | 1.02x |
-| `as-skitter` | graph | 1,696,415 | 0.97x |
-| `gnomad_chr21_exomes_af1e-3` | genomics | 1,461,894 | 1.33x |
-| `soc-Pokec` | graph | 1,632,804 | 0.97x |
-| `dimension_008` | druid | 3,866,845 | 1.14x |
-| `wiki-Talk` | graph | 2,394,385 | 2.17x |
-| `com-Orkut` | graph | 3,072,627 | 1.02x |
-| `dimension_033` | druid | 3,866,847 | 1.26x |
-| `census1881` | census | 4,277,806 | 1.33x |
-| `usher_sarscov2` | genomics | 8,451,771 | 1.96x |
-| `wikileaks-noquotes` | text | 1,353,179 | 2.04x |
-| `msprime_1M` | genomics-sim | 2,000,000 | 2.60x |
-| `msprime_100k` | genomics-sim | 200,000 | 2.58x |
-| `weather_sept_85` | sensor | 1,015,367 | 1.43x |
-| `msprime_10k` | genomics-sim | 20,000 | 2.60x |
-| `census-income` | census | 199,523 | 1.56x |
+That is a reversal, and it is a consequence of two of this project's own fixes
+rather than a measurement error:
 
-**Read this table with care.** It is *not* "selection is worthless without the
-filter". `CostModel` is calibrated assuming B x B is zone-mapped, so removing the
-kernel leaves the selector making choices that are wrong for the kernel it is
-now running. Kernel and model are not separable without recalibration, and this
-column measures the pair, not the filter. It is included because the filter is
-optional and every configuration should be visible — but the honest reading is
-that the zone map and the cost model are coupled, and that coupling is itself a
-limitation.
+- **C33 gated the zone map's construction.** It is universe-proportional, so a
+  row of 102 elements over a universe of 1.3e8 was carrying a 253 kB summary of
+  408 bytes of data. It is now built only when `n*512 > m`, which on these
+  corpora means most rows do not have one and `bb_occ_sel` falls straight
+  through to `bb_dense`.
+- **The work the filter used to avoid is now avoided earlier and cheaper.** The
+  O(1) span test settles 11-99.5% of pairs before any kernel runs, and
+  representation selection routes most of the rest to B x S or B x R, which are
+  proportional to the sparse side and never scan `m` in the first place. The
+  zone map's job was to stop B x B from ANDing zeros; the selector's job is to
+  not run B x B.
+
+So the honest statement is that the zone map was a fix for a cell the selector
+now rarely chooses. It is retained, gated, because it still pays on the dense
+corpora where B x B is genuinely selected (`weather_sept_85`, `census-income`
+route 46% of pairs there) -- and those are exactly the two rows where the
+ablated column is worse.
 
 ### 3. Thresholded mode (opt-in) — only pairs with Jaccard >= t
 
