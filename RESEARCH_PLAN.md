@@ -3085,3 +3085,106 @@ rank and occupancy have none. This is an oversight, not a design decision.
 **Fix:** guard rank and occupancy the way the complement is guarded, and use the
 `sparse_only` path added in §23 as the default for rows below the threshold.
 
+
+---
+
+## 25. Class mix, and two hardware facts that reframe earlier results (C34)
+
+### 25.1 Which representation does each ROW fall into
+
+`bench/class_mix.cpp`. Smallest-representation-wins per row, with `point` =
+|X| <= 4 stored as bare 32-bit indices. Reported as % of rows **and** % of
+elements, because those differ enormously and only the pair is informative.
+
+| corpus | row: point | array | runs | bmp | elem: point | array | runs | bmp |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| uscensus2000 | **67.0** | 32.0 | 1.0 | 0.0 | 3.8 | **95.7** | 0.5 | 0.0 |
+| livejournal-groupmemberships | **64.9** | 35.0 | 0.1 | 0.0 | 3.1 | **96.8** | 0.0 | 0.0 |
+| gnomad_chr21 | **55.0** | 45.0 | 0.0 | 0.0 | 4.2 | **95.8** | 0.0 | 0.0 |
+| census1881 | **52.5** | 15.0 | 31.0 | 0.0 | 0.0 | **93.3** | 6.2 | 0.0 |
+| wiki-Talk | 49.4 | 50.1 | 0.1 | 0.0 | 1.8 | **92.8** | 0.1 | 0.0 |
+| as-skitter | 40.9 | 56.1 | 2.3 | 0.0 | 7.7 | **64.0** | 14.0 | 0.0 |
+| dimension_003 | 40.5 | 0.0 | **59.5** | 0.0 | 0.3 | 0.0 | **99.7** | 0.0 |
+| enwiki-categorylinks | 30.9 | **68.3** | 0.2 | 0.0 | 1.8 | **92.2** | 0.0 | 0.0 |
+| wikileaks-noquotes | 25.0 | 5.5 | **69.5** | 0.0 | 0.0 | 2.2 | **97.7** | 0.0 |
+| usher_sarscov2 | 6.0 | 17.3 | **76.6** | 0.0 | 0.0 | 0.1 | **99.8** | 0.0 |
+| msprime_1M | 14.2 | 61.6 | 0.1 | **17.6** | 0.0 | 2.7 | 1.4 | **81.3** |
+| census-income | 5.0 | 55.5 | 1.0 | **30.5** | 0.0 | 2.6 | 5.7 | **89.8** |
+
+**C34a: points are 55-67% of rows and 3-4% of elements.** A bare-integer
+representation for |X| <= 4 is therefore a *per-row overhead* win, not a data
+win — it removes the run array, EWAH header, rank index and zone map that C33
+shows are currently built for every one of those rows. Worth doing, but it must
+be described as eliminating metadata, not as compression.
+
+**Only three corpora put any mass in the bitmap class** (census-income 89.8% of
+elements, msprime_1M 81.3%, weather_sept_85 15.8%) — the same three that gate to
+bypass everywhere. **Runs carry ~100% of elements on exactly three corpora**
+(usher 99.8%, dimension_003 99.7%, wikileaks 97.7%), which is why R x R is
+competitive there and nowhere else.
+
+This table is what the aggregate speedups cannot say: the alpha is not one
+mechanism. It is array-dominant on graphs, run-dominant on phylogenetically
+ordered and Druid-column data, and bitmap-dominant on dense census/sensor data.
+
+### 25.2 C34b: the cache line is 128 B, not 64 B
+
+Measured on the target (`sysctl -n hw.cachelinesize` -> 128; P-core L1d 128 KiB,
+L2 16 MiB shared across 4; E-core L1d 64 KiB, L2 4 MiB across 6).
+
+`bench_tile.cpp` computed the gate's `touch` metric as `bytes / 64.0`. **Every
+`touch` figure in §15.13-§15.24 is therefore 2x too large.** The gate still works
+because 0.25 was fitted against the wrong constant and absorbed the error, but
+the constant is now corrected and **the threshold must be re-derived rather than
+carried over**.
+
+### 25.3 C34c: C18's width optimum may be a P/E scheduling artifact
+
+The tile transpose `colT` is one 64-bit word per bucket:
+
+| `--bits` | colT | P-L1 128 KiB | P-L2 16 MiB | E-L2 4 MiB |
+|---:|---:|:--:|:--:|:--:|
+| 16,384 | 128 KiB | at capacity | yes | yes |
+| 262,144 | 2 MiB | no | yes | yes |
+| **1,048,576** (C18 winner) | **8 MiB** | no | **yes, ~50%** | **NO, 2x over** |
+| 4,194,304 | 32 MiB | no | **NO** | no |
+
+Nothing in `bench_tile.cpp` sets a QoS class, so macOS chooses the cluster.
+**C18's "1M wins, 4M loses on graphs" could be P/E placement rather than a pure
+universe-size effect.** Falsifiable in ~10 minutes without code changes: force
+P-core scheduling (`pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE,0)`
+or `taskpolicy`) and rerun the §15.16 width sweep. Until that is done C18's
+mechanism is not established, only its correlation.
+
+It also **explains §15.15's T=256 regression** rather than merely recording it:
+at the default 16,384 bits, quadrupling T takes colT from 128 KiB (P-L1 capacity)
+to 512 KiB, moving it from L1-resident to L2-resident. That predicts a modest,
+inconsistent penalty — which is what was measured (1.20x geomean, 2 of 5
+regressing) — and reframes the conclusion from "wide tiles are bad" to "growing a
+tile without checking which cache level absorbs it is bad".
+
+### 25.4 BLIS/SYRK is the better prior art, not CuTe
+
+The tile pipeline's transpose-and-resolve is structurally a **Boolean SYRK**:
+`occ` is a T x fbits occupancy matrix, `colT` is its transpose, and the resolve
+is the outer-product decomposition of `A A^T` restricted to the lower triangle.
+
+CuTe's *algebra* (Layout = (Shape,Stride), composition, complement, logical
+divide/product) is a clean notation for hierarchical tiling and transfers fine as
+a mental model — `bench_tile.cpp` already contains ad hoc instances of it. But
+CuTe's *residency mechanism* is an explicit copy into programmer-addressed shared
+memory gated by `__syncthreads()`, and **there is no CPU equivalent**: L1/L2 are
+transparent and hardware-managed. The CPU version is BLIS-style panel blocking —
+size the working set to a real cache level and order the loop so it is reused
+before eviction.
+
+Symmetry likewise: CuTe has no operator for "triangular half of the block grid",
+while SYRK's block algorithm skips mirror panels natively. LAPACK's Rectangular
+Full Packed format is the citable prior art for a halved-footprint symmetric
+store — **recalled, not verified this session; check the TOMS paper before
+citing.**
+
+**Next experiment (untested, ranked first):** cross-tile resolve. §15.14 measures
+only the block diagonal; holding tile i's transpose resident while streaming
+tiles j > i is the BLIS outer-panel pattern and completes the SYRK. Falsify
+cheaply on the 2-tile case against the oracle before scaling.

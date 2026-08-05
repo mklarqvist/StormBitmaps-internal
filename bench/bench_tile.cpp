@@ -477,7 +477,12 @@ int main(int argc, char** argv) {
                     const uint32_t d = t*T+i, sIdx = t*T+j;
                     const ListView S = rows[sIdx].S();
                     probes += S.n; sumS += S.n;
-                    lines += (double)rows[d].meta.n_words * 8.0 / 64.0;
+                    // 128 B, measured: `sysctl -n hw.cachelinesize` on M4.
+                    // This was 64.0, so every `touch` figure in 15.13-15.24 is
+                    // 2x too large and the 0.25 threshold absorbed the error by
+                    // being fitted against it. Correcting the constant means the
+                    // threshold must be re-derived, not carried over.
+                    lines += (double)rows[d].meta.n_words * 8.0 / 128.0;
                     for (uint32_t k = 0; k < S.n; ++k) surv += occ[d].maybe(S.v[k]);
                 }
         const double survival = probes ? (double)surv/(double)probes : 0.0;
