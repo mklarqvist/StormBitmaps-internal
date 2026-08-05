@@ -16,6 +16,7 @@ const char* name_of(Policy p) {
         case Policy::PerPair:   return "per-pair";
         case Policy::PerTile:   return "per-tile";
         case Policy::Oracle:    return "oracle";
+        case Policy::Fixed:     return "fixed-cell";
         case Policy::Probe:     return "probe";
     }
     return "?";
@@ -86,33 +87,61 @@ inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
 
 /* Tile-aggregate metadata (M3).
  *
- * The tile's decision has to stand in for every pair inside it, so the
- * aggregate must be conservative in the direction that matters: using the MAX
- * cardinality and MAX run count means the tile is costed as if every row were
- * its densest member. Underestimating would pick a kernel that is cheap for the
- * average row and catastrophic for the worst one, and at N^2 the worst one is
- * hit TR*TC times.
+ * MEAN cardinality and run count, not max.
  *
- * first_set/last_set are aggregated the other way -- min of firsts, max of
- * lasts -- so the span test stays sound: a tile is only declared disjoint when
- * every pair in it certainly is. */
+ * This was max, on the argument that the aggregate should be conservative:
+ * underestimating picks a kernel cheap for the average row and catastrophic for
+ * the worst, and at N^2 the worst is hit TR*TC times. That argument does not
+ * survive contact with a power-law corpus, and it is wrong about which
+ * direction is conservative in THIS matrix.
+ *
+ * B x B costs Theta(m) regardless of density -- it is never catastrophic and
+ * never cheap. The sparse cells are cheap when the pair is sparse and degrade
+ * gracefully when it is not. So over-estimating a tile does not buy safety; it
+ * buys Theta(m) on the 99% of pairs that are sparse in order to avoid a small
+ * constant factor on the few that are not. On as-skitter, whose degree
+ * distribution spans three orders of magnitude, the densest tile's max is ~35k
+ * against a median near 500, the tile therefore selected B x B, and that one
+ * tile -- 6.2% of the pairs -- dragged the whole corpus from 22 ns/pair to 291.
+ *
+ * The mean is not merely less pessimistic, it is the right statistic. What the
+ * tile decision should minimise is the tile's TOTAL cost, sum over pairs of
+ * cost(p, a_i, b_j); predict() is linear in work_units, so that sum is
+ * TR*TC*cost(p, mean_a, mean_b) up to the min/max terms inside work_units.
+ * Deciding on the mean minimises the quantity that is actually being paid.
+ *
+ * first_set/last_set stay min-of-firsts and max-of-lasts, which is not a
+ * cost estimate but a soundness condition: the span test may only declare a
+ * tile disjoint when every pair in it certainly is. */
 RowMeta tile_meta(const std::vector<Row>& rows, const std::vector<uint32_t>& order,
                   uint32_t lo, uint32_t hi)
 {
     RowMeta m;
     m.first_set = UINT32_MAX;
     m.last_set  = 0;
+    uint64_t card = 0, runs = 0, nnz = 0;
+    const uint32_t cnt = hi > lo ? hi - lo : 1;
+    // AND, not OR: a pairing that consumes an index falls back the moment ONE
+    // side lacks it, so the tile may only be costed as indexed when every row
+    // in it is. Optimism here reintroduces the mis-pricing the flags exist to
+    // remove.
+    m.has_rank = m.has_occ = (hi > lo);
     for (uint32_t k = lo; k < hi; ++k) {
         const RowMeta& r = rows[order[k]].meta;
-        m.cardinality = std::max(m.cardinality, r.cardinality);
-        m.n_runs      = std::max(m.n_runs,      r.n_runs);
-        m.n_words     = std::max(m.n_words,     r.n_words);
-        m.n_nonzero_w = std::max(m.n_nonzero_w, r.n_nonzero_w);
+        m.has_rank = m.has_rank && r.has_rank;
+        m.has_occ  = m.has_occ  && r.has_occ;
+        card += r.cardinality;
+        runs += r.n_runs;
+        nnz  += r.n_nonzero_w;
+        m.n_words = std::max(m.n_words, r.n_words);   // the universe: same for all
         if (r.cardinality) {
             m.first_set = std::min(m.first_set, r.first_set);
             m.last_set  = std::max(m.last_set,  r.last_set);
         }
     }
+    m.cardinality = (uint32_t)(card / cnt);
+    m.n_runs      = (uint32_t)(runs / cnt);
+    m.n_nonzero_w = (uint32_t)(nnz  / cnt);
     if (m.first_set == UINT32_MAX) m.first_set = 0;
     return m;
 }
@@ -187,7 +216,7 @@ Pairing probe_tile(const Kernels& K, const CostModel& model,
 } // namespace
 
 AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
-                           Policy policy, uint32_t tile, bool no_zonemap)
+                           Policy policy, uint32_t tile, bool no_zonemap, Pairing fixed_cell)
 {
     AllPairsStats st;
     if (rows.size() < 2) return st;
@@ -232,8 +261,38 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                     const Row& s = i_dense ? rj : ri;
                     ++pairs;
 
+                    /* O(1) disjointness proof, kept PER PAIR even when the cell
+                     * choice is hoisted to the tile.
+                     *
+                     * select_pairing() settles a pair with a.last < b.first (or
+                     * the mirror) before it costs anything, and under a skewed
+                     * spectrum that is most of the matrix. Hoisting the decision
+                     * to the tile threw the test away with it, because a tile is
+                     * only disjoint when EVERY pair in it is and that is almost
+                     * never true. On census1881 the per-pair policy settled 63.3%
+                     * of pairs here and the tile policy settled 0.0% -- it was
+                     * running a kernel on two thirds of the matrix to compute
+                     * zero, which is why it measured 15x worse than its own best
+                     * fixed cell.
+                     *
+                     * The decision is what is expensive to make per pair; this
+                     * test is two integer comparisons on metadata already in
+                     * registers, and it is not a heuristic -- a pair failing it
+                     * has an empty intersection by construction. Excluded from
+                     * AllBitmap, which must stay the unassisted reference. */
+                    if (policy != Policy::AllBitmap &&
+                        (d.meta.cardinality == 0 || s.meta.cardinality == 0 ||
+                         d.meta.last_set < s.meta.first_set ||
+                         s.meta.last_set < d.meta.first_set)) {
+                        ++st.cell_pairs[(int)Pairing::Empty];
+                        ++skipped;
+                        continue;
+                    }
+
                     Pairing p = tp;
-                    if (policy == Policy::AllBitmap) {
+                    if (policy == Policy::Fixed) {
+                        p = fixed_cell;
+                    } else if (policy == Policy::AllBitmap) {
                         p = Pairing::BB;
                     } else if (policy == Policy::PerPair) {
                         const uint64_t s0 = now_ns();
@@ -247,6 +306,7 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                         // bound a perfect free selector could reach.
                         p = select_pairing(model, d.meta, s.meta);
                     }
+                    ++st.cell_pairs[(int)p];
                     if (p == Pairing::Empty) { ++skipped; continue; }
                     sum += run(K, p, d, s, no_zonemap || policy == Policy::AllBitmap);
                 }

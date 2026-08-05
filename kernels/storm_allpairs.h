@@ -44,6 +44,11 @@ enum class Policy : uint8_t {
     PerPair,      // M2/M4 per-pair selection: correct, and measured too slow
     PerTile,      // M3: one decision per tile, from tile-aggregate metadata
     Oracle,       // best cell per pair, unattainable; the regret denominator
+    Fixed,        // DIAGNOSTIC: one cell for every pair, no selection at all.
+                  // Isolates the harness's own per-pair dispatch cost from the
+                  // selector's decision quality -- if Fixed does not reproduce
+                  // the tight-loop figure bench_real measures for the same cell,
+                  // the gap is dispatch, not selection.
     Probe,        // M3 + measured commit: time the candidates on a few pairs of
                   // the tile, then commit for the rest. See storm_allpairs.cpp.
 };
@@ -57,6 +62,16 @@ struct AllPairsStats {
     double   ns_total     = 0;
     double   ns_selection = 0;   // time inside the selection path only
     uint64_t skipped      = 0;   // pairs settled as provably disjoint, no kernel run
+    /* Pairs routed to each cell, indexed by Pairing.
+     *
+     * An aggregate ns/pair says selection helped or did not; it cannot say
+     * WHICH decision was wrong when it did not. On census1881 the tile policy
+     * measured 15x worse than its own best fixed cell, and no amount of staring
+     * at the total identified the tile responsible. This is the cheapest
+     * possible instrument -- one increment on a path that already branches --
+     * and it turns "the selector is bad here" into "the selector sent 41% of
+     * pairs to B x B". */
+    uint64_t cell_pairs[(int)Pairing::COUNT] = {0};
 };
 
 /* Form 1 of §6: reduction. No N^2 materialization, so this is the regime where
@@ -69,7 +84,8 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows,
                            const CostModel& model,
                            Policy policy,
                            uint32_t tile = 64,
-                           bool no_zonemap = false);
+                           bool no_zonemap = false,
+                           Pairing fixed_cell = Pairing::BS);
 
 /* Form 2 of §6: tile visitor. The caller consumes each tile of counts, so a
  * consumer can stream or fuse without ever holding N^2. This is the form

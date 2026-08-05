@@ -103,6 +103,17 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
 
 double predict(const CostModel& m, Pairing p, const RowMeta& a, const RowMeta& b) {
     if (p == Pairing::Empty) return 0.0;
+    /* B x B WITHOUT a zone map is a different algorithm and must be priced as
+     * one. bb_occ_sel falls back to bb_dense the moment either side's occ is
+     * null, and bb_dense is Theta(m) -- the original premise of
+     * PROBLEM_STATEMENT.md 2, unfiltered. Since C33 gated zone-map construction
+     * on n*512 > universe, most sparse rows no longer carry one, so charging
+     * them the filtered cost under-prices the cell by the entire factor the
+     * filter would have saved. Return before the occ term below, which is also
+     * not paid when there is no occ to read. */
+    if (p == Pairing::BB && !(a.has_occ && b.has_occ))
+        return m.ns_fixed + m.ns_per_unit[(int)p] *
+                            (double)std::max(a.n_words, b.n_words);
     double c = m.ns_fixed + m.ns_per_unit[(int)p] * work_units(p, a, b);
     if (p == Pairing::BB) {
         /* The zone-mapped B x B must AND both occupancy maps before it can skip

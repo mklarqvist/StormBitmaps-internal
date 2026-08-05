@@ -153,10 +153,41 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe,
         }
     }
 
+    /* C33 -- the auxiliary indexes are UNIVERSE-proportional and were built
+     * unconditionally, so a row holding 102 elements over a universe of 1.3e8
+     * carried a 4 MB rank index and a 253 kB zone map. That is not merely a
+     * storage defect (metadata:data reached 26,312:1 on enwiki-categorylinks);
+     * it is a throughput defect, because every kernel that consumes an index
+     * pays a Theta(m) scan or a scatter of cold lines to reach Theta(n) of data.
+     * Roaring has no equivalent cost -- its top-level key array is
+     * cardinality-proportional -- which is precisely why Storm could not
+     * degenerate into it on sparse corpora.
+     *
+     * Both are now built only where they can pay, on the same principle the
+     * complement above already used: one comparison on data already computed.
+     *
+     *   occ   answers "is this 512-bit bin empty" over m/512 bits. Reading it
+     *         costs m/512 word-loads, so it cannot beat a sparse side that costs
+     *         Theta(n) unless n exceeds m/512.
+     *
+     *   rank  replaces counting ceil(len/64) words with two indexed lookups, so
+     *         it earns its 25%-of-bitmap footprint only on LONG runs. The layout
+     *         note in storm_repr.h puts break-even near 600 bits; gate at 512
+     *         (eight words, one rank block) so the index is still built through
+     *         the marginal region rather than exactly at it.
+     *
+     * Every consumer already has a null-index fallback (cell_bb.cpp:359,415,467;
+     * cell_br.cpp:115..308; cell_bs.cpp:318; cell_wah.cpp:146..256), so a row
+     * without an index is correct, not merely tolerated. */
     uint32_t nnz = 0;
     if (!sparse_only) {
-        build_rank(out.bitmap.data(), nw, out.rank);
-        build_occ(out.bitmap.data(), nw, out.occ, out.occ_bin);
+        const uint64_t nruns   = out.run_start.size();
+        const uint64_t mean_rl = nruns ? (uint64_t)n / nruns : 0;
+        if (mean_rl >= 512)                       build_rank(out.bitmap.data(), nw, out.rank);
+        else                                      out.rank.clear();
+        if ((uint64_t)n * 512 > (uint64_t)universe)
+            build_occ(out.bitmap.data(), nw, out.occ, out.occ_bin);
+        else                                      out.occ.clear();
         for (uint32_t k = 0; k < nw; ++k) nnz += (out.bitmap[k] != 0);
     } else {
         out.rank.clear(); out.occ.clear();
@@ -171,6 +202,8 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe,
     out.meta.n_nonzero_w = nnz;
     out.meta.first_set   = n ? positions[0]     : UINT32_MAX;
     out.meta.last_set    = n ? positions[n - 1] : 0;
+    out.meta.has_rank    = !out.rank.empty();
+    out.meta.has_occ     = !out.occ.empty();
 }
 
 } // namespace storm

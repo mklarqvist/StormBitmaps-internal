@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     spec.n_rows = 512; spec.universe = 65536; spec.density = 0.01;
     std::string structure = "clustered", spectrum = "inverse", tag = "host";
     uint32_t tile = 64;
-    const char* infile = nullptr; uint32_t in_stride = 1; bool no_zm = false;
+    const char* infile = nullptr; uint32_t in_stride = 1; bool no_zm = false; Pairing fixed_cell = Pairing::BR;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -90,6 +90,9 @@ int main(int argc, char** argv) {
         else if (a == "--file")      infile        = nx();
         else if (a == "--in-stride") in_stride     = (uint32_t)atoi(nx());
         else if (a == "--no-zonemap") no_zm        = true;
+        else if (a == "--fixed") { std::string c2 = nx();
+            fixed_cell = c2=="bb"?Pairing::BB: c2=="bs"?Pairing::BS: c2=="br"?Pairing::BR:
+                         c2=="ss"?Pairing::SS: c2=="rr"?Pairing::RR: Pairing::BS; }
     }
     spec.structure = structure == "uniform" ? Structure::Uniform
                    : structure == "runs"    ? Structure::Runs : Structure::Clustered;
@@ -158,10 +161,28 @@ int main(int argc, char** argv) {
 #endif
                 roar_ns, "-", "-", "-", (unsigned long long)roar_sum, "");
 
+    /* BEST OF 3, matching the Roaring loop above exactly.
+     *
+     * Roaring was timed best-of-3 while every Storm policy ran once, cold. The
+     * first pass over a corpus pays the page faults and TLB fills for rows that
+     * were built moments earlier and never touched since; Roaring's repeats 2 and
+     * 3 do not. That is not a small correction at these working-set sizes -- a
+     * 256-row corpus at universe 3.9e6 is 124 MB of bitmap against a 16 MiB L2 --
+     * and it ran the wrong way for us in every "fixed Roaring vs our best"
+     * comparison reported so far. Same repetition count, same min, both sides. */
+    auto best_of_3 = [&](Policy p) {
+        AllPairsStats best = allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
+        for (int r = 1; r < 3; ++r) {
+            AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
+            if (s.ns_total < best.ns_total) best = s;
+        }
+        return best;
+    };
+
     AllPairsStats ref;
     double base = 0;
-    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm);
+    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe, Policy::Fixed}) {
+        AllPairsStats s = best_of_3(p);
         const double nsp = s.ns_total / (double)s.pairs;
         const double sel = s.ns_selection / (double)s.pairs;
         if (p == Policy::AllBitmap) { ref = s; base = nsp; }
@@ -169,13 +190,22 @@ int main(int argc, char** argv) {
                     name_of(p), nsp, sel, 100.0 * sel / nsp,
                     (unsigned long long)s.decisions, (unsigned long long)s.sum,
                     s.sum == ref.sum ? "" : "  <-- WRONG");
-        if (p != Policy::AllBitmap)
+        if (p != Policy::AllBitmap) {
             std::printf("%-12s %12s %11s %9s %9s  %.2fx vs all-bitmap\n",
                         "", "", "", "", "", base / nsp);
+            // Where the pairs actually went. Only the non-zero cells, so the
+            // line stays readable when the selector is decisive.
+            std::printf("%-12s   ", "");
+            for (int k = 0; k < (int)Pairing::COUNT; ++k)
+                if (s.cell_pairs[k])
+                    std::printf("%s=%.1f%%  ", name_of((Pairing)k),
+                                100.0 * (double)s.cell_pairs[k] / (double)s.pairs);
+            std::printf("\n");
+        }
     }
     std::printf("\nGATE 1 (P2: selection <= 2%% of runtime)\n");
     for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm);
+        AllPairsStats s = best_of_3(p);
         const double pct = 100.0 * s.ns_selection / s.ns_total;
         std::printf("  %-10s %6.2f%%  %s\n", name_of(p), pct, pct <= 2.0 ? "PASS" : "FAIL");
     }
