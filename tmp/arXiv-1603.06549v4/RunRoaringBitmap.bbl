@@ -1,0 +1,141 @@
+\begin{thebibliography}{10}
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\urlprefix}{URL }
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
+  \providecommand{\doi}{doi:\discretionary{}{}{}\begingroup
+  \urlstyle{rm}\Url}\fi
+
+\bibitem{SPE:SPE2289}
+Kaser O, Lemire D. Compressed bitmap indexes: beyond unions and intersections.
+  \emph{Software: Practice and Experience}  2016; \textbf{46}(2):167--198,
+  \doi{10.1002/spe.2289}.
+
+\bibitem{colantonio:2010:ccn:1824821.1824857}
+Colantonio A, Di~Pietro R. Concise: {Compressed 'n' Composable Integer Set}.
+  \emph{Information Processing Letters}  2010; \textbf{110}(16):644--650,
+  \doi{10.1016/j.ipl.2010.05.018}.
+
+\bibitem{874730}
+Antoshenkov G. Byte-aligned bitmap compression. \emph{DCC'95}, IEEE Computer
+  Society: Washington, DC, USA, 1995; 476.
+
+\bibitem{wu2008breaking}
+Wu K, Stockinger K, Shoshani A. Breaking the curse of cardinality on bitmap
+  indexes. \emph{SSDBM'08}, Springer: Berlin, Heidelberg, 2008; 348--365.
+
+\bibitem{arxiv:0901.3751}
+Lemire D, Kaser O, Aouiche K. Sorting improves word-aligned bitmap indexes.
+  \emph{Data \& Knowledge Engineering}  2010; \textbf{69}(1):3--28,
+  \doi{10.1016/j.datak.2009.08.006}.
+
+\bibitem{netfli}
+Fusco F, Stoecklin MP, Vlachos M. {NET-FLi}: On-the-fly compression, archiving
+  and indexing of streaming network traffic. \emph{Proceedings of the VLDB
+  Endowment}  2010; \textbf{3}(2):1382--1393, \doi{10.14778/1920841.1921011}.
+
+\bibitem{SPE:SPE2325}
+Chambi S, Lemire D, Kaser O, Godin R. Better bitmap performance with {Roaring}
+  bitmaps. \emph{Software: Practice and Experience}  2015;
+  \doi{10.1002/spe.2325}. In Press.
+
+\bibitem{RoaringDocIdSet}
+Grand A. {LUCENE-5983}: {RoaringDocIdSet}.
+  \url{https://issues.apache.org/jira/browse/LUCENE-5983} [last checked
+  November 2015] 2014.
+
+\bibitem{RoaringDocIdSetBlogPost}
+Grand A. {Frame of Reference} and {Roaring Bitmaps}.
+  \url{https://www.elastic.co/blog/frame-of-reference-and-roaring-bitmaps}
+  [last checked November 2015] 2015.
+
+\bibitem{Zaharia:2010:SCC:1863103.1863113}
+Zaharia M, Chowdhury M, Franklin MJ, Shenker S, Stoica I. Spark: Cluster
+  computing with working sets. \emph{Proceedings of the 2nd USENIX Conference
+  on Hot Topics in Cloud Computing}, HotCloud'10, USENIX Association: Berkeley,
+  CA, USA, 2010; 10--10.
+
+\bibitem{Yang:2014:DRA:2588555.2595631}
+Yang F, Tschetter E, L{\'e}aut{\'e} X, Ray N, Merlino G, Ganguli D. Druid: A
+  real-time analytical data store. \emph{Proceedings of the 2014 ACM SIGMOD
+  International Conference on Management of Data}, SIGMOD '14, ACM: New York,
+  NY, USA, 2014; 157--168, \doi{10.1145/2588555.2595631}.
+
+\bibitem{guzuntunable}
+Guzun G, Canahuate G, Chiu D, Sawin J. A tunable compression framework for
+  bitmap indices. \emph{ICDE'14}, IEEE, 2014; 484--495.
+
+\bibitem{Guzun2015}
+Guzun G, Canahuate G. Hybrid query optimization for hard-to-compress
+  bit-vectors. \emph{The VLDB Journal}  2015;
+  :1--16\doi{10.1007/s00778-015-0419-9}.
+
+\bibitem{7040519}
+Chen Z, Wen Y, Cao J, Zheng W, Chang J, Wu Y, Ma G, Hakmaoui M, Peng G. A
+  survey of bitmap index compression algorithms for {Big Data}. \emph{Tsinghua
+  Science and Technology}  2015; \textbf{20}(1):100--115.
+
+\bibitem{4318091}
+O'Neil E, O'Neil P, Wu K. Bitmap index design choices and their performance
+  implications. \emph{IDEAS'07}, IEEE, 2007; 72--84.
+
+\bibitem{Rinfret:2001:BIA:375663.375669}
+Rinfret D, O'Neil P, O'Neil E. Bit-sliced index arithmetic. \emph{Proceedings
+  of the 2001 ACM SIGMOD International Conference on Management of Data},
+  SIGMOD '01, ACM: New York, NY, USA, 2001; 47--57,
+  \doi{10.1145/375663.375669}.
+
+\bibitem{culpepper:2010:esi:1877766.1877767}
+Culpepper JS, Moffat A. Efficient set intersection for inverted indexing.
+  \emph{ACM Transactions Information Systems}  Dec 2010;
+  \textbf{29}(1):1:1--1:25, \doi{10.1145/1877766.1877767}.
+
+\bibitem{simdcompandinter}
+Lemire D, Boytsov L, Kurz N. {SIMD} compression and the intersection of sorted
+  integers. \emph{Software: Practice and Experience}  2015;
+  \doi{10.1002/spe.2326}. In Press.
+
+\bibitem{1083658}
+Stonebraker M, Abadi DJ, Batkin A, Chen X, Cherniack M, Ferreira M, Lau E, Lin
+  A, Madden S, O'Neil E, \emph{et~al.}. {C-Store}: a column-oriented {DBMS}.
+  \emph{VLDB'05}, ACM: New York, NY, USA, 2005; 553--564.
+
+\bibitem{warr:hackers-delight-2e}
+Warren HS Jr. \emph{Hacker's Delight}. 2nd edn., Addison-Wesley: Boston, 2013.
+
+\bibitem{bentley1976almost}
+Bentley JL, Yao ACC. An almost optimal algorithm for unbounded searching.
+  \emph{Information Processing Letters}  1976; \textbf{5}(3):82--87.
+
+\bibitem{253268}
+O'Neil P, Quass D. Improved query performance with variant indexes.
+  \emph{Proceedings of the 1997 ACM SIGMOD International Conference on
+  Management of Data}, SIGMOD '97, 1997; 38--49.
+
+\bibitem{Gamma:1995:DPE:186897}
+Gamma E, Helm R, Johnson R, Vlissides J. \emph{Design Patterns: Elements of
+  Reusable Object-oriented Software}. Addison-Wesley Longman Publishing Co.,
+  Inc.: Boston, MA, USA, 1995.
+
+\bibitem{Nagendra:2015:EPS:2799368.2699483}
+Nagendra M, Candan KS. Efficient processing of skyline-join queries over
+  multiple data sources. \emph{ACM Transactions on Database Systems}  Jun 2015;
+  \textbf{40}(2):10:1--10:46, \doi{10.1145/2699483}.
+
+\bibitem{Nagarkar:2015:CSH:2824032.2824038}
+Nagarkar P, Candan KS, Bhat A. Compressed spatial hierarchical bitmap ({cSHB})
+  indexes for efficiently processing spatial range query workloads.
+  \emph{Proceedings of the VLDB Endowment}  Aug 2015;
+  \textbf{8}(12):1382--1393, \doi{10.14778/2824032.2824038}.
+
+\bibitem{LemireKaserGutarra-TODS}
+Lemire D, Kaser O, Gutarra E. Reordering rows for better compression: Beyond
+  the lexicographical order. \emph{ACM Transactions on Database Systems}  2012;
+  \textbf{37}(3), \doi{10.1145/2338626.2338633}. Article 20.
+
+\bibitem{lemireboytsov2013decoding}
+Lemire D, Boytsov L. Decoding billions of integers per second through
+  vectorization. \emph{Software: Practice and Experience}  2015;
+  \textbf{45}(1):1--29, \doi{10.1002/spe.2203}.
+
+\end{thebibliography}

@@ -62,10 +62,14 @@ struct AllPairsStats {
 /* Form 1 of §6: reduction. No N^2 materialization, so this is the regime where
  * kernel and selection speed dominate and nothing is hidden behind output
  * bandwidth (§3.5). */
+/* `no_zonemap` forces even the SELECTOR's B x B to the unfiltered kernel, so the
+ * zone map can be ablated independently of representation selection. Without it
+ * the two are confounded: a "selection" speedup partly reflects the filter. */
 AllPairsStats allpairs_sum(const std::vector<Row>& rows,
                            const CostModel& model,
                            Policy policy,
-                           uint32_t tile = 64);
+                           uint32_t tile = 64,
+                           bool no_zonemap = false);
 
 /* Form 2 of §6: tile visitor. The caller consumes each tile of counts, so a
  * consumer can stream or fuse without ever holding N^2. This is the form

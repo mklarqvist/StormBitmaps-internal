@@ -1,6 +1,8 @@
 [![Github Releases](https://img.shields.io/github/release/mklarqvist/StormBitmaps.svg)](https://github.com/mklarqvist/StormBitmaps/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
+<p align="center"><img src="storm-logo.jpg" alt="Storm" width="420"></p>
+
 # Storm bitmaps
 
 These algorithms and bitmaps are used to compute XX<sup>T</sup> for a _binary_ input matrix with dimensions (N,M) using specialized CPU instructions i.e.
@@ -44,43 +46,124 @@ The core algorithms are described in the papers:
 * [Consistently faster and smaller compressed bitmaps with Roaring](https://arxiv.org/abs/1603.06549) by D. Lemire, G. Ssi-Yan-Kai,
   and O. Kaser (21 Mar 2016).
 
-## Thresholded mode (opt-in)
+## Results
 
-Full record: [`results/THRESHOLD.md`](results/THRESHOLD.md) · figure:
-`results/threshold/sweep.png` · sweep: `bench/sweep_threshold.sh`
+All-pairs set-intersection cardinality over 23 real corpora spanning IR posting
+lists, web and social graphs, census and attribute data, sensor logs, and human
+and viral genomics — universes from 2.0e5 to 1.3e8, densities from 7.9e-07 to
+1.7e-01.
 
-**Exact all-pairs is the default.** Some consumers need every exact cardinality;
-others supply a similarity cutoff — LD for plotting wants pairs above an r²
-threshold. When a threshold *is* available it unlocks the all-pairs
-similarity-join family (Bayardo et al. WWW 2007; Xiao et al. WWW 2008), whose
-prefix filter is **candidate generation rather than pair filtering** — it never
-enumerates the N(N−1)/2 pairs at all.
+Every configuration is reported. A single number for a single configuration is a
+result about the corpora chosen, not about the method.
 
-Gated speedup at t=0.001, the conservative end (speedup rises with t; at t=0.5
-the winners reach 292–722×):
+### 1. Exact cardinality, selection + zone maps (the default)
 
-| corpus | speedup | gate | pairs above threshold |
-|---|---:|---|---:|
-| com-LiveJournal | **89.6×** | prefix | 0.037% |
-| soc-Pokec | **75.5×** | prefix | 0.083% |
-| com-Orkut | **44.5×** | prefix | 0.444% |
-| as-skitter | **41.7×** | prefix | 0.401% |
-| uscensus2000 | **29.3×** | prefix | 0.000% |
-| dimension_003 | **15.7×** | prefix | 0.000% |
-| wiki-Talk | **6.3×** | prefix | 2.757% |
-| wikileaks-noquotes | **3.8×** | prefix | 3.075% |
-| dimension_008, weather_sept_85, census-income | 1.00× | exact | 39–62% |
-| census1881, census1881_srt | 0.97×, 0.91× | prefix | 0.3% |
+Per-tile / probe-and-commit selection against a genuine unfiltered all-bitmap
+baseline. Exact `|A n B|` for every pair.
 
-Reported cardinalities stay exact — only the *set* of reported pairs is
-restricted, and all 650 sweep points are verified against the exact scan's hit
-set. The gains track how much of the output the caller discards: the corpora
-that win are those where 0.00–0.44% of pairs clear the threshold, and the three
-that fall back to the exact scan are those where 39–62% do.
+| corpus | domain | universe | all-bitmap ns/pair | selected ns/pair | **speedup** |
+|---|---|---:|---:|---:|---:|
+| `enwiki-categorylinks` | IR | 129,698,523 | 642,867 | 593.6 | **1,083x** |
+| `uscensus2000` | census | 36,974,578 | 123,380 | 211.1 | **584x** |
+| `livejournal-groupmemberships` | graph | 7,489,074 | 23,533 | 45.0 | **523x** |
+| `dimension_003` | druid | 3,866,847 | 10,148 | 24.7 | **410x** |
+| `wikipedia_link_en` | graph | 11,206,012 | 38,892 | 96.3 | **404x** |
+| `com-LiveJournal` | graph | 4,036,538 | 10,987 | 27.4 | **401x** |
+| `census1881_srt` | census | 4,277,735 | 11,023 | 32.1 | **343x** |
+| `dbpedia-link` | graph | 18,268,993 | 52,420 | 168.3 | **311x** |
+| `as-skitter` | graph | 1,696,415 | 4,240 | 16.0 | **266x** |
+| `gnomad_chr21_exomes_af1e-3` | genomics | 1,461,894 | 5,485 | 24.7 | **222x** |
+| `soc-Pokec` | graph | 1,632,804 | 4,002 | 19.8 | **202x** |
+| `dimension_008` | druid | 3,866,845 | 9,699 | 48.5 | **200x** |
+| `wiki-Talk` | graph | 2,394,385 | 6,218 | 32.2 | **193x** |
+| `com-Orkut` | graph | 3,072,627 | 8,381 | 48.6 | **172x** |
+| `dimension_033` | druid | 3,866,847 | 10,028 | 60.2 | **167x** |
+| `census1881` | census | 4,277,806 | 10,781 | 69.2 | **156x** |
+| `usher_sarscov2` | genomics | 8,451,771 | 25,789 | 212.5 | **121x** |
+| `wikileaks-noquotes` | text | 1,353,179 | 3,338 | 64.2 | **52x** |
+| `msprime_1M` | genomics-sim | 2,000,000 | 10,498 | 2,394.4 | **4x** |
+| `msprime_100k` | genomics-sim | 200,000 | 557 | 198.2 | **3x** |
+| `weather_sept_85` | sensor | 1,015,367 | 2,984 | 1,368.0 | **2x** |
+| `msprime_10k` | genomics-sim | 20,000 | 51 | 25.7 | **2x** |
+| `census-income` | census | 199,523 | 386 | 257.9 | **1x** |
 
-Unlike the exact-mode gate, this one is **not never-worse** — worst case is
-≈0.91×. See [`results/THRESHOLD.md`](results/THRESHOLD.md) §5–6 before quoting
-any figure.
+### 2. Exact cardinality, selection only — zone maps ablated
+
+The same selector with the overlap filter removed.
+
+| corpus | domain | universe | speedup (selection only) |
+|---|---|---:|---:|
+| `enwiki-categorylinks` | IR | 129,698,523 | 1.29x |
+| `uscensus2000` | census | 36,974,578 | 1.07x |
+| `livejournal-groupmemberships` | graph | 7,489,074 | 1.41x |
+| `dimension_003` | druid | 3,866,847 | 1.01x |
+| `wikipedia_link_en` | graph | 11,206,012 | 1.06x |
+| `com-LiveJournal` | graph | 4,036,538 | 1.27x |
+| `census1881_srt` | census | 4,277,735 | 1.37x |
+| `dbpedia-link` | graph | 18,268,993 | 1.02x |
+| `as-skitter` | graph | 1,696,415 | 0.97x |
+| `gnomad_chr21_exomes_af1e-3` | genomics | 1,461,894 | 1.33x |
+| `soc-Pokec` | graph | 1,632,804 | 0.97x |
+| `dimension_008` | druid | 3,866,845 | 1.14x |
+| `wiki-Talk` | graph | 2,394,385 | 2.17x |
+| `com-Orkut` | graph | 3,072,627 | 1.02x |
+| `dimension_033` | druid | 3,866,847 | 1.26x |
+| `census1881` | census | 4,277,806 | 1.33x |
+| `usher_sarscov2` | genomics | 8,451,771 | 1.96x |
+| `wikileaks-noquotes` | text | 1,353,179 | 2.04x |
+| `msprime_1M` | genomics-sim | 2,000,000 | 2.60x |
+| `msprime_100k` | genomics-sim | 200,000 | 2.58x |
+| `weather_sept_85` | sensor | 1,015,367 | 1.43x |
+| `msprime_10k` | genomics-sim | 20,000 | 2.60x |
+| `census-income` | census | 199,523 | 1.56x |
+
+**Read this table with care.** It is *not* "selection is worthless without the
+filter". `CostModel` is calibrated assuming B x B is zone-mapped, so removing the
+kernel leaves the selector making choices that are wrong for the kernel it is
+now running. Kernel and model are not separable without recalibration, and this
+column measures the pair, not the filter. It is included because the filter is
+optional and every configuration should be visible — but the honest reading is
+that the zone map and the cost model are coupled, and that coupling is itself a
+limitation.
+
+### 3. Thresholded mode (opt-in) — only pairs with Jaccard >= t
+
+Exact cardinalities, restricted to pairs above a caller-supplied similarity
+cutoff, via prefix filtering (Bayardo et al. WWW 2007). **Speedup is against the
+exact scan, not against all-bitmap**, so it composes with table 1 rather than
+replacing it. t=0.001 is the conservative end; gains rise with t.
+
+| corpus | domain | universe | **speedup at t=0.001** |
+|---|---|---:|---:|
+| `uscensus2000` | census | 36,974,578 | **29.31x** |
+| `dimension_003` | druid | 3,866,847 | **15.69x** |
+| `com-LiveJournal` | graph | 4,036,538 | **89.61x** |
+| `census1881_srt` | census | 4,277,735 | **0.91x** |
+| `as-skitter` | graph | 1,696,415 | **41.68x** |
+| `soc-Pokec` | graph | 1,632,804 | **75.52x** |
+| `dimension_008` | druid | 3,866,845 | **1.00x** |
+| `wiki-Talk` | graph | 2,394,385 | **6.29x** |
+| `com-Orkut` | graph | 3,072,627 | **44.49x** |
+| `census1881` | census | 4,277,806 | **0.97x** |
+| `wikileaks-noquotes` | text | 1,353,179 | **3.78x** |
+| `weather_sept_85` | sensor | 1,015,367 | **1.00x** |
+| `census-income` | census | 199,523 | **1.00x** |
+
+Not every corpus appears — this sweep predates the four largest. Full curve over
+t in [0.001, 0.5]: [`results/threshold/sweep.png`](results/threshold/sweep.png).
+
+### What the tables show
+
+- **Density drives everything.** Below ~1e-5 the speedup is 200-1000x; above
+  ~1e-2 it collapses to 1.5-4x. That gradient *is* the contribution.
+- **No single representation wins.** On `msprime_1M`, B x S is 843x faster than
+  B x B on pairs where `min(|A|,|B|) <= 10` and 18x *slower* where it exceeds
+  1e5. Choosing per pair is the whole design.
+- **All-bitmap is infeasible, not merely slow, at scale.** At universe 1.3e8 a
+  row is 15.8 MB, so a bitmap AND moves 32 MB per pair — 643 microseconds to
+  compute an answer that is zero 100% of the time.
+- **Selection costs 0.02-0.4% of runtime** (Gate 1 budget: 2%). Per-pair
+  selection fails that budget; per-tile and probe-and-commit pass.
 
 ## All-pairs: the tile pipeline
 

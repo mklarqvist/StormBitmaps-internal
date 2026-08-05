@@ -45,18 +45,34 @@ auto pick(L list, const char* nm) -> decltype(list.v[0].fn) {
 }
 
 struct Kernels {
-    fn_bb bb; fn_bs bs; fn_br br; fn_bw bw;
+    /* TWO B x B kernels, deliberately.
+     *
+     * `bb` is what the SELECTOR runs when it chooses Pairing::BB -- the good
+     * zone-mapped one. `bb_plain` is the unfiltered baseline that
+     * Policy::AllBitmap must use, because "all-bitmap" means what a system
+     * without any of this machinery would do.
+     *
+     * These were the same kernel until now, so Policy::AllBitmap was silently
+     * zone-mapped and every "vs all-bitmap" ratio from allpairs_sum() was
+     * measured against a filtered baseline. On enwiki-categorylinks that made
+     * the baseline read 649 ns/pair where a real B x B moves 32 MB per pair and
+     * takes ~506,000 ns -- a 780x understatement of the baseline, and therefore
+     * of every speedup derived from it. */
+    fn_bb bb; fn_bb bb_plain; fn_bs bs; fn_br br; fn_bw bw;
     fn_ss ss; fn_sr sr; fn_rr rr; fn_ww ww;
     Kernels()
-        : bb(pick(cell_bb(), "occ_sel")), bs(pick(cell_bs(), "ilp8")),
+        : bb(pick(cell_bb(), "occ_sel")), bb_plain(pick(cell_bb(), "dense")),
+          bs(pick(cell_bs(), "ilp8")),
           br(pick(cell_br(), "hybrid4")), bw(pick(cell_bw(), "skip")),
           ss(pick(cell_ss(), "adaptive2")), sr(pick(cell_sr(), "adaptive2")),
           rr(pick(cell_rr(), "adaptive2")), ww(pick(cell_ww(), "skip2")) {}
 };
 
-inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s) {
+inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
+                    bool plain_bb = false) {
     switch (p) {
-        case Pairing::BB: return K.bb(d.B(), s.B());
+        case Pairing::BB: return plain_bb ? K.bb_plain(d.B(), s.B())
+                                          : K.bb(d.B(), s.B());
         case Pairing::BS: return K.bs(d.B(), s.S());
         case Pairing::BR: return K.br(d.B(), s.R());
         case Pairing::BW: return K.bw(d.B(), s.W());
@@ -171,7 +187,7 @@ Pairing probe_tile(const Kernels& K, const CostModel& model,
 } // namespace
 
 AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
-                           Policy policy, uint32_t tile)
+                           Policy policy, uint32_t tile, bool no_zonemap)
 {
     AllPairsStats st;
     if (rows.size() < 2) return st;
@@ -232,7 +248,7 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                         p = select_pairing(model, d.meta, s.meta);
                     }
                     if (p == Pairing::Empty) { ++skipped; continue; }
-                    sum += run(K, p, d, s);
+                    sum += run(K, p, d, s, no_zonemap || policy == Policy::AllBitmap);
                 }
             }
         }

@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     spec.n_rows = 512; spec.universe = 65536; spec.density = 0.01;
     std::string structure = "clustered", spectrum = "inverse", tag = "host";
     uint32_t tile = 64;
-    const char* infile = nullptr; uint32_t in_stride = 1;
+    const char* infile = nullptr; uint32_t in_stride = 1; bool no_zm = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -77,6 +77,7 @@ int main(int argc, char** argv) {
         else if (a == "--tag")       tag           = nx();
         else if (a == "--file")      infile        = nx();
         else if (a == "--in-stride") in_stride     = (uint32_t)atoi(nx());
+        else if (a == "--no-zonemap") no_zm        = true;
     }
     spec.structure = structure == "uniform" ? Structure::Uniform
                    : structure == "runs"    ? Structure::Runs : Structure::Clustered;
@@ -103,7 +104,7 @@ int main(int argc, char** argv) {
     AllPairsStats ref;
     double base = 0;
     for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = allpairs_sum(c.rows, m, p, tile);
+        AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm);
         const double nsp = s.ns_total / (double)s.pairs;
         const double sel = s.ns_selection / (double)s.pairs;
         if (p == Policy::AllBitmap) { ref = s; base = nsp; }
@@ -117,7 +118,7 @@ int main(int argc, char** argv) {
     }
     std::printf("\nGATE 1 (P2: selection <= 2%% of runtime)\n");
     for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = allpairs_sum(c.rows, m, p, tile);
+        AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm);
         const double pct = 100.0 * s.ns_selection / s.ns_total;
         std::printf("  %-10s %6.2f%%  %s\n", name_of(p), pct, pct <= 2.0 ? "PASS" : "FAIL");
     }
