@@ -12,6 +12,9 @@
 #include <string>
 #include <vector>
 #include <time.h>
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
 
 namespace storm {
 
@@ -56,16 +59,6 @@ const char* name_of(Pairing p) {
  * under independence, from the two occupancy fractions. Approximate, O(1), and
  * good enough to rank -- which is all a selector needs.
  */
-/* How many element-units one bitmap touch costs. See work_units(). Read once;
- * 0 reproduces the pre-memory-term model exactly. */
-static double probe_weight() {
-    static const double v = [] {
-        if (const char* e = std::getenv("STORM_PROBE_WEIGHT")) return std::atof(e);
-        return 0.25;
-    }();
-    return v;
-}
-
 static double bb_expected_bins(const RowMeta& a, const RowMeta& b) {
     const double bins = std::max(1.0, (double)std::max(a.n_words, b.n_words) / 8.0);
     const double fa = std::min(1.0, (double)a.n_nonzero_w / std::max(1u, a.n_words));
@@ -80,14 +73,72 @@ static double bb_expected_bins(const RowMeta& a, const RowMeta& b) {
     return std::max(1.0, bins * pa * pb * 8.0);   // in WORDS visited
 }
 
+/* Distinct words the sparser side occupies = scattered probes B x S will make.
+ * B x R and B x W walk RANGES, so their probes are sequential within a run and
+ * one miss serves the several that follow; they are NOT charged this. Pricing
+ * all three alike inverted the ranking between them and made dimension_033
+ * abandon B x R (72% of pairs, 3.05x) for a 0.46x mixture. */
+/* Multiplier on the measured cold-probe excess. STORM_PROBE_SCALE overrides.
+ *
+ * 1.0 would use the microbenchmark's number as it stands, and that is 20x too
+ * large. Measured excess is 1.125 ns/touch (probe_cold 2.162 - probe_hot 1.036
+ * at a 16 MiB P-core L2); applying it in full costs census1881 0.91x -> 0.57x,
+ * enwiki-categorylinks 2.76x -> 1.04x and msprime_1M 4.09x -> 2.11x.
+ *
+ * The microbenchmark measures the wrong access pattern. It walks a prime
+ * stride, which is deliberately prefetch-hostile, whereas B x S probes at the
+ * sparse side's positions -- which are SORTED and, on every corpus here,
+ * clustered. Ascending clustered probes hit the same line repeatedly and let
+ * the prefetcher run ahead; the two patterns differ by more than an order of
+ * magnitude and only one of them is B x S.
+ *
+ * So 0.05 is fitted, tier 2, and labelled. It reproduces the coefficient that
+ * measured 22/23 (0.25 element-units at ns_per_unit[BS] = 0.224 is 0.056
+ * ns/touch). The honest fix is a microbenchmark that probes in ascending order
+ * at a realistic gap distribution rather than a hostile stride -- at which
+ * point the scale should go to 1.0 and this knob should disappear. Open item;
+ * the measured rates stay in CostModel so it can be done without re-deriving
+ * them. */
+static double probe_scale() {
+    static const double v = [] {
+        if (const char* e = std::getenv("STORM_PROBE_SCALE")) return std::atof(e);
+        return 0.05;
+    }();
+    return v;
+}
+
+static double bs_touches(const RowMeta& a, const RowMeta& b) {
+    return (a.cardinality <= b.cardinality) ? (double)a.n_nonzero_w
+                                            : (double)b.n_nonzero_w;
+}
+
 static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
     const double m  = (double)std::max(a.n_words, b.n_words);
     const double sa = a.cardinality, sb = b.cardinality;
     const double ra = a.n_runs,      rb = b.n_runs;
-    // EWAH stream length is not in RowMeta; runs bound it closely -- a row with
-    // r runs has at most 2r+1 markers plus its literals -- so runs stand in for
-    // it. Approximation, and flagged as one.
-    const double wa = 2.0 * ra + 1.0, wb = 2.0 * rb + 1.0;
+    /* EWAH stream length = markers PLUS LITERALS.
+     *
+     * This was 2r+1, the marker count alone, with a comment conceding it
+     * omitted "plus its literals". That is not a close bound, it is the wrong
+     * term: a literal is emitted for every bitmap word that is neither all-zero
+     * nor all-ones, so on scattered data the stream is almost entirely
+     * literals and 2r+1 understates it by the ratio of words to runs.
+     *
+     * The consequence was a coin flip. work_units(BW) = 2r+1 against
+     * work_units(BR) = r, with calibrated rates 0.426 and 0.797, put B x W and
+     * B x R within 7% of each other on run-structured data -- so the selector
+     * chose between them essentially at random across runs, and B x W is much
+     * the worse of the two in fact. dimension_033 was seen at B x R=72% (3.33x)
+     * and at B x W=72% (1.98x) on consecutive sweeps of identical code, and
+     * usher_sarscov2 lost outright (1.71x -> 0.91x) when 14% of its pairs
+     * flipped from B x R to B x W.
+     *
+     * n_nonzero_w is the literal count: words with at least one bit set. It
+     * over-counts by the all-ones words, which are fills rather than literals,
+     * but those are rare below density 0.5 and the error is in the safe
+     * direction for a cell that is a labelled loser on 16 of 17 corpora. */
+    const double wa = 2.0 * ra + 1.0 + (double)a.n_nonzero_w;
+    const double wb = 2.0 * rb + 1.0 + (double)b.n_nonzero_w;
 
     /* Which side the asymmetric cells actually iterate.
      *
@@ -112,60 +163,12 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
     const double d_runs = a_sparse ? rb : ra;      // denser side
     const double d_ewah = a_sparse ? wb : wa;
 
-    /* A MEMORY term for the bitmap-probing cells.
-     *
-     * B x S walks the sparse side's positions and probes the dense side's
-     * bitmap at each one, so its cost has two parts that scale differently:
-     * s_card arithmetic operations, and one bitmap TOUCH per distinct word the
-     * sparse side occupies. At universe 2^14 the bitmap is 2 kB and every touch
-     * is an L1 hit, so the second term vanishes and cost is ~s_card. At 1.3e8
-     * the bitmap is 15.8 MB and every touch is a miss, so the second term is
-     * everything -- and the ratio between B x S and a cell that streams
-     * sequentially is a ratio of MISS counts, not of element counts.
-     *
-     * That divergence is what three separate attempts to fix the model by
-     * recalibrating could not capture (see calibrate_on_rows in storm_cost.h):
-     * a single ns_per_unit cannot be both, so measuring it on real data made
-     * predictions more accurate and selection worse.
-     *
-     * n_nonzero_w is already in RowMeta and is exactly the count wanted: the
-     * number of distinct 64-bit words the row's positions occupy. probe_weight()
-     * is how many element-units one such touch costs.
-     *
-     * SWEPT, AND IT WORKS -- BUT ONLY ON B x S. Default 0.25;
-     * STORM_PROBE_WEIGHT overrides, and 0 reproduces the previous model.
-     *
-     * Charged to B x S, B x R and B x W alike it is a disaster: dimension_033
-     * abandons B x R (72% of pairs, 3.05x) for a B x S / B x W / W x W mixture
-     * at 0.46x, and it does so at every positive weight tested down to 0.125.
-     * The reason is that the three cells touch the same words for different
-     * reasons. B x S probes at SCATTERED positions, one line per distinct word.
-     * B x R and B x W walk RANGES, so their probes are sequential within a run
-     * and one miss serves the several that follow. Pricing them alike inverts
-     * the ranking between them.
-     *
-     * On B x S alone, per-tile vs fixed Roaring over the 23-corpus sweep:
-     *
-     *   enwiki-categorylinks  3.35x -> 3.89x     dimension_008  0.93x -> 1.05x
-     *   wikileaks-noquotes    3.56x -> 5.15x     msprime_1M     1.34x -> 2.07x
-     *   census1881_srt        2.49x -> 3.34x     dbpedia-link   1.55x -> 1.98x
-     *   soc-Pokec             2.32x -> 2.49x     weather_sept85 1.07x -> 1.15x
-     *
-     * 21/23 -> 22/23 wins. The mechanism is visible in the cell mix: S x S now
-     * appears where it never did (wiki-Talk 11.5%, gnomad 12.3%, census1881_srt
-     * 15.8%). Those are pairs whose sparse side is scattered enough that a
-     * sequential list merge beats scattered bitmap probes -- a choice the
-     * element-count model could not express, because by element count B x S is
-     * always cheaper than a merge that must walk both sides.
-     *
-     * The weight is a tier-2 fitted constant, not a measured one. It should be
-     * derivable: 0.25 element-units per word touched is a statement about this
-     * machine's miss cost relative to its ALU throughput, and calibrate() could
-     * measure it the way it now measures ns_fixed. Open item.
-     */
-    const double s_touch = a_sparse ? (double)a.n_nonzero_w : (double)b.n_nonzero_w;
-    const double pw = probe_weight();
-
+    /* The number of distinct 64-bit words the sparse side occupies -- how many
+     * scattered bitmap probes B x S will make. Returned to predict() via
+     * bs_touches() rather than folded in here: the COUNT is algorithmic, the
+     * price of one touch is machine-dependent, and mixing them is what put a
+     * fitted constant inside this function. */
+    (void)0;
     switch (p) {
         case Pairing::BB: return bb_expected_bins(a, b);
         // The touch term is charged to B x S ALONE. B x S probes the dense
@@ -175,7 +178,7 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
         // per-touch price is what made dimension_033 abandon B x R (72% of
         // pairs, 3.05x) for a B x S / B x W / W x W mixture at 0.46x, and it
         // did so at every positive weight down to 0.125.
-        case Pairing::BS: return s_card + pw * s_touch;
+        case Pairing::BS: return s_card;
         case Pairing::BR: return s_runs;
         case Pairing::BW: return s_ewah;
         // Integer log2, NOT std::log2. The first version of this called the
@@ -213,6 +216,22 @@ double predict(const CostModel& m, Pairing p, const RowMeta& a, const RowMeta& b
         return m.ns_fixed + m.ns_per_unit[(int)p] *
                             (double)std::max(a.n_words, b.n_words);
     double c = m.ns_fixed + m.ns_per_unit[(int)p] * work_units(p, a, b);
+    if (p == Pairing::BS && m.ns_probe_cold > m.ns_probe_hot) {
+        /* Only the EXCESS over a cache-resident probe, not the whole probe.
+         *
+         * ns_per_unit[BS] is calibrated on a 98 kB synthetic corpus, so the
+         * cost of one L1-resident probe is ALREADY inside it -- adding the full
+         * cold-probe cost on top would count it twice and over-price B x S by
+         * the hot rate on every pair, including the cache-resident ones the
+         * calibration describes correctly.
+         *
+         * Charged unconditionally rather than gated on one row's size, because
+         * residency in an all-pairs sweep is a property of the CORPUS, not of a
+         * row: census1881's bitmap is 535 kB against a 16 MiB L2 and would look
+         * resident, but 373 of them cycle through that L2 every tile, so the
+         * probe is cold in fact. The gated variant is measured below. */
+        c += (m.ns_probe_cold - m.ns_probe_hot) * probe_scale() * bs_touches(a, b);
+    }
     if (p == Pairing::BB) {
         /* The zone-mapped B x B must AND both occupancy maps before it can skip
          * anything: m/512 words, unavoidable and O(m).
@@ -474,6 +493,62 @@ void calibrate(CostModel& m, uint32_t universe, double density) {
             }
             m.ns_per_occ_word = best / (16.0 * words);
         }
+    }
+
+    /* The scattered-probe cost, measured at both ends of the hierarchy.
+     *
+     * This replaces a fitted 0.25 that sat inside work_units(). The quantity is
+     * real -- B x S pays one bitmap touch per distinct word its sparse side
+     * occupies, and that is what makes it lose to a sequential list merge on a
+     * scattered row -- but its PRICE is a machine property spanning two orders
+     * of magnitude between an L1-resident bitmap and a DRAM-resident one, so a
+     * single fitted number is wrong at one end whatever it is.
+     *
+     * Measured the way the kernel actually probes: word-granular reads at
+     * pseudo-random positions, accumulated so nothing is elided. The stride is
+     * a large odd multiple of the word size, which defeats the prefetcher
+     * without the cost of generating random numbers inside the timed loop. */
+    {
+        m.l2_bytes = 0;
+#if defined(__APPLE__)
+        {   size_t v = 0, sz = sizeof(v);
+            // perflevel0 is the P-core cluster; its L2 is the one a throughput
+            // kernel runs against. Fall back to hw.l2cachesize (E-core on
+            // heterogeneous parts, hence the smaller number).
+            if (sysctlbyname("hw.perflevel0.l2cachesize", &v, &sz, nullptr, 0) == 0 && v)
+                m.l2_bytes = (double)v;
+            else if (sysctlbyname("hw.l2cachesize", &v, &sz, nullptr, 0) == 0 && v)
+                m.l2_bytes = (double)v;
+        }
+#endif
+        if (m.l2_bytes <= 0) m.l2_bytes = 4.0 * 1024 * 1024;   // labelled guess
+
+        auto probe_rate = [](size_t bytes) {
+            const size_t nw = bytes / 8;
+            std::vector<uint64_t> buf(nw, 0x5555555555555555ull);
+            const size_t stride = 1031;              // odd, prime, prefetch-hostile
+            const size_t iters  = 1u << 16;
+            volatile uint64_t sink = 0;
+            uint64_t acc = 0, i = 0;
+            for (size_t k = 0; k < iters; ++k) { i += stride; if (i >= nw) i -= nw;
+                                                 acc += STORM_POPCOUNT(buf[i]); }
+            sink += acc;
+            double best = 1e300;
+            for (int rep = 0; rep < 3; ++rep) {
+                acc = 0; i = 0;
+                const uint64_t t0 = cost_now_ns();
+                for (size_t k = 0; k < iters; ++k) { i += stride; if (i >= nw) i -= nw;
+                                                     acc += STORM_POPCOUNT(buf[i]); }
+                const double dt = (double)(cost_now_ns() - t0);
+                sink += acc;
+                if (dt < best) best = dt;
+            }
+            (void)sink;
+            return best / (double)iters;
+        };
+        // Hot: a quarter of L2, comfortably resident. Cold: 8x L2, comfortably not.
+        m.ns_probe_hot  = probe_rate((size_t)(m.l2_bytes / 4));
+        m.ns_probe_cold = probe_rate((size_t)(m.l2_bytes * 8));
     }
 
     m.calibrated = true;

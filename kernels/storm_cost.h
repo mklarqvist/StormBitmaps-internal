@@ -69,6 +69,25 @@ struct CostModel {
     // pair free.
     double ns_per_occ_word = 0;
 
+    /* Cost of ONE scattered probe into the dense side's bitmap, which is what
+     * B x S pays per distinct word its sparse side occupies.
+     *
+     * Two values because it is not one number. A probe into a 25 kB bitmap is
+     * an L1 hit and a probe into a 15.8 MB one is a DRAM round trip, and the
+     * corpora here span exactly that range -- so a single constant is wrong at
+     * one end whatever it is set to. predict() picks by the dense row's bitmap
+     * size, which it already has in n_words.
+     *
+     * This lives in CostModel rather than in work_units() because it is a
+     * property of the MACHINE, which is the separation this header opens by
+     * claiming: "the work function is a property of the algorithm and is the
+     * same everywhere, while ns_per_unit is a property of the machine". The
+     * first version of this term violated that -- a fitted 0.25 sitting inside
+     * work_units(), tier 2 on the evidence ladder, correct only on this host. */
+    double ns_probe_hot  = 0;   // bitmap fits in L2
+    double ns_probe_cold = 0;   // bitmap exceeds L2
+    double l2_bytes      = 0;   // measured, not assumed
+
     bool calibrated = false;
 };
 
