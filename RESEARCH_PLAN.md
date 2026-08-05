@@ -2427,3 +2427,78 @@ independently of whether the paper is accepted, cited, or read.
    medians over independent runs. Cheap and mechanical; deliberately last,
    because it should be spent on whatever survives steps 1-4 rather than on
    results that may be restructured.
+
+---
+
+## 17. Coalescent simulation cannot reach the target regime either (C25)
+
+Generated with `tools/msprime2bin.py` (msprime 1.4.2, tskit 1.0.3, seeds
+1000/1001), three corpora at 10k / 100k / 1M diploid samples, constant
+Ne=10,000, 10 Mb, recombination and mutation rate 1e-8.
+
+| corpus | universe m | rows | mean \|Xi\| | density | universe≥1e6 | density≤1e-3 |
+|---|---:|---:|---:|---:|:--:|:--:|
+| 10k diploid | 20,000 | 41,991 | 1,887 | 0.0944 | FAIL | FAIL |
+| 100k diploid | 200,000 | 51,062 | 15,720 | 0.0786 | FAIL | FAIL |
+| 1M diploid | 2,000,000 | 15,592 | 136,288 | 0.0681 | **PASS** | FAIL |
+
+**The site frequency spectrum is correct** — all three track 1/i to within
+0.5 percentage points per log2 bin, cross-checked against `bench_real`'s
+independent spectrum calculation. The premise of PROBLEM_STATEMENT §2.2 holds.
+
+**The density does not, and cannot.** Under the neutral coalescent the SFS is
+E[ξᵢ] ∝ 1/i on i = 1..n−1, so mean derived-allele density is
+
+    E[i]/n = (n−1) / (n · H(n−1))  ≈  1 / H(n−1)  ≈  1 / ln n
+
+Verified against the measured corpora:
+
+| n_hap | H(n−1) | predicted d | measured d |
+|---:|---:|---:|---:|
+| 20,000 | 10.48 | 0.0954 | 0.0944 |
+| 200,000 | 12.78 | 0.0782 | 0.0786 |
+| 2,000,000 | 15.09 | 0.0663 | 0.0681 |
+
+**C25: density falls only LOGARITHMICALLY with sample size.** Reaching d ≤ 1e-3
+needs H(n−1) ≥ 1000, i.e. n ≈ e⁹⁹⁹ genomes. **No achievable cohort — real or
+simulated — puts neutral variant data in the target regime.**
+
+### 17.1 Why this matters more than the corpora
+
+The project's own generator (`kernels/storm_gen.cpp`) sets density and spectrum
+**independently**: it solves for a limit C such that a 1/i draw has a chosen mean
+cardinality. Coalescent reality **couples them** — a 1/i spectrum *entails*
+density ≈ 1/ln n. So the synthetic corpora at d=1e-6 with a 1/i spectrum describe
+a population that cannot exist under neutrality.
+
+That is not a defect of the generator, which is a legitimate stress test of the
+kernels. It is a correction to how the corpora should be *described*: the sparse,
+large-universe, 1/i-skewed corpus is a **synthetic regime**, and the genomic
+framing of it was wrong.
+
+Real data is consistent with this and slightly better than neutral predicts:
+chr20 measures 3.5% at 5,008 haplotypes against a neutral-constant prediction of
+1/H(5007) ≈ 11%, the excess of rare variants expected under population growth.
+Growth moves density in the right direction by roughly 3x — and leaves it 35x
+above the bar.
+
+**Consequence for §16.1's claims.** C8 already said human variant data gives a
+large universe *or* sparsity, never both. C25 explains *why*, analytically, and
+extends it from an empirical observation about one dataset to a property of the
+neutral model. The sparse-and-large regime belongs to graphs, web-attribute and
+IR data — where it occurs routinely, as the 17-corpus benchmark shows — and the
+paper should place genomics as a mid-band consumer rather than the motivating
+case. **The one open genomic exception remains UShER SARS-CoV-2**, whose
+universe is genome count rather than haplotype count and is therefore not bound
+by this argument; measurement in progress.
+
+### 17.2 Also measured
+
+Zone-map benefit rises with universe size on these corpora — 1.29x (m=2e4),
+2.10x (m=2e5), 3.61x (m=2e6) — consistent with the documented mechanism.
+
+**Not done:** the 1M corpus is truncated to 15,592 of 59,625 sites by a 15 GB
+disk budget (mean cardinality ~136k/row would need ~35 GB). Simulation itself
+completed in 48s using 1.8 GB RAM, so the limit was footprint, not compute.
+Population growth was not simulated — constant Ne was fixed by the task — and is
+the one demographic knob that moves density materially.
