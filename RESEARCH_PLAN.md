@@ -2257,3 +2257,173 @@ in a marginal band (est 0.74-1.22) that measures anywhere from 0.91x to 1.25x
 across runs, so the choice inside that band is noise, not signal — **the strict
 never-worse property of C16 does not hold here**, and the worst case is ~0.91x
 rather than 1.00x. Stated rather than tuned away.
+
+---
+
+## 16. Revised direction: a library with a paper, not a paper with a repo
+
+**Supersedes §14.** That section framed the work as an empirical study whose
+contribution was the map, and argued the mechanisms were unclaimable because each
+has prior art. That framing was wrong, and it was wrong in a specific way worth
+recording.
+
+### 16.1 The model is Roaring, and Roaring was not novel by component
+
+Roaring is array containers (known) + bitset containers (known) + run containers
+(EWAH, which Lemire had co-authored) + per-chunk cardinality dispatch + SIMD
+intersection (his own `SIMDCompressionAndIntersection`). No component was new.
+The 2018 SPE paper is *titled* **"Roaring Bitmaps: Implementation of an Optimized
+Software Library"** — an engineering-and-evaluation paper, explicitly, in the
+venue we would target.
+
+What made it land was not novelty per part. It was that the composition
+demonstrably beat WAH/Concise/EWAH across a broad corpus set, and that it was
+**packaged so people could use it**.
+
+Storm is structurally the same situation. §14's insistence that zone maps are
+BitFunnel, probe-and-commit is Micro Adaptivity, prefix filtering is Bayardo, and
+container dispatch is Roaring is all true and all beside the point.
+
+**Do not claim** component novelty. Cite: BitFunnel (Goodwin et al. SIGIR 2017),
+Jacobson rank/select, Micro Adaptivity (Răducanu/Boncz/Żukowski SIGMOD 2013),
+Roaring (Chambi et al. SPE 2016; Lemire et al. SPE 2018), all-pairs similarity
+join (Bayardo/Ma/Srikant WWW 2007; Xiao et al. WWW 2008), EmptyHeaded, IA-SpGEMM.
+
+**Do claim**, and these are what the evaluation must support:
+1. The **composition** — a selector over a full representation-pairing matrix,
+   gated on measured properties, beating tuned CRoaring on every corpus tested.
+2. The **map** — which pairing wins at which density, measured rather than
+   argued, including the cost of choosing wrong (95x on `dimension_033`).
+3. **C11** — Roaring's container decision tests per-2^16-chunk cardinality
+   against a fixed 4096, which is the wrong statistic when the universe is
+   large; `census1881` has zero bitset containers at density 1.2e-3. Concrete,
+   mechanistic, in a library deployed everywhere. **Flagged for independent
+   verification before the paper leans on it.**
+4. The **negative-result thesis** — in this regime work-avoidance dominates and
+   every mechanism-acceleration fails: SIMD wins 0 of 25 asymmetric points,
+   hashing loses despite better selectivity, prefetch inverts in front of a
+   filter, hierarchies saturate quadratically.
+
+### 16.2 One paper, whole system
+
+§14 and the later sections drifted toward three papers — the map, the tile
+pipeline, thresholded mode. **That split is abandoned.** Roaring did not publish
+a containers paper and a SIMD paper. The tile pipeline (C17–C22) and thresholded
+mode (C23–C24) are **components of one design**, and must be presented and
+evaluated as such — which requires that they actually compose behind one
+selector rather than existing as parallel benchmark binaries, which is their
+current state.
+
+### 16.3 The artifact is not optional — and it does not currently exist
+
+**Every result from C11 onward lives in `bench/`.** `storm.h` still exposes the
+2019 API. The pairing matrix, the gate, the tile pipeline and the thresholded
+mode are **none of them reachable through the C ABI**. There is at present no way
+for anyone outside this repository to use any of it.
+
+This is the single largest gap between the current state and the Roaring outcome,
+and closing it is load-bearing for the paper rather than downstream of it:
+
+- It **forces end-to-end numbers.** Today's strongest figures exclude the
+  transpose build by an amortisation argument and measure only the block diagonal
+  of all-pairs. Once there is a real entry point those costs stop being
+  excludable, which is the correct discipline.
+- It **forces the components to compose.** A single `storm_allpairs()` cannot
+  contain three parallel prototypes.
+- It converts a study into a library.
+
+### 16.4 C ABI requirements
+
+The existing rules in `AGENTS.md` and `CLAUDE.md` stand and are now
+load-bearing rather than hygiene:
+
+- **`extern "C"` and exception-tight.** A C++ exception unwinding through the
+  boundary is UB. Catch at every public entry point and return an error code.
+- **`storm.h` stays C-includable.** No templates, classes, references or default
+  arguments in the `extern "C"` block. C++17 remains internal, for compile-time
+  specialisation of pairing-matrix kernels.
+- **`tests/test_storm.c` stays C on purpose.** It links against C++-compiled
+  objects and is therefore the ABI regression test. Verify with `nm`: unmangled
+  `STORM_` exports, zero `__Z`.
+- **Opaque handles**, not exposed structs, so representations and the selector
+  can change without breaking callers.
+- **Error codes, never exceptions or `abort()`.** A library that kills the host
+  process is unusable from a managed runtime.
+- **Explicit versioning** on any struct crossing the boundary, and a
+  `storm_version()` so bindings can check at load time.
+- **Caller-supplied allocation** where practical; a binding cannot free memory
+  from a foreign allocator.
+- **Thread-safety documented per entry point.** Threading itself remains out of
+  scope for this repository (it belongs to Tomahawk), but the ABI must not
+  preclude it.
+
+Proposed surface, minimal and sufficient:
+
+```c
+storm_corpus*  storm_corpus_create (const uint32_t* const* rows,
+                                    const uint32_t* lens, size_t n,
+                                    uint32_t universe, storm_status* st);
+void           storm_corpus_free   (storm_corpus*);
+
+/* exact: every pair's |A n B|.  policy selects the selector's behaviour. */
+storm_status   storm_allpairs      (const storm_corpus*, storm_policy,
+                                    uint64_t* out, size_t out_len);
+
+/* opt-in thresholded mode: only pairs with Jaccard >= t are reported,
+   cardinalities still exact.  Exact mode remains the default. */
+storm_status   storm_allpairs_above(const storm_corpus*, double t,
+                                    storm_pair* out, size_t cap, size_t* n_out);
+
+const char*    storm_strerror      (storm_status);
+uint32_t       storm_version       (void);
+```
+
+### 16.5 Bindings: Python, Rust, R
+
+**The point of the pure C ABI is that these need no C++ toolchain.** All three
+are in scope for this repository and are a release gate, not a nice-to-have.
+
+- **Python** — `cffi` or `ctypes` over the C ABI, zero-copy from numpy arrays
+  (`uint32` positions, `int64` offsets), returning numpy output. Ship wheels for
+  macOS arm64/x86-64 and manylinux. The scientific-Python user is the largest
+  audience and must not need a compiler.
+- **Rust** — a `storm-sys` crate (bindgen over `storm.h`) plus a safe wrapper
+  exposing slices and `Result`. No C++ in the dependency graph, which is the
+  whole reason for the C ABI.
+- **R** — plain `.Call` against the C ABI (or `cpp11` if it proves simpler),
+  packaged CRAN-style. R is where a large part of the statistical-genetics
+  audience is, and it is the binding most often skipped.
+
+Each binding must have its own smoke test in CI, exercising the ABI on a small
+corpus and checking results against the C oracle. A binding that is not tested is
+a binding that is broken.
+
+### 16.6 The failure mode this is explicitly guarding against
+
+This project has a documented history of exactly the outcome to avoid: **four
+repositories from 2019, all dormant.** Tomahawk is ~21k LOC, 50 commits, last
+touched 2019-04-25 — advanced, working, and unused. StormBitmaps itself sat
+untouched from 2019 until this revival.
+
+"Publish and forget" is not a hypothetical risk here; it is the observed default.
+The artifact and bindings requirements above exist to make the repository useful
+independently of whether the paper is accepted, cited, or read.
+
+### 16.7 Sequencing
+
+1. **Finish dataset breadth.** UShER SARS-CoV-2, KONECT graphs, Wikipedia
+   category postings, msprime coalescent corpora — in flight. If the map holds
+   across genomics, graphs, IR and simulation rather than only graphs, that is
+   the Roaring-shaped claim and it matters more than any statistical polish.
+2. **Test the bucket-count bound.** 83.1% pruning on `weather_sept_85`, the one
+   corpus where prefix filtering collapses and the tile machinery contributes
+   nothing. Cheapest remaining high-value experiment.
+3. **Wire the selector into the C ABI** (§16.4). This is the step that turns
+   parallel prototypes into one system and makes end-to-end measurement possible.
+4. **End-to-end numbers** with build costs charged, replacing the amortised and
+   block-diagonal figures as the headline.
+5. **Bindings** (§16.5) with CI smoke tests.
+6. **Then** statistical rigour: cross-ISA on the three remote hosts, error bars,
+   medians over independent runs. Cheap and mechanical; deliberately last,
+   because it should be spent on whatever survives steps 1-4 rather than on
+   results that may be restructured.
