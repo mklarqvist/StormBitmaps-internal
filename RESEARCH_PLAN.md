@@ -2063,3 +2063,71 @@ independently sufficient grounds:
 Labelled **tier 1 (prediction)**. It would only become interesting if the probe
 path were ever memory-bound rather than arithmetic-bound, which it is not at
 these bucket widths.
+
+### 15.22 Planner techniques from columnar frameworks — what is absorbed, what is missing (C23)
+
+#### Already absorbed from the Parquet/OLAP lineage
+
+| technique | status here |
+|---|---|
+| page min/max statistics | the `range` predicate — largest single win, 48x on dimension_003 |
+| zone maps / data-skipping index | the coarse zone map (C14-C18) |
+| Parquet Bloom filters | **tested, lost 9/10** to a size-matched positional map (C14) |
+| predicate ordering by selectivity x cost | the adaptive cascade (C17) |
+| vectorized/batched execution (X100) | the 64-row tile |
+| runtime replanning (Spark AQE) | the C16 gate |
+| dictionary encoding / column pruning | not applicable — positions are already unique and all are needed |
+| hierarchical manifests (Iceberg) | **tested, failed** — C21a rows, C22a positions |
+
+#### The real gap: all-pairs similarity join, not columnar planning
+
+The applicable literature is not Parquet but **all-pairs similarity search** --
+Bayardo, Ma & Srikant (WWW 2007); Xiao et al., ppjoin (WWW 2008); Chaudhuri,
+Ganti & Kaushik (ICDE 2006). That field addresses this exact problem and has
+three prunes we have none of: **size filtering**, **prefix filtering**,
+**positional filtering**.
+
+**All of them require a similarity threshold**, and Storm's contract is exact
+cardinality for every pair. This is a scoping decision, not a technical one --
+and for the intended consumer it matters, because LD analysis filters by an r^2
+cutoff rather than materialising all pairs.
+
+Measured opportunity for the weakest member of the family, size filtering
+(J(A,B) >= t requires min(|A|,|B|)/max(|A|,|B|) >= t, an O(1) test on stored
+cardinalities):
+
+| corpus | mean \|X\| | t=0.01 | t=0.05 | t=0.10 | t=0.20 |
+|---|---:|---:|---:|---:|---:|
+| as-skitter | 14 | 0.3% | 3.5% | 9.1% | 21.1% |
+| soc-Pokec | 23 | 0.1% | 3.7% | 12.4% | 28.9% |
+| com-LiveJournal | 22 | 0.2% | 6.3% | 15.9% | 32.8% |
+| com-Orkut | 78 | 0.5% | 7.3% | 16.1% | 31.4% |
+| **census1881** | 5,019 | **32.7%** | **43.8%** | **50.2%** | **58.1%** |
+| **weather_sept_85** | 64,353 | **25.3%** | **44.9%** | **55.7%** | **67.1%** |
+
+**C23: size filtering is exactly complementary to the zone map.** It is useless
+on the sparse graphs (0.1-0.5% at t=0.01) because their cardinalities are
+uniform, and strong on the skewed corpora (25-33% at t=0.01, 50-67% at t=0.10) --
+which are precisely the corpora the C16 gate bypasses and where the tile
+machinery currently contributes nothing. The two mechanisms cover disjoint
+regions of the map.
+
+Prefix filtering is the stronger member of the family (it is the main result of
+Bayardo et al.) and is untested here; it needs a global element ordering and an
+index over prefixes, so it is a build, not a predicate.
+
+**Recommendation:** treat the threshold as an optional contract. Exact-all-pairs
+stays the default and the paper's claim; a thresholded mode unlocks the
+similarity-join prunes and is what a real LD consumer would use. Recording this
+as a scoping question for `PROBLEM_STATEMENT.md` rather than silently widening
+the contract.
+
+#### Two smaller ideas from the same lineage, untested
+
+- **Page-level min/max *within* a row.** Our `range` stores one [min,max] per
+  row, useless for long rows whose extent spans the universe. Parquet-style
+  per-page statistics would give ordered skip structure inside a long row --
+  targeted at exactly the bypassed corpora. Tier 1; note the sparse cells'
+  galloping already lost there (S x S 0.14-0.37x), so the prior is not strong.
+- **Sideways information passing** across tile blocks: results from block (i,j)
+  constraining block (i,k). No obvious formulation for symmetric all-pairs.
