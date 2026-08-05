@@ -1856,3 +1856,29 @@ improvement at 10, 12, 13. Currently **0 consecutive** non-improvements, so the
 loop is not finished. Untried angles remain: SIMD on the resolve, applying the
 cascade to B x B and B x R rather than only B x S, gating tile width by universe,
 and a two-level coarse-to-fine matrix.
+
+### 15.18 Iteration 15 — a universe-derived width rule. NO IMPROVEMENT.
+
+C18 showed the bucket-width optimum scales with universe, so a deployable
+version needs a rule rather than a hardcoded 1M. Tested
+`bits = clamp(next_pow2(universe/4), 65536, 4194304)` against the per-corpus
+tuned optimum:
+
+| corpus | universe | rule bits | rule ns | tuned ns | rule/tuned |
+|---|---:|---:|---:|---:|---:|
+| wiki-Talk | 2,394,385 | 1M | 10.111 | 10.302 | 1.02x |
+| as-skitter | 1,696,415 | 512k | 0.460 | 0.415 | 0.90x |
+| com-LiveJournal | 4,036,538 | 1M | 0.208 | 0.128 | 0.62x |
+| com-Orkut | 3,072,627 | 1M | 2.767 | 1.669 | 0.60x |
+| soc-Pokec | 1,632,804 | 512k | 0.160 | 0.067 | 0.42x |
+
+The rule gives back 10-58% of the tuned gain, so universe alone does not
+determine the optimum — cardinality and clustering must enter it. **Not
+adopted**; width remains a tuned parameter, which means the tile pipeline is not
+yet deployable in the C16 sense of working on unknown data.
+
+(`uscensus2000` failed to produce a figure at 4M buckets in this run and is
+excluded rather than reported.)
+
+**Goal counter: 1 consecutive non-improvement.** Improvements at iterations 9,
+11, 14; none at 10, 12, 13, 15.
