@@ -80,6 +80,35 @@ struct AllPairsStats {
 /* `no_zonemap` forces even the SELECTOR's B x B to the unfiltered kernel, so the
  * zone map can be ablated independently of representation selection. Without it
  * the two are confounded: a "selection" speedup partly reflects the filter. */
+/* Default tile width 64, from bench/tile_size.sh.
+ *
+ * The width is the decision-quality / decision-cost knob, and the cost side is
+ * not binding: selection measures 0.12% of runtime against a 2% gate. So the
+ * question is purely whether a narrower tile makes better decisions, which
+ * census1881 suggested it should -- its per-pair oracle sits at ~42 ns/pair
+ * against a tile policy at ~52, decisions that exist and are being discarded
+ * by granularity.
+ *
+ * It does not. Swept 8/16/32/64/128 on 16 corpora (standing instruction:
+ * generic, not tuned to the dataset that raised the question), medians of
+ * three whole-process runs:
+ *
+ *              T=8    T=16   T=32   T=64
+ *   dim_008   1.03x  1.06x  1.13x  1.17x
+ *   census1881 0.86x 0.80x  0.80x  0.84x
+ *   as-skitter 0.91x 1.02x  1.07x  1.20x
+ *   wiki-Talk  1.90x 1.90x  2.05x  1.97x
+ *
+ * Wider is better on the marginal corpora, not worse -- a wide tile amortises
+ * the row loads across more pairs, and that locality outweighs the decision
+ * error it introduces. So census1881's oracle gap is not a granularity
+ * problem after all.
+ *
+ * Recorded because it was briefly changed to 32 on a SINGLE-SHOT sweep that
+ * showed the opposite ordering. On this machine, run-to-run spread between
+ * whole-process invocations reaches 30% at these working-set sizes; one run
+ * per cell cannot rank widths that differ by 10%.
+ */
 AllPairsStats allpairs_sum(const std::vector<Row>& rows,
                            const CostModel& model,
                            Policy policy,

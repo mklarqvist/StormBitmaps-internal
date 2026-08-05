@@ -106,6 +106,22 @@ int main(int argc, char** argv) {
             std::printf("FATAL: cannot load %s\n", infile); return 1; }
         spec = c.spec; structure = "real"; spectrum = "real";
     } else generate(c, spec);
+    /* Default calibration point, deliberately -- NOT the corpus's own universe.
+     *
+     * Calibrating at the workload's universe is the obvious response to the
+     * regime mismatch documented in calibrate(), and it was tried here and made
+     * things worse: dimension_008 went 0.80x -> 0.74x against Roaring and its
+     * oracle 7.72 -> 11.03 ns/pair, so the model's DECISIONS degraded. The
+     * reason is that calibrate() measures a synthetic corpus, and at a real
+     * corpus's universe and density that corpus has ~240 elements per row over
+     * 3.9e6 bits: per-call work collapses, fixed overhead dominates the timing,
+     * and dividing by work_units inflates every sparse cell's ns/unit.
+     *
+     * So the regime mismatch is real but calibrating at the workload's shape is
+     * not the fix -- the fix is a calibration corpus that keeps per-call work
+     * large while the working set is large, which is a generator change, not a
+     * parameter change. Left as the documented next step rather than a silent
+     * regression. */
     CostModel m; calibrate(m);
 
     /* CRoaring on the IDENTICAL rows, so "fixed Roaring vs our best" is one

@@ -53,9 +53,20 @@ EOD
 
 fb(){ for d in data/corpora "$SP/stormbin"; do [ -f "$d/$1.bin" ] && { echo "$d/$1.bin"; return 0; }; done; return 1; }
 
-echo "corpus,domain,universe,rows,roaring_ns,allbitmap_ns,pertile_ns,probe_ns,best_ns,vs_roaring,cells" > "$OUT"
-printf "%-30s %-11s %12s %10s %10s %10s %9s  %s\n" \
-       corpus domain universe roaring per-tile probe "vs roar" "cell mix (per-tile)"
+# REPS whole-process repeats per corpus, median reported, min-max shown.
+#
+# bench_allpairs already repeats internally to a 100 ms floor, which removes
+# within-process jitter. It cannot remove BETWEEN-process state: this sweep
+# walks corpora whose working sets run to 1.6 GB, and on a machine with 68 MB
+# free the page cache a corpus inherits from its predecessor is part of its
+# measurement. census1881 read 0.98x and 0.65x on consecutive sweeps for that
+# reason. A single number would report the second as a loss; the median plus
+# the observed range says what actually happened.
+REPS=${REPS:-3}
+
+echo "corpus,domain,universe,rows,roaring_ns,allbitmap_ns,pertile_ns,probe_ns,best_ns,vs_roaring,vs_roaring_lo,vs_roaring_hi,cells" > "$OUT"
+printf "%-30s %-11s %12s %10s %10s %9s %-15s %s\n" \
+       corpus domain universe roaring per-tile "vs roar" "(range)" "cell mix (per-tile)"
 win=0; tot=0
 while read -r n total dom; do
   [ -z "$n" ] && continue
@@ -64,28 +75,35 @@ while read -r n total dom; do
 import struct;f=open('$b','rb');f.read(8);print(struct.unpack('<IIII',f.read(16))[2])")
   r=$(( BUDGET / (u/8 + 1) )); [ $r -gt 512 ] && r=512; [ $r -lt 64 ] && r=64
   s=$(( total / r )); [ $s -lt 1 ] && s=1
-  line=$("$BIN" --file "$b" --rows $r --in-stride $s --tile 64 $ZMFLAG --tag "$n" 2>/dev/null \
-  | .venv/bin/python -c "
-import sys,re
+  raw=""
+  for k in $(seq "$REPS"); do
+    raw="$raw
+$("$BIN" --file "$b" --rows $r --in-stride $s --tile 64 $ZMFLAG --tag "$n" 2>/dev/null)"
+  done
+  line=$(printf '%s' "$raw" | .venv/bin/python -c "
+import sys,re,statistics as st
 t=sys.stdin.read()
-g=lambda p:(lambda m:m.group(1) if m else None)(re.search(p,t,re.M))
-ro=g(r'^roaring(?:-FIX)?\s+([\d.]+)'); ab=g(r'^all-bitmap\s+([\d.]+)')
-pt=g(r'^per-tile\s+([\d.]+)');        pb=g(r'^probe\s+([\d.]+)')
-# the cell-mix line printed under per-tile
-mix=re.search(r'^per-tile.*\n.*\n\s+(.*?)\s*$', t, re.M)
-mix=(mix.group(1) if mix else '').strip()
+f=lambda p:[float(x) for x in re.findall(p,t,re.M)]
+ro=f(r'^roaring(?:-FIX)?\s+([\d.]+)'); ab=f(r'^all-bitmap\s+([\d.]+)')
+pt=f(r'^per-tile\s+([\d.]+)');        pb=f(r'^probe\s+([\d.]+)')
+mix=re.findall(r'^per-tile.*\n.*\n\s+(.*?)\s*\$', t, re.M)
+mix=(mix[-1] if mix else '').strip()
 if not(ro and ab and pt and pb): print('FAIL|%-30s (parse failed)'%'$n'); sys.exit()
-ro,ab,pt,pb=float(ro),float(ab),float(pt),float(pb)
-best=min(pt,pb)
-print('%s|%-30s %-11s %12s %10.2f %10.2f %10.2f %8.2fx  %s'%(
-      'WIN' if best<ro else 'LOSS','$n','$dom',format(int($u),','),ro,pt,pb,ro/best,mix))
-print('CSV|%s,%s,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%s'%(
-      '$n','$dom',$u,'$r',ro,ab,pt,pb,best,ro/best,mix.replace(',',';')))
+k=min(len(ro),len(pt),len(pb))
+best=[min(pt[i],pb[i]) for i in range(k)]
+rat=sorted(ro[i]/best[i] for i in range(k))
+med=st.median(rat)
+print('%s|%-30s %-11s %12s %10.2f %10.2f %8.2fx %-15s %s'%(
+      'WIN' if med>=1.0 else 'LOSS','$n','$dom',format(int($u),','),
+      st.median(ro),st.median(pt),med,'[%.2f-%.2f]'%(rat[0],rat[-1]),mix))
+print('CSV|%s,%s,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%s'%(
+      '$n','$dom',$u,'$r',st.median(ro),st.median(ab),st.median(pt),st.median(pb),
+      st.median(best),med,rat[0],rat[-1],mix.replace(',',';')))
 ")
   echo "$line" | grep -v '^CSV|' | sed 's/^WIN|/  /; s/^LOSS|/! /; s/^FAIL|/? /'
   echo "$line" | grep '^CSV|' | sed 's/^CSV|//' >> "$OUT"
   case "$line" in WIN*) win=$((win+1)); tot=$((tot+1));; LOSS*) tot=$((tot+1));; esac
 done <<< "$C"
 echo
-echo "$win/$tot corpora beat fixed Roaring   (lines marked ! are losses)"
+echo "$win/$tot corpora beat fixed Roaring   (median of $REPS runs; lines marked ! are losses)"
 echo "csv: $OUT"

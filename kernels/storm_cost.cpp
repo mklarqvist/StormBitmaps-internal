@@ -225,14 +225,52 @@ static inline uint64_t cost_now_ns() {
  * the cells trade places (results/density.png), so every kernel is exercised on
  * input it is plausibly asked to handle rather than in a regime where it would
  * never be selected.
+ *
+ * --- CALIBRATE AT THE WORKLOAD'S UNIVERSE, NOT AT 2^14 ----------------------
+ *
+ * `universe` and `density` are parameters because fixing them at 2^14 and 0.02
+ * calibrated every constant in the wrong memory regime. A 2^14-bit row is 2 kB:
+ * the whole 48-row corpus is 98 kB and lives in L1. The corpora this model is
+ * asked to rank span 2.0e5 to 1.3e8, where one row is 25 kB to 15.8 MB and a
+ * bitmap probe is an L2 or DRAM miss rather than an L1 hit.
+ *
+ * That does not shift the constants uniformly, which is what makes it a
+ * ranking error and not just a scale error. B x S pays one random probe per
+ * ELEMENT and B x R one per RUN, so the gap between them is a gap in miss
+ * counts -- invisible when every probe hits L1, decisive when none do. The
+ * model priced B x R at 2x B x S per unit and therefore chose B x S whenever
+ * mean run length fell below 2; measured on dimension_008, B x R applied to
+ * everything runs 7.36 ns/pair against B x S's 16.41.
+ *
+ * MEASURED, and it does not work as a drop-in: passing the corpus's own
+ * universe and density from bench_allpairs made the model's DECISIONS worse --
+ * dimension_008 fell from 0.80x to 0.74x against Roaring and its oracle from
+ * 7.72 to 11.03 ns/pair. At a real corpus's shape (3.9e6 bits, density 6.2e-5)
+ * the synthetic rows hold ~240 elements, per-call work collapses, fixed
+ * overhead dominates the measured time, and dividing by work_units inflates
+ * every sparse cell's ns/unit. The regime mismatch is real; fixing it needs a
+ * calibration corpus that keeps per-call WORK large while the WORKING SET is
+ * large, which is a generator change rather than a parameter change.
+ *
+ * The parameters stay because that experiment has to be repeatable, and the
+ * default reproduces the historical point exactly. Callers should not pass a
+ * corpus universe until the generator side is done.
+ *
+ * Row count is capped so the calibration corpus stays inside kCalibBytes
+ * regardless of universe -- at 1.3e8, 48 rows would be 780 MB, which would
+ * measure the allocator.
  */
-void calibrate(CostModel& m) {
+static constexpr size_t kCalibBytes = 192u << 20;   // 192 MB of calibration corpus
+
+void calibrate(CostModel& m, uint32_t universe, double density) {
     default_model(m);                     // sane fallback if anything below fails
 
     CorpusSpec spec;
-    spec.n_rows   = 48;
-    spec.universe = 1u << 14;
-    spec.density  = 0.02;
+    spec.universe = universe ? universe : (1u << 14);
+    spec.density  = density > 0.0 ? density : 0.02;
+    const size_t row_bytes = (size_t)(spec.universe / 8u) + 1u;
+    uint32_t rows = (uint32_t)std::min<size_t>(48, kCalibBytes / row_bytes);
+    spec.n_rows   = std::max(8u, rows);   // 8 rows is 28 pairs, enough to time
     spec.seed     = 0xC0571Aull;
     Corpus c;
     generate(c, spec);

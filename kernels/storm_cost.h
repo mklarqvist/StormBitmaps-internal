@@ -73,7 +73,13 @@ struct CostModel {
 };
 
 // Run the calibration microbenchmarks. Costs a few hundred ms; done once.
-void calibrate(CostModel& m);
+/* Measure the constants on THIS host, for the universe and density the caller
+ * is about to run. Both parameters matter: at 2^14 bits every bitmap probe is
+ * an L1 hit and at 1.3e8 none of them are, so the ratio between a per-element
+ * cell and a per-run cell -- which is a ratio of MISS counts -- is not the same
+ * number in the two regimes. The defaults reproduce the historical calibration
+ * point and are the right choice only for a cache-resident workload. */
+void calibrate(CostModel& m, uint32_t universe = 1u << 14, double density = 0.02);
 
 // A hardcoded model, for builds that cannot afford startup calibration. These
 // are this host's measured values and are WRONG on any other machine -- which
