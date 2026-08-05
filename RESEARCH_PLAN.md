@@ -1320,3 +1320,84 @@ direction, since sorting raises clustering and clustering is what empties bins.
 numbers — rows are constructed before timing starts. At 0.195% space it is
 unlikely to matter, but the claim is currently "free to use", not "free to
 build", and only the former is measured.
+
+### 15.9 The workload is emptiness-proving — measured, and it reframes the stack (C13)
+
+Measured on the identical pair sample the timings use (`bench_baseline` now
+reports `# DISJOINT`), 20k stride-sampled pairs per corpus:
+
+| corpus | disjoint pairs | mean \|A n B\| |
+|---|---:|---:|
+| dimension_003 | **100.0%** | 0.00 |
+| uscensus2000 | **100.0%** | 0.00 |
+| com-LiveJournal | **99.9%** | 0.00 |
+| soc-Pokec | **99.9%** | 0.00 |
+| com-Orkut | **99.5%** | 0.01 |
+| as-skitter | **99.4%** | 0.02 |
+| census1881 | 96.9% | 0.76 |
+| wiki-Talk | 95.1% | 0.11 |
+| weather_sept_85 | 34.7% | 4025.78 |
+| census-income | 24.8% | 5927.27 |
+
+**C13: in the target regime, 95-100% of pairs have an empty intersection.** The
+operation being optimised is therefore *disjointness proof*, not intersection.
+This is not a sampling artifact -- it is what all-pairs means on a large sparse
+universe, where E[|A n B|] ~ |A||B|/m is 1.3e-4 for as-skitter.
+
+Consequences:
+
+1. **It re-explains the headline.** The 2-16x over CRoaring is largely a measure
+   of how cheaply each cell reaches a zero, not how fast it counts.
+2. **It re-explains the C12 ablation.** The zone map gives B x B up to 745x
+   because `occ_A & occ_B == 0` exits immediately; B x S gains nothing because
+   it already short-circuits, just expensively.
+3. **The dense corpora are a genuinely different workload** (25-35% disjoint,
+   mean |A n B| in the thousands) and should be reported as such rather than as
+   the same experiment at another density.
+
+**Caveat on generality:** this is uniform all-pairs. A *windowed* workload -- LD
+within a genomic window, or neighbours-of-neighbours -- deliberately selects
+correlated pairs and would have a far lower disjoint rate. Tomahawk's windowed
+mode is exactly that case. The 95-100% figure belongs to all-pairs and must be
+labelled that way.
+
+### 15.10 Blocked Bloom filter above the zone map — analysis before building
+
+Proposal: Bloom -> zone map -> data, so that most pairs are discarded at O(1).
+
+**The O(1) filter-AND test is sound but weak here.** If every element sets k bits
+then any x in A n B has all k bits set in both filters, so
+`popcount(bloomA & bloomB) < k` *proves* disjointness with no false negatives.
+The problem is calibration: to make that test fire often for |A|=|B|=15 you need
+the filters sparse enough that random overlap stays under k, which needs roughly
+|A||B|/FPR bits -- about 2,250 bits for a 10% false-positive rate. The zone map
+for as-skitter is 3,316 bits. **The O(1) test buys no space over what we already
+build**, because both are bounded by the same information-theoretic content.
+
+**The real win is cache residency, not asymptotics.** B x S currently probes a
+212 kB bitmap |B| times: ~15 scattered L2/DRAM accesses to establish a zero.
+The same 15 probes against a 512-byte per-row Bloom are L1 hits. At 4,096 bits,
+k=2, |A|=15, the false-positive rate per probe is (30/4096)^2 ~ 5.4e-5, so
+essentially every one of the 99.4% disjoint pairs exits from L1 and never
+touches the bitmap. That is the mechanism worth building: **not "AND the
+filters", but "probe a small L1-resident filter instead of a large DRAM one".**
+
+Predicted effect: the win should track the ratio of bitmap footprint to filter
+footprint, so it should be largest on `uscensus2000` (m=3.7e7, 4.6 MB/row, 100%
+disjoint) and absent on `census-income` (m=2.0e5, 25% disjoint, already L2).
+
+**Open question the analysis cannot settle:** whether a hashed Bloom beats a
+positional zone map *of the same size*. Hashing spreads elements uniformly;
+the zone map's bins are positional, so clustering makes whole bins empty and
+helps it, while scattering hurts it. as-skitter is partly clustered (117 run
+containers vs 83 array). This is an empirical question, and the honest
+experiment is Bloom vs a zone map truncated to the same byte count -- not Bloom
+vs the current full-size zone map, which would confound size with structure.
+
+**Prior art to cite, not re-invent:** Bloomjoin / semi-join reducers (Mackert &
+Lohman, VLDB 1986); blocked Bloom filters (Putze, Sanders, Singler, JEA 2009);
+BitFunnel's higher-rank rows (Goodwin et al., SIGIR 2017) are already the
+closest structure to the zone map.
+
+**Status: tier 1 (analysis only). Nothing here is measured.** The disjointness
+rates in 15.9 are tier 3; every claim in 15.10 is a prediction.

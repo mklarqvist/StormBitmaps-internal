@@ -239,6 +239,24 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    /* How many pairs intersect at all?
+     *
+     * If most pairs are empty, the workload is not "intersect quickly" but
+     * "prove disjointness quickly", and every kernel here is doing the wrong
+     * job: B x S spends |S| scattered probes into a bitmap that may be hundreds
+     * of kB to establish a zero. That would make an O(1) pre-filter -- a blocked
+     * Bloom filter above the zone map -- the highest-value structure in the
+     * stack rather than a refinement. The prior is strong on sparse corpora:
+     * E[|A n B|] ~ |A||B|/m is 1.3e-4 for as-skitter. Measured here rather than
+     * assumed, on the identical pair sample the timings use. */
+    size_t empty_pairs = 0;
+    uint64_t sum_card = 0;
+    for (size_t k = 0; k < pairs.size(); ++k) {
+        const uint64_t v = roaring_bitmap_and_cardinality(rb[pairs[k].d], rb[pairs[k].s]);
+        if (v == 0) ++empty_pairs;
+        sum_card += v;
+    }
+
     auto timeit = [&](auto fn) {
         uint64_t best = UINT64_MAX;
         for (int r = 0; r < repeats; ++r) {
@@ -278,6 +296,9 @@ int main(int argc, char** argv) {
                 spec.n_rows, spec.universe, pairs.size(), c.mean_card, c.mean_runs);
     std::printf("# footprint storm_B=%.0fkB roaring=%.0fkB roaring_ro=%.0fkB zonemap=%.1fkB\n",
                 c.bytes_B / kB, rb_bytes / kB, rbro_bytes / kB, c.bytes_occ / kB);
+    std::printf("# DISJOINT %zu of %zu pairs (%.1f%%) have |A n B| = 0; mean |A n B| = %.2f\n",
+                empty_pairs, pairs.size(), 100.0*(double)empty_pairs/(double)pairs.size(),
+                (double)sum_card/(double)pairs.size());
     std::printf("%-24s %10s %12s\n", "kernel", "ns/pair", "vs roaring_ro");
     auto row = [&](const char* n, double t) {
         std::printf("%-24s %10.2f %11.2fx\n", n, t, t_roro / t);
