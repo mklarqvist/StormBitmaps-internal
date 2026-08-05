@@ -2795,3 +2795,78 @@ optimum. Width remains the weakest part of the selector.
 Every corpus in this project should be reported both ways from here on. The
 with/without pair is the honest unit: a single filtered number is not a result
 about the filter, it is a result about the corpora chosen.
+
+---
+
+## 21. enwiki category postings — the IR domain, and the largest universe measured (C30)
+
+`tools/catlinks2edges.py` streams the enwiki `categorylinks` SQL dump into a
+`category page` edge list; `tools/sets2bin.py --format edgelist --min-card 2`
+converts it. **221,780,889 links parsed.** Rows are categories, elements are page
+ids — the closest open stand-in for IR posting lists, and the one domain the
+corpus set was missing.
+
+| | |
+|---|---:|
+| universe m | **129,698,523** |
+| rows (categories, ≥2 pages) | 2,165,205 |
+| mean \|Xi\| | 102.3 |
+| **density** | **7.89e-07** |
+| max \|Xi\| | 6,355,044 |
+| skew | top 1% hold **78.4%** |
+| disjoint pairs | **100.0%** |
+| regime | **QUALIFIES** |
+
+**The universe is 7x larger than anything else measured** (previous maximum:
+dbpedia-link at 18.3M) and the density is the lowest in the set.
+
+### 21.1 Result
+
+| cell | ns/pair | vs all-bitmap |
+|---|---:|---:|
+| B x B all-bitmap | 523,858.26 | 1.00x |
+| B x B zone-mapped | 538.89 | 972x |
+| **B x S** | **13.83** | **37,890x** |
+| B x R | 20.11 | 26,049x |
+| S x S | 47.81 | 10,958x |
+| R x R | 62.39 | 8,396x |
+
+**37,890x over all-bitmap** — by an order of magnitude the largest figure in the
+project. It is worth being precise about why: at 129.7M bits the bitmap is
+**15.8 MB per row**, so all-bitmap spends 523 microseconds per pair moving memory
+that is 100% guaranteed empty. This is the "all-bitmap is infeasible, not merely
+slow" point made concrete rather than argued, and it is the reason the honest
+headline for this project is the CRoaring column and not this one.
+
+### 21.2 With and without the filter (§20 rule)
+
+| variant | ns/pair | vs unfiltered |
+|---|---:|---:|
+| B x S ilp8 (no filter) | 32.89 | 1.00x |
+| B x S zone map (512b bins) | 17.27 | 1.90x |
+| bloom k=2 | 22.13 | 1.49x |
+| coarse fixed | 16.47 | 2.00x |
+| coarse adaptive | 7.40 | 4.45x |
+| **AUTO (gated)** | **5.96** | **5.52x** |
+
+Gate cost 15,789 ns over 563 sampled pairs = **1.94 ns/pair amortised, 5.9% of
+the gated runtime** — the highest selection overhead measured, because the tile
+is small (8,128 pairs) relative to the sample. On a full all-pairs run over 2.17M
+categories it would be negligible.
+
+Note `coarse adaptive` (4.45x) beats `coarse fixed` (2.00x) here, reversing C15,
+which found adaptive width lost on 7 of 9 corpora. At 15.8 MB/row the fixed
+131 kB filter is no longer the cheap-to-hold option; the adaptive 190 B/row one
+is. **C15's rule was stated as general and is in fact universe-dependent** —
+consistent with C18's finding that the same structure tunes oppositely in
+different regimes.
+
+### 21.3 Why the parse needed care
+
+The dump's `cl_sortkey` and `cl_sortkey_prefix` are `varbinary` and routinely
+contain commas, quotes, escaped quotes and parentheses, so splitting tuples on
+`,` or `),(` corrupts data silently. Only the two integers at the ends are
+needed, and the `cl_type` enum (`'page'|'subcat'|'file'`) anchors the tail
+unambiguously, so a non-greedy match from `(` to that anchor extracts both
+without interpreting the binary middle. Validated on a 40 MB prefix by printing
+parsed pairs beside the raw tuples they came from before running the full dump.

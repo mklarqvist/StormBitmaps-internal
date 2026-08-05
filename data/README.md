@@ -132,6 +132,8 @@ Figures are derived from the STORMBIN files themselves, not from source headers.
 | `wikipedia_link_en` | [KONECT](http://konect.cc/networks/wikipedia_link_en/) | 11,206,012 | 5,978,043 | 46.4 | 4.15e-06 | **QUALIFIES** |
 | `livejournal-groupmemberships` | [KONECT](http://konect.cc/networks/livejournal-groupmemberships/) | 7,489,074 | 2,197,915 | 48.7 | 6.50e-06 | **QUALIFIES** |
 | `usher_sarscov2` | [UCSC UShER](https://hgdownload.soe.ucsc.edu/goldenPath/wuhCor1/UShER_SARS-CoV-2/) | 8,451,771 | 29,411 | 15,769.3 | 1.87e-03 | out of regime |
+| `enwiki-categorylinks` | [Wikimedia dumps](https://dumps.wikimedia.org/enwiki/latest/) | **129,698,523** | 2,165,205 | 102.3 | **7.89e-07** | **QUALIFIES** |
+| `gnomad_chr21_exomes_af1e-3` | [gnomAD v4.1](https://gnomad.broadinstitute.org/downloads) | 1,461,894 | 625,656 | 28.2 | 1.93e-05 | **QUALIFIES** |
 | `msprime_{10k,100k,1M}` | `tools/msprime2bin.py` | 2e4 / 2e5 / 2e6 | 42k / 51k / 15.6k | 1,887 / 15,720 / 136,288 | 0.094 / 0.079 / 0.068 | out of regime |
 
 `dbpedia-link` and `wikipedia_link_en` are `% asym` at source and are converted
@@ -149,7 +151,14 @@ the C25 mechanism: mean cardinality 15,769 against a **median of 404**, because 
 few near-universal variants (max 8,428,858 carriers = 99.7% of genomes) dominate
 the mean. The typical variant sits at density 4.8e-5, inside the regime.
 
-Conversion: `tools/vcf2bin_usher.py` (UShER), `tools/msprime2bin.py` (coalescent),
+`enwiki-categorylinks` is the IR-posting-list analogue (rows = categories,
+elements = page ids) and carries the largest universe and lowest density in the
+set. Its SQL dump has `varbinary` sortkeys containing commas, quotes and
+parentheses, so `tools/catlinks2edges.py` anchors on the `cl_type` enum rather
+than splitting tuples on punctuation.
+
+Conversion: `tools/catlinks2edges.py` (enwiki), `tools/gnomad2bin.py` (gnomAD),
+`tools/vcf2bin_usher.py` (UShER), `tools/msprime2bin.py` (coalescent),
 `tools/sets2bin.py --format edgelist --min-card 2` (KONECT).
 
 ## Candidates identified but not yet used
