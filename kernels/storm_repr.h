@@ -266,7 +266,18 @@ struct Row {
 
 // Build every representation of a row from a sorted, distinct position list.
 // `universe` is rounded up to a whole number of 64-bit words.
-void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe);
+/* `sparse_only` skips the bitmap and everything derived from it (EWAH, rank,
+ * occupancy, complement), keeping the sorted list, the runs and the metadata.
+ *
+ * This exists because the bitmap is what bounds corpus size, not the data. At
+ * universe 1.3e8 a bitmap row is 15.8 MB while its list is ~408 bytes, so a
+ * bitmap-bearing harness can hold ~74 rows where a sparse one holds millions.
+ * Any measurement that must materialise bitmaps is therefore restricted to a
+ * sample far smaller than the corpus, which charges an O(N) index build against
+ * O(N^2) pairs that do not exist at that scale. Rows built this way can only be
+ * used by cells that never touch B. */
+void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe,
+               bool sparse_only = false);
 
 // Decode a W back to a bitmap. Used by the oracle and by the inflate baselines.
 void ewah_decode(const EwahView& w, uint64_t* out_words);

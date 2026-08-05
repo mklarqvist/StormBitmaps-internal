@@ -11,18 +11,13 @@ These algorithms and bitmaps are used to compute XX<sup>T</sup> for a _binary_ i
 [AVX2](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions),
 [AVX512BW](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions). This is equivalent to computing the all-vs-all set intersection cardinality (|X<sub>i</sub> ∩ X<sup>T</sup><sub>j</sub>|) for pairs of _symmetric_ integer sets. These algorithms are fast in the worst case and _extremely_ fast when the input matrix is sparse.
 
-> **Status (2026-08):** this repository is being revived. See
-> [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md) for the current research objective and
-> [`LANDSCAPE.md`](LANDSCAPE.md) §8 for the defects fixed in Phase 0.
->
-> Two corrections to the claims below, both recorded in `LANDSCAPE.md`:
->
-> * **NEON is not implemented.** The pinned `libalgebra` contains no NEON code path — the word
->   appears only in a comment. On AArch64 the library builds and is correct, but runs scalar
->   fallbacks. NEON/SVE2 support is planned, not present.
-> * **The performance figures below are not cycles.** They were produced with a constant-rate
->   reference counter (x86 RDTSC), not a core cycle counter, and are unverified on current
->   hardware. Treat them as historical until re-measured with `perf`.
+> **Status (2026-08):** actively developed. The results above supersede the
+> 2019 performance figures, which were removed: they were produced with a
+> a constant-rate reference counter rather than a cycle counter, on
+> hardware no longer available, and described a NEON path the pinned
+> `libalgebra` does not contain. See [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md)
+> for the objective, [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) §16 for the current
+> direction, and [`LANDSCAPE.md`](LANDSCAPE.md) §8 for the Phase 0 defects.
 
 ![screenshot](binary_matrix_multiplication.jpg)
 
@@ -169,6 +164,54 @@ rows at universe 1.3e8, giving 2,701 pairs against an index build of 19,537
 operations — 7.2 ops per pair. The index build is O(N) while pairs are O(N^2), so
 on the real 2.17M-row corpus it is negligible; at 74 rows it dominates. The same
 applies in weaker form to every corpus above ~1e7 universe.
+
+### 4. Storage cost — bits per value, data and metadata separated
+
+Reported the way the Roaring papers do so corpora of different cardinality are
+comparable. **Metadata is listed separately and deliberately**: the zone map and
+rank index are not part of any representation, they are what the selector needs
+in order to choose one, and folding them into the data column would hide the
+cost of the mechanism that is new here.
+
+| corpus | universe | bitmap | array | runs | EWAH | **best** |
+|---|---:|---:|---:|---:|---:|---:|
+| `census-income` | 199,523 | 5.77 | 32.00 | 20.73 | 3.86 | **3.08** |
+| `msprime_100k` | 200,000 | 12.57 | 32.00 | 31.88 | 5.29 | **4.44** |
+| `weather_sept_85` | 1,015,367 | 15.78 | 32.00 | 30.06 | 7.87 | **6.77** |
+| `usher_sarscov2` | 8,451,771 | 1,080.60 | 32.00 | 2.04 | 4.06 | **2.02** |
+| `wikileaks-noquotes` | 1,353,179 | 982.89 | 32.00 | 11.36 | 19.46 | **10.64** |
+| `census1881` | 4,277,806 | 852.27 | 32.00 | 58.86 | 43.79 | **29.92** |
+| `as-skitter` | 1,696,415 | 1.26e5 | 32.00 | 47.13 | 77.72 | **29.26** |
+| `wikipedia_link_en` | 11,206,012 | 2.68e5 | 32.00 | 46.21 | 72.90 | **28.27** |
+| `dbpedia-link` | 18,268,993 | 6.38e5 | 32.00 | 56.38 | 101.63 | **31.84** |
+| `uscensus2000` | 36,974,578 | 1.24e6 | 32.00 | 57.78 | 91.89 | **31.98** |
+| `enwiki-categorylinks` | 129,698,523 | 3.33e6 | 32.00 | 62.72 | 113.23 | **31.85** |
+
+On dense corpora the numbers are Roaring-comparable (3–7 bits/value). On sparse
+ones the dense bitmap costs 10^3–10^6 bits per value, which is the storage
+statement of the same fact the timing tables make: **a bitmap over a large sparse
+universe is not a compression scheme, it is a liability.** `usher_sarscov2` is
+the standout at 2.02 bits/value — its carriers cluster into long runs.
+
+#### Selector metadata is universe-proportional, and that is a defect
+
+| corpus | universe | meta B/row | data B/row | ratio |
+|---|---:|---:|---:|---:|
+| `census-income` | 199,523 | 6,335 | 13,344 | 0.5x |
+| `weather_sept_85` | 1,015,367 | 32,031 | 54,497 | 0.6x |
+| `census1881` | 4,277,806 | 134,784 | 18,774 | 7.2x |
+| `as-skitter` | 1,696,415 | 53,479 | 49 | **1,083x** |
+| `dbpedia-link` | 18,268,993 | 575,415 | 113 | **5,051x** |
+| `enwiki-categorylinks` | 129,698,523 | 4,084,799 | 155 | **26,312x** |
+
+`build_row()` constructs the rank index and zone map unconditionally, and both
+scale with **universe**, not cardinality. On `enwiki-categorylinks` that is 4 MB
+of selector metadata attached to 155 bytes of data. The complement
+representation already carries the right guard — it is built only when
+`2n > universe` — and rank and occupancy have none. **This is a known defect, not
+a design choice**, and it is why bitmap-bearing measurements are restricted to
+tiny row counts on the large-universe corpora. Fixing it is a prerequisite for
+the C ABI (`RESEARCH_PLAN.md` §16.3).
 
 ### What the tables show
 
@@ -338,51 +381,6 @@ median-and-IQR over N independent runs, which is what `bench_cells` already does
 per-variant. Until that lands, treat the ordering as sound and the exact ratios
 as provisional.
 
-## Performance
-
-All performance tests were run on a host machine with a 10 nm Cannon Lake Core
-i3-8121U with gcc (GCC) 8.2.1 20180905 (Red Hat 8.2.1-3). Detailed benchmarking requires the
-Linux `perf` subsystem. In all the examples below we do not output the result matrix but instead report its total sum. This was done to restrict our measurements to algorithmic performance while being unaffacted by disk I/O.
-
-### Small input matrix
-
-Sample performance metrics (practical upper limit) for **dense** matrices using a host machine with AVX512BW available. We
-simulate many data arrays in aligned memory and compute the upper triangular or XX<sup>T</sup>
-using the command `benchmark 65536 10000` 
-
-| Set bits | CPU cycles / 64-bit word | MB/s      |
-|----------|--------------------------|-----------|
-| 32768    | 0.209                    | 109915 |
-| 16384    | 0.21                     | 113591 |
-| 6553     | 0.21                     | 114524 |
-| 2621     | 0.21                     | 114256 |
-| 1310     | 0.21                     | 114625 |
-| 655      | 0.21                     | 114709 |
-| 262      | 0.21                     | 114659 |
-| 65       | 0.21                     | 114390 |
-| 13       | 0.21                     | 114726 |
-| 5        | 0.21                     | 114574 |
-| 1        | 0.21                     | 114457 |
-
-### Large input matrix
-
-Next we simulated 10,000 vectors with [0,262144] random bits set for each to form a (10000,524288)-dimension matrix with different data densities. The following (misleading) figures
-represent CPU cycles / 64-bit word equivalent if the analysis was run in uncompressed **bitmap space**. We compare our simple approach to [Roaring bitmaps](https://github.com/RoaringBitmap/CRoaring) demonstrating we can achieve performance parity on large bitmaps:
-
-| Set bits | Storm-CPU-cycles | Roaring-CPU-cycles |
-|----------|------------------|--------------------|
-| 262144   | 0.483            | 0.567              |
-| 131072   | 0.477            | 0.567              |
-| 52428    | 0.474            | 0.567              |
-| 20971    | 3.431            | 3.342              |
-| 10485    | 1.765            | 1.756              |
-| 5242     | 0.935            | 0.945              |
-| 2097     | 0.43             | 0.451              |
-| 524      | 0.19             | 0.196              |
-| 104      | 0.117            | 0.133              |
-| 5        | 0.017            | 0.029              |
-| 1        | 0.003            | 0.004              |
-
 ## API
 
 The interface is found in the file `storm.h`.
@@ -457,15 +455,3 @@ on Windows where we need to set these flags:
 For example, we can run `cmake -DSTORM_ENABLE_SIMD_SSE4_2="ON" .` to enable SSE4.2 instructions.
 
 and run `./benchmark`.
-
-### Note
-
-This is a collaborative effort between Marcus D. R. Klarqvist
-([@mklarqvist](https://github.com/mklarqvist/)) and Daniel Lemire
-([@lemire](https://github.com/lemire/)).
-
-### History
-
-These functions were originally developed for
-[Tomahawk](https://github.com/mklarqvist/Tomahawk) for computing genome-wide
-linkage-disequilibrium but can be applied to any intersect-count problem.

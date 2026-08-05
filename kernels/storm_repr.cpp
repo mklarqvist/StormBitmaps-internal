@@ -99,17 +99,19 @@ static void build_ewah(const uint64_t* words, uint32_t nw, avec<uint64_t>& out) 
     if (out.empty()) out.push_back(ewah_marker(false, 0, 0));
 }
 
-void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe) {
+void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe,
+               bool sparse_only) {
     const uint32_t nw = (universe + 63u) / 64u;
 
-    out.bitmap.assign(nw, 0);
     out.list.assign(positions, positions + n);
+    if (!sparse_only) out.bitmap.assign(nw, 0);
+    else              out.bitmap.clear();
 
     for (size_t i = 0; i < n; ++i) {
         const uint32_t p = positions[i];
         assert(p < universe);
         assert(i == 0 || positions[i] > positions[i - 1]);   // sorted, distinct
-        out.bitmap[p >> 6] |= uint64_t(1) << (p & 63);
+        if (!sparse_only) out.bitmap[p >> 6] |= uint64_t(1) << (p & 63);
     }
 
     // Runs, straight off the sorted list — [start, end) with adjacent positions
@@ -124,7 +126,8 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe)
         i = j + 1;
     }
 
-    build_ewah(out.bitmap.data(), nw, out.ewah);
+    if (!sparse_only) { build_ewah(out.bitmap.data(), nw, out.ewah); }
+    else               { out.ewah.clear(); }
     out.ewah_nw = nw;
 
     /* Complement, built only when it pays: a row of density > 1/2 has a
@@ -133,7 +136,7 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe)
      * weight, so it is simply not built -- the decision is one comparison on
      * data already computed. */
     out.comp_list.clear(); out.comp_start.clear(); out.comp_end.clear();
-    if ((uint64_t)n * 2 > (uint64_t)universe) {
+    if (!sparse_only && (uint64_t)n * 2 > (uint64_t)universe) {
         uint32_t prev = 0;
         for (size_t i = 0; i < n; ++i) {
             for (uint32_t p = prev; p < positions[i]; ++p) out.comp_list.push_back(p);
@@ -150,11 +153,17 @@ void build_row(Row& out, const uint32_t* positions, size_t n, uint32_t universe)
         }
     }
 
-    build_rank(out.bitmap.data(), nw, out.rank);
-    build_occ(out.bitmap.data(), nw, out.occ, out.occ_bin);
-
     uint32_t nnz = 0;
-    for (uint32_t k = 0; k < nw; ++k) nnz += (out.bitmap[k] != 0);
+    if (!sparse_only) {
+        build_rank(out.bitmap.data(), nw, out.rank);
+        build_occ(out.bitmap.data(), nw, out.occ, out.occ_bin);
+        for (uint32_t k = 0; k < nw; ++k) nnz += (out.bitmap[k] != 0);
+    } else {
+        out.rank.clear(); out.occ.clear();
+        // Without the bitmap the exact live-word count is unavailable; the run
+        // count bounds it and is exact when no two runs share a word.
+        nnz = (uint32_t)out.run_start.size();
+    }
 
     out.meta.cardinality = (uint32_t)n;
     out.meta.n_runs      = (uint32_t)out.run_start.size();

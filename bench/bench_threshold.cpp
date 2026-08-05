@@ -55,7 +55,7 @@ template <class L> static auto pick(L l, const char* nm) -> decltype(l.v[0].fn) 
 int main(int argc, char** argv) {
     const char* path = nullptr;
     uint32_t want_rows = 512, stride = 1;
-    double t_thresh = 0.01; int repeats = 5; std::string tag = "host"; bool csv = false;
+    double t_thresh = 0.01; int repeats = 5; std::string tag = "host"; bool csv = false; bool sparse = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return i+1<argc ? argv[++i] : ""; };
@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
         else if (a == "--repeats")repeats = atoi(nx());
         else if (a == "--tag")    tag = nx();
         else if (a == "--csv")    csv = true;
+        else if (a == "--sparse") sparse = true;
     }
     if (!path) { std::printf("need --file\n"); return 1; }
     if (!stride) stride = 1;
@@ -83,7 +84,7 @@ int main(int argc, char** argv) {
         uint32_t n; if (fread(&n,4,1,f)!=1) break;
         pos.resize(n); if (n && fread(pos.data(),4,n,f)!=n) break;
         if (seen % stride == 0 && n > 0) {
-            rows.emplace_back(); build_row(rows.back(), pos.data(), pos.size(), nb);
+            rows.emplace_back(); build_row(rows.back(), pos.data(), pos.size(), nb, sparse);
             lists.emplace_back(pos.begin(), pos.end());
         }
         ++seen;
@@ -93,6 +94,15 @@ int main(int argc, char** argv) {
     if (N < 2) { std::printf("too few rows\n"); return 1; }
     const uint64_t NPAIRS = (uint64_t)N*(N-1)/2;
     const auto f_bs = pick(cell_bs(), "ilp8");
+    const auto f_ss = pick(cell_ss(), "adaptive2");
+    /* With --sparse there is no bitmap, so every intersection must go through a
+     * cell that reads only the list. This is the configuration that can hold the
+     * whole corpus; the bitmap-bearing one cannot. */
+    auto exact = [&](uint32_t i, uint32_t j) -> uint64_t {
+        if (sparse) return f_ss(rows[i].S(), rows[j].S());
+        const bool id = rows[i].meta.cardinality >= rows[j].meta.cardinality;
+        return id ? f_bs(rows[i].B(), rows[j].S()) : f_bs(rows[j].B(), rows[i].S());
+    };
 
     /* Global element order by document frequency, rarest first (Bayardo's
      * ordering). Rare elements land in prefixes, so posting lists stay short and
@@ -196,9 +206,7 @@ int main(int argc, char** argv) {
             const uint64_t t0 = ns_now();
             for (uint32_t i = 0; i < N; ++i)
                 for (uint32_t j = i+1; j < N; ++j) {
-                    const bool id = rows[i].meta.cardinality >= rows[j].meta.cardinality;
-                    const uint64_t v = id ? f_bs(rows[i].B(), rows[j].S())
-                                          : f_bs(rows[j].B(), rows[i].S());
+                    const uint64_t v = exact(i, j);
                     if (v && jac_ok(i,j,v)) hits.push_back({i,j});
                 }
             const double dt = (double)(ns_now()-t0);
@@ -272,9 +280,7 @@ int main(int argc, char** argv) {
                     mark[j] = 0;
                     const size_t cj = lists[j].size();
                     if ((double)std::min(ci,cj)/(double)std::max(ci,cj) < t_thresh) continue;
-                    const bool id = rows[i].meta.cardinality >= rows[j].meta.cardinality;
-                    const uint64_t v = id ? f_bs(rows[i].B(), rows[j].S())
-                                          : f_bs(rows[j].B(), rows[i].S());
+                    const uint64_t v = exact(i, j);
                     if (v && jac_ok(i,j,v)) hits.push_back({std::min(i,j), std::max(i,j)});
                 }
             }

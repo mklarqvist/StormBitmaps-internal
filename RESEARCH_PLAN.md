@@ -3016,3 +3016,72 @@ model-based selection there — but the strong claim built on it was an artifact
 This is the fourth genomic claim in this project to be corrected (C8, C25, §19.4,
 now C31). All four shared a cause: a conclusion drawn from a number that had not
 been checked against a second, independent measurement.
+
+---
+
+## 24. Storage, and a metadata defect the measurement exposed (C33)
+
+`bench/compression.cpp` reports bits per value per representation, the metric the
+Roaring papers use, with **selector metadata separated from data**. Metadata here
+means the rank index, the zone map and the per-row header — none of which belong
+to any representation; they are what the selector needs in order to choose one.
+Folding them into the data column would hide the cost of the mechanism that is
+new in this project.
+
+### 24.1 Bits per value
+
+| corpus | universe | bitmap | array | runs | EWAH | best |
+|---|---:|---:|---:|---:|---:|---:|
+| census-income | 199,523 | 5.77 | 32.00 | 20.73 | 3.86 | **3.08** |
+| msprime_100k | 200,000 | 12.57 | 32.00 | 31.88 | 5.29 | **4.44** |
+| weather_sept_85 | 1,015,367 | 15.78 | 32.00 | 30.06 | 7.87 | **6.77** |
+| usher_sarscov2 | 8,451,771 | 1,080.60 | 32.00 | **2.04** | 4.06 | **2.02** |
+| wikileaks-noquotes | 1,353,179 | 982.89 | 32.00 | 11.36 | 19.46 | **10.64** |
+| census1881 | 4,277,806 | 852.27 | 32.00 | 58.86 | 43.79 | **29.92** |
+| as-skitter | 1,696,415 | 1.26e5 | 32.00 | 47.13 | 77.72 | **29.26** |
+| dbpedia-link | 18,268,993 | 6.38e5 | 32.00 | 56.38 | 101.63 | **31.84** |
+| enwiki-categorylinks | 129,698,523 | 3.33e6 | 32.00 | 62.72 | 113.23 | **31.85** |
+
+Dense corpora land at 3-7 bits/value, comparable to Roaring's published figures.
+Sparse corpora cost 10^3-10^6 bits/value as a dense bitmap — **the storage
+statement of exactly what the timing tables show**: a bitmap over a large sparse
+universe is not a compression scheme, it is a liability.
+
+`usher_sarscov2` is the outlier at **2.02 bits/value**, and it is the only corpus
+where runs beat the sorted array — its carriers cluster into long runs because
+SARS-CoV-2 genomes are ordered by phylogeny in the UShER MAT. That is real
+structure the other corpora do not have, and it is why R x R is competitive
+there and nowhere else.
+
+### 24.2 C33: selector metadata is universe-proportional and unguarded
+
+| corpus | universe | meta B/row | data B/row | ratio |
+|---|---:|---:|---:|---:|
+| census-income | 199,523 | 6,335 | 13,344 | 0.5x |
+| weather_sept_85 | 1,015,367 | 32,031 | 54,497 | 0.6x |
+| census1881 | 4,277,806 | 134,784 | 18,774 | 7.2x |
+| as-skitter | 1,696,415 | 53,479 | 49 | **1,083x** |
+| dbpedia-link | 18,268,993 | 575,415 | 113 | **5,051x** |
+| enwiki-categorylinks | 129,698,523 | 4,084,799 | 155 | **26,312x** |
+
+`build_row()` builds the rank index and zone map **unconditionally**, and both
+scale with universe rather than cardinality. On `enwiki-categorylinks` that is
+**4 MB of selector metadata attached to 155 bytes of data**.
+
+The complement representation already carries precisely the right guard — it is
+built only when `2n > universe`, "one comparison on data already computed" — and
+rank and occupancy have none. This is an oversight, not a design decision.
+
+**Consequences, which reach further than storage:**
+1. It is a large part of why bitmap-bearing harnesses are confined to tiny row
+   counts on large-universe corpora, which is what made the threshold table
+   understate `enwiki-categorylinks` by ~320x (§23).
+2. It makes the current implementation undeployable on sparse large-universe
+   data regardless of speed, and therefore blocks the C ABI work in §16.3.
+3. It is invisible in every timing measurement, because rows are built before
+   the clock starts. Only a storage measurement could surface it — which is an
+   argument for reporting storage even when throughput is the objective.
+
+**Fix:** guard rank and occupancy the way the complement is guarded, and use the
+`sparse_only` path added in §23 as the default for rows below the threshold.
+
