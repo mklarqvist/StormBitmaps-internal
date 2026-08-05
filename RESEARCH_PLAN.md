@@ -2567,3 +2567,65 @@ already does.
   warning for `rm -rf` on intermediates — inspected, the deletions were within
   the "delete intermediates as you go" instruction it was given, every STORMBIN
   output and source download survived, and the removed files are regenerable.
+
+### 18.4 wikipedia_link_en, and a correction to the tile pipeline at large universe (C27)
+
+A fourth corpus, converted by the same agent: **wikipedia_link_en**, universe
+11,206,012, 5,978,043 rows, mean |Xi| 46.4, density 4.15e-06 — **QUALIFIES**.
+Confirmed independently from file size (1,134,533,584 bytes ⇒ mean 46.45).
+
+**Stat correction.** The agent's triage reported dbpedia-link at mean 38.0 /
+density 2.078e-06. Recomputing from the file itself (540,664,300 bytes, 4,384,102
+rows) gives **mean 29.83 / density 1.633e-06**, matching the direct measurement
+in §18. Two of its three triage figures reproduce exactly; this one does not, so
+it is an isolated error in that run, not systematic. The file-derived numbers are
+authoritative and are what §18 records.
+
+#### C27: the adaptive cascade regresses at large universe
+
+`bench_tile --rows 1024 --bits 1048576`, every `correct` column `yes` on all
+three corpora:
+
+| variant | livejournal-groups | dbpedia-link | wikipedia_link_en |
+|---|---:|---:|---:|
+| `bs_ilp8` (no filter) | 1.00x | 1.00x | 1.00x |
+| `pair_gated` (incumbent) | 1.86x | 2.12x | 1.77x |
+| `adaptive cascade` (C17 winner) | **0.21x** | **0.49x** | **0.65x** |
+| `amortised transpose` | 6.31x | 8.61x | 1.71x |
+| `multi-bucket resolve` | 39.57x | 17.53x | 23.79x |
+| `multi + dedup` | **41.85x** | 19.11x | **24.53x** |
+| `direct pair emission` | 38.90x | **21.85x** | 24.32x |
+| `WIDE T=128` | 3.92 ns | 9.51 ns | 20.01 ns |
+| `hierarchical (coarse→fine)` | 2.01x | 3.22x | 3.63x |
+
+**The adaptive cascade — the C17 winner — is a 1.5-4.8x LOSS on all three.**
+It rebuilds the tile transpose per visit, and at universe 7.5-18.3M that build
+dominates. The variants that amortise it win by 17-42x. `results/ALLPAIRS.md` §2
+documents the cascade as a pipeline stage; **that ordering is correct only at the
+universe sizes it was developed on (1.6-4.0M) and must be revised** — the
+amortised multi-bucket path is the pipeline at scale.
+
+Three earlier findings replicate cleanly on unseen data: wide tiles lose
+(3.9-20.0 ns against 1.2-3.9 ns for direct emission, cf. §15.15); hierarchical
+zone maps lose (2.0-3.6x against 17-42x, cf. C22a); prefetch loses
+(19.5x against 38.9x on livejournal-groups, cf. C20). `multi + dedup` edges ahead
+on two of three, consistent with C19's finding that it sits inside the noise band.
+
+#### Caveats the agent flagged, retained
+
+1. **livejournal-groupmemberships' universe is inflated.** `sets2bin.py` uses one
+   shared id space for both edge-list columns, so the reported universe
+   (7,489,074 = max group id) exceeds the true member domain (3,201,203 users).
+   Density is understated by ~2.3x. Forcing `--universe 3201204` crashes in
+   `_rows_from_edges`, so this is a genuine limitation of the tool for bipartite
+   input, not a conversion mistake. The QUALIFIES verdict holds under either
+   reading.
+2. **dbpedia-link's upstream header disagrees with its own content** by 0.07%
+   (declares 172,308,906 edges, contains 172,183,984 data lines). Property of the
+   KONECT dump, not our pipeline.
+3. Both `dbpedia-link` and `wikipedia_link_en` are labelled `% asym` at source and
+   were converted **without** `--symmetrize`, matching the project's existing
+   convention for directed graphs.
+4. **My agent prompt was wrong** to state these datasets appear in
+   `data/README.md` "Candidates identified but not yet used" — they do not
+   (0 matches). Corrected below.
