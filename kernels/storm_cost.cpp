@@ -103,7 +103,24 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
 
 double predict(const CostModel& m, Pairing p, const RowMeta& a, const RowMeta& b) {
     if (p == Pairing::Empty) return 0.0;
-    return m.ns_fixed + m.ns_per_unit[(int)p] * work_units(p, a, b);
+    double c = m.ns_fixed + m.ns_per_unit[(int)p] * work_units(p, a, b);
+    if (p == Pairing::BB) {
+        /* The zone-mapped B x B must AND both occupancy maps before it can skip
+         * anything: m/512 words, unavoidable and O(m).
+         *
+         * bb_expected_bins() charges only the bins actually VISITED, which on a
+         * sparse row floors at 1 -- so B x B predicted 2.1 ns on uscensus2000
+         * where it truly costs 215.8, and the selector chose it over B x S's
+         * 23.5 on essentially every pair. That is the whole of the selector's
+         * 7-16x loss on the large-universe sparse corpora.
+         *
+         * ns_per_occ_word was already declared and calibrated for exactly this
+         * term and was simply never read by predict(). */
+        const double occ_words =
+            std::max(1.0, (double)std::max(a.n_words, b.n_words) / 512.0);
+        c += m.ns_per_occ_word * occ_words;
+    }
+    return c;
 }
 
 Pairing select_pairing(const CostModel& m, const RowMeta& a, const RowMeta& b,

@@ -11,6 +11,18 @@
  */
 #include "kernels/storm_allpairs.h"
 #include "kernels/storm_gen.h"
+#include "roaring.h"
+#include <time.h>
+
+// storm_allpairs.cpp's now_ns() is internal; this is the same clock.
+static inline uint64_t bench_ns() {
+#if defined(__APPLE__)
+    return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+#else
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
+#endif
+}
 
 #include <cstdio>
 #include <cstdlib>
@@ -93,6 +105,43 @@ int main(int argc, char** argv) {
     } else generate(c, spec);
     CostModel m; calibrate(m);
 
+    /* CRoaring on the IDENTICAL rows, so "fixed Roaring vs our best" is one
+     * measurement rather than two runs stitched together. Built with
+     * run_optimize() -- and, when linked against croaring_modified, with the
+     * array->bitset promotion of C35 on top, which is the competently-tuned
+     * baseline standing rule 9 requires now that a better configuration is known.
+     *
+     * Pairs here are ALL pairs of the loaded rows, matching the policies below
+     * exactly; bench_baseline samples a capped subset and is therefore not
+     * directly comparable. */
+    double roar_ns = 0; uint64_t roar_sum = 0;
+    {
+        std::vector<roaring_bitmap_t*> rb(c.rows.size());
+        for (size_t i = 0; i < c.rows.size(); ++i) {
+            rb[i] = roaring_bitmap_create();
+            roaring_bitmap_add_many(rb[i], c.rows[i].list.size(), c.rows[i].list.data());
+            roaring_bitmap_run_optimize(rb[i]);
+            roaring_bitmap_shrink_to_fit(rb[i]);
+#ifdef STORM_CROARING_MODIFIED
+            roaring_bitmap_storm_promote_arrays(rb[i], STORM_CTOR_BITSET_THRESHOLD);
+#endif
+        }
+        const uint32_t n = (uint32_t)c.rows.size();
+        double best = 1e30;
+        for (int r = 0; r < 3; ++r) {
+            uint64_t acc = 0;
+            const uint64_t t0 = bench_ns();
+            for (uint32_t i = 0; i < n; ++i)
+                for (uint32_t j = i + 1; j < n; ++j)
+                    acc += roaring_bitmap_and_cardinality(rb[i], rb[j]);
+            const double dt = (double)(bench_ns() - t0);
+            if (dt < best) { best = dt; roar_sum = acc; }
+        }
+        roar_ns = best / (double)((uint64_t)n * (n - 1) / 2);
+        for (auto* b : rb) roaring_bitmap_free(b);
+    }
+
+
     std::printf("# host=%s %s/%s d=%g rows=%u universe=%u tile=%u  (%zu pairs)\n",
                 tag.c_str(), structure.c_str(), spectrum.c_str(), spec.density,
                 spec.n_rows, spec.universe, tile,
@@ -100,6 +149,14 @@ int main(int argc, char** argv) {
     std::printf("%-12s %12s %11s %10s %9s %11s\n",
                 "policy", "ns/pair", "sel ns/pair", "sel %", "decisions", "checksum");
     std::printf("%s\n", std::string(72, '-').c_str());
+
+    std::printf("%-12s %12.2f %11s %10s %9s %11llu%s\n",
+#ifdef STORM_CROARING_MODIFIED
+                "roaring-FIX",
+#else
+                "roaring",
+#endif
+                roar_ns, "-", "-", "-", (unsigned long long)roar_sum, "");
 
     AllPairsStats ref;
     double base = 0;
