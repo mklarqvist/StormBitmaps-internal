@@ -436,6 +436,44 @@ order to be visible in the text; make it so.
 **The cost model is not a step — it is the connective tissue.** Pair every empirical step with the
 model that predicts it. Without that, the arc reads as a tuning exercise on one corpus.
 
+### Zone map — settled facts, and one unreconciled measurement (added 2026-08-06)
+
+A survey of the block-skipping lineage (SMA, Column Imprints and its vectorised follow-up, BRIN,
+adaptive range filters, Hippo, hierarchical bitmap indexes, BitFunnel, Lucene) established that
+**none of them composes two independently-built summaries.** All are one-sided: one stored summary
+matched against a query predicate, with survivors rechecked because the summary is lossy. Ours is
+two-sided and its popcount is an exact work count, not a candidate count. That is the distinction the
+paper claims; the summary itself is prior art and is now cited as such in Methods.
+
+Pre-empt two things explicitly. **Hippo** is the closest single-object design — one bit per histogram
+bucket, tested by bitwise AND. **Column Imprints §4.2** proposes "inter-column operations… a
+candidate list… for both operands"; it was never built, and it concerns base-versus-delta imprints of
+the *same* column, but it is the nearest sentence in the literature to pairwise composition.
+
+**Hierarchical zone maps: settled negative, now in Methods.** C22/§15.21 measured them 2.4–100×
+slower than flat across six corpora. The reason is general and worth stating: once occupancy is a
+compact list of occupied bins, every empty and singleton bin is already gone, so a coarse level has
+nothing to prune. Keep the claim scoped to the compact-list representation — RESEARCH_PLAN 13.2
+still lists a two-level map over a *dense* summary at very large m as unbuilt, and the C22 result
+does not exclude it.
+
+**Refinements stated but unmeasured**, both from the same metadata slot, both flagged `\spec` +
+`\nm` in Methods: per-bin cardinalities give `|A∩B| ≤ Σ_k min(a_k,b_k)`, verified sound and strictly
+tighter than `min(a,b)` in 35.5% of 20,000 random cases; per-bin first/last set position gives a
+second near-free rejection. Neither is measured; do not let either drift into a claim.
+
+**[UNRECONCILED] The 512-bit bin may be the wrong size, and the paper currently presents it as
+settled.** RESEARCH_PLAN C14.3 measured a *fixed* 2 kB summary beating the *m/512-proportional* one
+on 8 of 10 corpora — 3.70× vs 1.81× on com-LiveJournal, and 2.08× vs 0.93× on as-skitter, where the
+proportional map actively loses. The stated cause is that scaling the summary with the universe is
+itself the defect: at m = 3.7e7 the map reaches 9 kB and stops being cache-resident, which was the
+property that made it cheap. C14 also found the filter is a *latency* optimisation, not a throughput
+one — it adds a probe per list element, so it wins when the baseline is already fast (6–93 ns) and
+loses when it is slow (98–2867 ns), with |S| the predictor rather than the disjoint rate.
+**This must be resolved before submission**: either the bin width in Methods changes to a fixed
+budget, or the paper states why the proportional choice was kept. It also bears on the claim that the
+zone map was only ever measured at one bin width.
+
 ### Citation repairs — unconditional, required under any framing
 
 - `wu2006wah` is **in `references.bib` and cited nowhere in the manuscript text**, while the paper

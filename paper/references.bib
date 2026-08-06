@@ -426,3 +426,77 @@
   year      = {2020},
   doi       = {10.1145/3318464.3380588}
 }
+
+% ---------------------------------------------------------------------------
+% Added 2026-08-06: the block-skipping / lightweight-index lineage the zone map
+% sits in. All are one-sided (one stored summary matched against a query
+% predicate); none composes two independently-built summaries pairwise.
+% DOIs/pages pending verification -- see BIB_STATUS.md.
+% ---------------------------------------------------------------------------
+
+@inproceedings{moerkotte1998sma,
+  author    = {Moerkotte, Guido},
+  title     = {Small Materialized Aggregates: A Light Weight Index Structure
+               for Data Warehousing},
+  booktitle = {Proceedings of the 24th International Conference on Very Large
+               Data Bases (VLDB)},
+  pages     = {476--487},
+  year      = {1998}
+}
+
+@inproceedings{sidirourgos2013imprints,
+  author    = {Sidirourgos, Lefteris and Kersten, Martin L.},
+  title     = {Column Imprints: A Secondary Index Structure},
+  booktitle = {Proceedings of the ACM SIGMOD International Conference on
+               Management of Data},
+  pages     = {893--904},
+  year      = {2013},
+  doi       = {10.1145/2463676.2465306}
+}
+
+@inproceedings{sidirourgos2017vectorimprints,
+  author    = {Sidirourgos, Lefteris and M{\"u}hleisen, Hannes},
+  title     = {Scaling Column Imprints Using Advanced Vectorization},
+  booktitle = {Proceedings of the 13th International Workshop on Data
+               Management on New Hardware (DaMoN)},
+  pages     = {4:1--4:8},
+  year      = {2017},
+  doi       = {10.1145/3076113.3076120}
+}
+
+@inproceedings{alexiou2013arf,
+  author    = {Alexiou, Karolina and Kossmann, Donald and Larson, Per-{\AA}ke},
+  title     = {Adaptive Range Filters for Cold Data: Avoiding Trips to Siberia},
+  booktitle = {Proceedings of the VLDB Endowment},
+  volume    = {6},
+  number    = {14},
+  pages     = {1714--1725},
+  year      = {2013},
+  doi       = {10.14778/2556549.2556556}
+}
+
+@article{yu2016hippo,
+  author  = {Yu, Jia and Sarwat, Mohamed},
+  title   = {Two Birds, One Stone: A Fast, yet Lightweight, Indexing Scheme for
+             Modern Database Systems},
+  journal = {Proceedings of the VLDB Endowment},
+  volume  = {10},
+  number  = {4},
+  pages   = {385--396},
+  year    = {2016},
+  doi     = {10.14778/3025111.3025120}
+}
+
+@misc{postgresql-brin,
+  author       = {{The PostgreSQL Global Development Group}},
+  title        = {Block Range Index ({BRIN}) in {PostgreSQL}},
+  howpublished = {\url{https://www.postgresql.org/docs/current/brin.html}},
+  note         = {Accessed 2026-08-06}
+}
+
+@misc{lucene-sparsefixedbitset,
+  author       = {{The Apache Software Foundation}},
+  title        = {{Lucene} \texttt{SparseFixedBitSet}},
+  howpublished = {\url{https://lucene.apache.org/core/}},
+  note         = {Accessed 2026-08-06}
+}

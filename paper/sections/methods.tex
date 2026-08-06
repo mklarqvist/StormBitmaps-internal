@@ -91,13 +91,63 @@ side and for which a summary can remove nothing a direct probe does not already 
 whose bins are uniformly occupied, the filter finds nothing to skip and its cost is pure overhead; the
 policy that decides, per pair, whether the filter is worth consulting is described as a selection
 policy in the next subsection, and its necessity is established as a result rather than assumed as a
-procedure (Fig.~\ref{fig:selection-cost}c). This is a re-parameterization of established occupancy-summary mechanisms rather
-than a new one: BitFunnel's hierarchical block index \cite{goodwin2017bitfunnel}, the hierarchical bitmap index
-of \cite{morzy2003hierarchical}, WAH/EWAH's own
-uniform-fill words, and Lucene's sparse-block bitset all skip empty regions by a similar test; what is
-specific to this setting is applying the same test as an \emph{exact} work-count for
-intersection cardinality, where the summary's own popcount is the number of bins that must be visited
-rather than a heuristic estimate of it. The cost model for this filter, the crossings that bound where
+procedure (Fig.~\ref{fig:selection-cost}c).
+
+\paragraph*{Relation to block-skipping indexes.} Summarising a block so that a query can skip it is
+long established, and the zone map used here is a re-parameterisation of that idea rather than a new
+mechanism. Small materialised aggregates keep one aggregate --- typically min and max --- per bucket
+\cite{moerkotte1998sma}; column imprints keep a bit vector per cache line over a sampled
+value-domain histogram \cite{sidirourgos2013imprints}, vectorised in later work
+\cite{sidirourgos2017vectorimprints}; PostgreSQL's block range index keeps an opclass-defined summary
+per page range \cite{postgresql-brin}; adaptive range filters keep one occupancy bit per leaf of a
+trie over the key domain \cite{alexiou2013arf}; and Hippo keeps a bitmap over histogram buckets per
+dynamically sized page range \cite{yu2016hippo}. Closer to this setting, hierarchical bitmap indexes
+summarise groups of positions for set-valued attributes \cite{morzy2003hierarchical}, BitFunnel's
+higher-rank rows OR together fixed powers-of-two blocks of a signature
+\cite{goodwin2017bitfunnel}, WAH and EWAH fill words already encode that a region is uniformly empty
+\cite{lemire2010ewah}, and Lucene's sparse-block bitset stores one occupancy bit per word within a
+block \cite{lucene-sparsefixedbitset}. Roaring itself summarises at container granularity: an absent
+key certifies an empty $2^{16}$-bit chunk, and intersection already skips keys present on only one
+side \cite{lemire2016roaring}.
+
+Two things differ here, and neither is the summary itself. First, every mechanism above is
+\emph{one-sided}: one stored summary is matched against a query predicate, and a surviving block is a
+\emph{candidate} that must then be rechecked, because the summary is a lossy approximation of its
+block. The test used here is \emph{two-sided} --- the summaries of both operands are combined,
+$\mathrm{occ}_A \wedge \mathrm{occ}_B$ --- and its popcount is not a candidate count but the exact
+number of bins the pairing will visit, because a bin absent from either operand contributes nothing
+to the intersection by construction. There is no recheck and no false-positive rate to trade against
+space. Second, the bins partition \emph{bit position} rather than a value domain, so no histogram is
+sampled, no bin boundary is learned, and nothing is rebalanced when the data changes --- the
+machinery those designs spend on placing bin boundaries has no counterpart here. What is specific to
+this setting is therefore the pairwise composition and its exactness, not the occupancy summary,
+which we take as established.
+
+\paragraph*{Refinements available from the same metadata.} The summary carries one bit per bin, and
+the two tightenings below need only wider per-bin metadata, not a different mechanism. Storing the
+per-bin cardinalities $a_k,b_k$ instead of occupancy alone gives
+$|A \cap B| \le \sum_k \min(a_k,b_k)$, which is sound and never weaker than the interval bound of
+Eq.~\eqref{eq:interval}, since $\sum_k \min(a_k,b_k) \le \min(a,b)$; storing the first and last set
+position within each bin admits a second, near-free rejection --- a bin survives only if
+$\max(\mathrm{first}_A,\mathrm{first}_B) \le \min(\mathrm{last}_A,\mathrm{last}_B)$ --- which is the
+qualify/disqualify test of \cite{moerkotte1998sma} applied per bin rather than per block.
+\spec{Both are stated here as available consequences of the same metadata; neither is measured in
+this paper, and the storage they add is charged against the budget of
+Supplementary Table~\ref{tab:metadata}.} \nm{measured effect of per-bin count and first/last
+refinements, or a statement that they were not evaluated}
+
+\paragraph*{A hierarchy over bins does not help, and the reason is general.} The obvious next step
+--- a second summary level over groups of bins, as BitFunnel's higher ranks provide
+\cite{goodwin2017bitfunnel} --- was implemented and measured
+\prov{2.4 to 100 times slower than the flat structure across six corpora}. The cause is not the
+extra indirection but a redundancy: once occupancy is materialised as a compact list of the bins that
+are actually occupied, every empty and singleton bin has already been eliminated, so a coarse level
+has nothing left to prune and adds only a dense scan over all coarse bins. A hierarchy exists to
+avoid visiting empty regions; a list of occupied entries never visits them at all. The result is
+therefore conditional on that representation rather than on the universe size, and it does not
+exclude a hierarchy over a \emph{dense} summary at universes large enough that the flat AND is itself
+expensive \draftnote{RESEARCH\_PLAN 13.2 records this case as unbuilt; keep the claim scoped to the
+compact-list representation actually measured}. The cost model for this filter, the crossings that bound where
 it pays, and the derivation of the bin width used here are given in
 Supplementary Note~\ref{note:zonemap}.
 

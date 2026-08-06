@@ -181,6 +181,54 @@
   \doiprefix\url{10.1007/978-3-540-68552-4_12} (\bibinfo{publisher}{Springer},
   \bibinfo{year}{2008}).
 
+\bibitem{moerkotte1998sma}
+\bibinfo{author}{Moerkotte, G.}
+\newblock \bibinfo{title}{Small materialized aggregates: A light weight index
+  structure for data warehousing}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 24th International
+  Conference on Very Large Data Bases (VLDB)}}, \bibinfo{pages}{476--487}
+  (\bibinfo{year}{1998}).
+
+\bibitem{sidirourgos2013imprints}
+\bibinfo{author}{Sidirourgos, L.} \& \bibinfo{author}{Kersten, M.~L.}
+\newblock \bibinfo{title}{Column imprints: A secondary index structure}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{893--904},
+  \doiprefix\url{10.1145/2463676.2465306} (\bibinfo{year}{2013}).
+
+\bibitem{sidirourgos2017vectorimprints}
+\bibinfo{author}{Sidirourgos, L.} \& \bibinfo{author}{M{\"u}hleisen, H.}
+\newblock \bibinfo{title}{Scaling column imprints using advanced
+  vectorization}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 13th International
+  Workshop on Data Management on New Hardware (DaMoN)}},
+  \bibinfo{pages}{4:1--4:8}, \doiprefix\url{10.1145/3076113.3076120}
+  (\bibinfo{year}{2017}).
+
+\bibitem{postgresql-brin}
+\bibinfo{author}{{The PostgreSQL Global Development Group}}.
+\newblock \bibinfo{title}{Block range index ({BRIN}) in {PostgreSQL}}.
+\newblock
+  \bibinfo{howpublished}{\url{https://www.postgresql.org/docs/current/brin.html}}.
+\newblock \bibinfo{note}{Accessed 2026-08-06}.
+
+\bibitem{alexiou2013arf}
+\bibinfo{author}{Alexiou, K.}, \bibinfo{author}{Kossmann, D.} \&
+  \bibinfo{author}{Larson, P.-{\AA}.}
+\newblock \bibinfo{title}{Adaptive range filters for cold data: Avoiding trips
+  to siberia}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the VLDB Endowment}},
+  vol.~\bibinfo{volume}{6}, \bibinfo{pages}{1714--1725},
+  \doiprefix\url{10.14778/2556549.2556556} (\bibinfo{year}{2013}).
+
+\bibitem{yu2016hippo}
+\bibinfo{author}{Yu, J.} \& \bibinfo{author}{Sarwat, M.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Two birds, one stone: A fast, yet
+  lightweight, indexing scheme for modern database systems}}.
+\newblock {\emph{\JournalTitle{Proceedings of the VLDB Endowment}}}
+  \textbf{\bibinfo{volume}{10}}, \bibinfo{pages}{385--396},
+  \doiprefix\url{10.14778/3025111.3025120} (\bibinfo{year}{2016}).
+
 \bibitem{morzy2003hierarchical}
 \bibinfo{author}{Morzy, M.}, \bibinfo{author}{Morzy, T.},
   \bibinfo{author}{Nanopoulos, A.} \& \bibinfo{author}{Manolopoulos, Y.}
@@ -191,6 +239,22 @@
   \emph{\bibinfo{series}{Lecture Notes in Computer Science}},
   \bibinfo{pages}{236--252}, \doiprefix\url{10.1007/978-3-540-39403-7\_19}
   (\bibinfo{year}{2003}).
+
+\bibitem{lemire2010ewah}
+\bibinfo{author}{Lemire, D.}, \bibinfo{author}{Kaser, O.} \&
+  \bibinfo{author}{Aouiche, K.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Sorting improves word-aligned
+  bitmap indexes}}.
+\newblock {\emph{\JournalTitle{Data \& Knowledge Engineering}}}
+  \textbf{\bibinfo{volume}{69}}, \bibinfo{pages}{3--28},
+  \doiprefix\url{10.1016/j.datak.2009.08.006} (\bibinfo{year}{2010}).
+\newblock \bibinfo{note}{ArXiv:0901.3751}.
+
+\bibitem{lucene-sparsefixedbitset}
+\bibinfo{author}{{The Apache Software Foundation}}.
+\newblock \bibinfo{title}{{Lucene} \texttt{SparseFixedBitSet}}.
+\newblock \bibinfo{howpublished}{\url{https://lucene.apache.org/core/}}.
+\newblock \bibinfo{note}{Accessed 2026-08-06}.
 
 \bibitem{lemire2016roaring}
 \bibinfo{author}{Lemire, D.}, \bibinfo{author}{Ssi-Yan-Kai, G.} \&
