@@ -301,6 +301,26 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
          * runs are long enough for a run-vs-run merge to show its advantage, so
          * ns_per_unit[RR] is inflated relative to the cells it competes with.
          *
+         * THE GENERATOR FIX WAS TRIED AND IS ALSO A LOSS. Re-calibrating the
+         * run-consuming cells (BR, BW, SR, SW, RR, RW, WW) on Structure::Runs
+         * -- their actual operating point, since they are selected precisely
+         * when rows are run-compressible -- moves R x R only 1.99 -> 1.76
+         * while pushing B x R 0.86 -> 1.33 and W x W 0.70 -> 1.52. Selection
+         * then abandons B x R and the corpora that depend on it collapse:
+         * census1881 1.21x -> 0.86x, wikileaks-noquotes 6.04x -> 2.72x
+         * (B x R is 39% of its pairs), dimension_008 1.11x -> 1.02x. Reverted.
+         *
+         * That is the fourth calibration change measured and rejected here,
+         * after calibrate_on_rows in three variants, and together they say
+         * something the individual failures did not. Run-structured input
+         * makes R x R relatively cheaper AND every run-iterating cell more
+         * expensive in absolute terms, because long runs raise the cost per
+         * run for all of them at once. The UNITS are the problem, not the
+         * corpus: work_units(RR) = ra + rb against work_units(BR) =
+         * min(ra, rb) compares quantities that do not scale together, and no
+         * calibration input can fix a ratio that is wrong in the work function
+         * rather than in the rate.
+         *
          * Left as the diagnosis rather than a patched constant: lowering it by
          * hand would be a fitted tier-2 number of exactly the kind three
          * separate attempts have shown does not generalise, and the honest fix
