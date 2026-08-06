@@ -332,6 +332,43 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
     }
 }
 
+/* Scale on R x R's rate. 1.0 is the calibrated value.
+ *
+ * R x R is structurally excluded, not judged: work_units(RR) = ra + rb at
+ * rate 1.99 against work_units(BR) = min(ra, rb) at 0.86 means that for
+ * ra ~ rb the model predicts R x R at least 4.6x the cost of B x R, so it can
+ * never be chosen however good it is. On dimension_008 it is measurably the
+ * best cell (1.05x vs fixed Roaring, against the shipped policy's 0.87x) and
+ * receives 0% of pairs.
+ *
+ * SWEPT, and the exclusion is NOT the whole story. Median of 5, vs Roaring:
+ *
+ *                      rr=1.0  rr=0.4  rr=0.15
+ *   dimension_008       1.05x   1.07x   1.15x
+ *   census1881          1.13x   1.21x   1.07x
+ *   dimension_033       3.17x   3.13x   2.46x
+ *   wikileaks-noquotes  7.00x   7.04x   2.24x
+ *
+ * 0.4 is neutral-to-slightly-better everywhere and every difference is inside
+ * this machine's noise. 0.15 -- roughly the scale needed for R x R to actually
+ * win pairs where ra ~ rb -- is decisively harmful: wikileaks loses two thirds
+ * of its margin. So R x R is excluded by arithmetic, and letting it in costs
+ * more than the corpus it would rescue gains. Default 1.0; no behaviour change.
+ *
+ * The reading that survives: R x R being the best cell on dimension_008 while
+ * scoring 4.6x worse than B x R is a WORK FUNCTION defect, not a rate defect.
+ * ra + rb against min(ra, rb) are not comparable quantities -- one counts both
+ * sides, the other one side -- so no scalar on either rate makes the
+ * comparison sound. Fixing it means giving R x R a unit that means the same
+ * thing B x R's does, which is a change to work_units, not to a constant. */
+static double rr_scale() {
+    static const double v = [] {
+        if (const char* e = std::getenv("STORM_RR_SCALE")) return std::atof(e);
+        return 1.0;
+    }();
+    return v;
+}
+
 double predict(const CostModel& m, Pairing p, const RowMeta& a, const RowMeta& b) {
     if (p == Pairing::Empty) return 0.0;
     /* B x B WITHOUT a zone map is a different algorithm and must be priced as
@@ -345,7 +382,8 @@ double predict(const CostModel& m, Pairing p, const RowMeta& a, const RowMeta& b
     if (p == Pairing::BB && !(a.has_occ && b.has_occ))
         return m.ns_fixed + m.ns_per_unit[(int)p] *
                             (double)std::max(a.n_words, b.n_words);
-    double c = m.ns_fixed + m.ns_per_unit[(int)p] * work_units(p, a, b);
+    double c = m.ns_fixed + m.ns_per_unit[(int)p] * work_units(p, a, b)
+              * (p == Pairing::RR ? rr_scale() : 1.0);
     if (p == Pairing::BS && m.ns_probe_cold > m.ns_probe_hot) {
         /* Only the EXCESS over a cache-resident probe, not the whole probe.
          *
