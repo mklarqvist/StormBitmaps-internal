@@ -28,7 +28,7 @@ of data: every alternative encoding of the same set --- a sorted array, a list o
 fill-compressed word stream, or any of these applied to the complement --- is exact and
 interconvertible with the bitmap, sized by the set rather than by the universe, and smaller than
 the bitmap by a factor that grows without bound as either operand moves away from density one half;
-only near density one half does no such encoding help (Supplementary Note~1).
+only near density one half does no such encoding help (Supplementary Note~\ref{note:headroom}).
 
 Roaring is the state of the art for exactly this problem, and it already dispatches, per
 fixed-width chunk, among an array, a bitset, and a run container \cite{chambi2016roaring,lemire2018roaring}
@@ -42,7 +42,7 @@ census''). That same fixed
 commitment prices a run container against a bitset by iterating every run and charging for its
 length --- a cost a length-independent index would remove. A caller willing to narrow the question
 further, to results above a similarity threshold or to operands within a size band, can be given
-even more (Supplementary Note~2).
+even more (Supplementary Note~\ref{note:narrowing}).
 
 Two questions follow directly. Given that popcount is a solved problem and Roaring already
 dispatches on container type per chunk, is there anything left for representation choice to buy?

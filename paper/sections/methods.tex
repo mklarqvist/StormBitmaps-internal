@@ -32,7 +32,9 @@ $\Theta(|A|\log(|B|/|A|))$ by galloping search when $|A|\ll|B|$; $\cell{\rS}{\rR
 merge or $\Theta(|S|\log r)$ by binary search into runs; $\cell{\rS}{\rW}=\Theta(|S|+\ell+g)$;
 $\cell{\rR}{\rR}=\Theta(r_A+r_B)$ by run merge; $\cell{\rR}{\rW}=\Theta(r_A+(\ell+g)_B)$; and
 $\cell{\rW}{\rW}=\Theta((\ell+g)_A+(\ell+g)_B)$. Every cell except $\cell{\rB}{\rB}$ is sub-linear in
-the universe size $m$.
+the universe size $m$. The formal statement of what these costs imply --- that the null model is a
+floor rather than a prediction, and the exact conditions under which no representation beats a bitmap
+--- is given with full proofs in Supplementary Note~\ref{note:proofs-avoidance}.
 
 \subsection*{The pairing matrix and its cells}
 
@@ -94,7 +96,9 @@ than a new one: BitFunnel's hierarchical block index \cite{goodwin2017bitfunnel}
 uniform-fill words, and Lucene's sparse-block bitset all skip empty regions by a similar test; what is
 specific to this setting is applying the same test as an \emph{exact} work-count for
 intersection cardinality, where the summary's own popcount is the number of bins that must be visited
-rather than a heuristic estimate of it.
+rather than a heuristic estimate of it. The cost model for this filter, the crossings that bound where
+it pays, and the derivation of the bin width used here are given in
+Supplementary Note~\ref{note:zonemap}.
 
 \subsection*{Selection policies: per-pair, per-tile, and probe-and-commit}
 
@@ -134,7 +138,9 @@ whole corpus it takes the single cell whose measured end-to-end runtime on that 
 chosen after the fact and charged no selection cost. Because it may not vary its choice within a
 corpus, it is not a lower bound on the bucket oracle's runtime; it is reported only as a bound on what
 a per-corpus selector could achieve, and the deployed-versus-oracle gap in Table~\ref{tab:corpora} is
-regret against that bound alone.
+regret against that bound alone. The choice these policies approximate is itself an optimisation
+problem with a characterisable optimum; it is stated and solved, with the conditions under which a
+metadata-only decision is sufficient, in Supplementary Note~\ref{note:proofs-choice}.
 
 \subsection*{Corpora, provenance and loaders}
 

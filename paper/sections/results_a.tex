@@ -16,7 +16,7 @@ only the work changes. Prefix filtering and a size bound narrow the question ins
 above a similarity threshold, or within a size band --- and are available only because the caller
 said what they wanted; they are opt-in, never substituted for the first two, and their return is
 analytic rather than measured here, reaching as little as a few per cent of pairs surviving at a
-high similarity threshold (Methods, ``What makes work avoidable''; see Supplementary Note~3 and
+high similarity threshold (Methods, ``What makes work avoidable''; see Supplementary Note~\ref{note:threshold} and
 Supplementary Fig.~\ref{fig:prefix} for the derivation and the composition rule that governs when
 the two may be multiplied together). Batch amortisation leaves the contract unchanged again but
 needs many operations rather than one, because what it removes is repetition rather than work.
@@ -219,7 +219,7 @@ What those policies have in common is the fourth mechanism of the ladder above: 
 unchanged and the answer is identical, but the saving comes from paying once for a quantity that
 would otherwise repeat across every pair of a batch --- row metadata, the selection decision itself,
 or operand data movement. The measurements reported here were taken in that regime, which applies
-wherever there are enough operations to share a decision; see Supplementary Note~5 and Supplementary
+wherever there are enough operations to share a decision; see Supplementary Note~\ref{note:batch} and Supplementary
 Fig.~\ref{fig:batch} for which quantities repeat and how each is amortised.
 
 Per-pair selection failed that budget outright: \nm{per-pair selection cost, percent of runtime,

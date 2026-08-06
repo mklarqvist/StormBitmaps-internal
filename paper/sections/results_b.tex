@@ -13,13 +13,13 @@ own benchmark harness runs by default \cite{chambi2016roaring,lemire2018roaring}
 \prov{five} larger modern graphs, for \prov{17} corpora spanning \prov{$7.89\times10^{-7}$ to
 $1.73\times10^{-1}$} in density and \prov{$1.995\times10^{5}$ to $3.697\times10^{7}$} bits in universe
 size (full provenance, and the further corpora scored only against an all-bitmap baseline, in
-Supplementary Table~\ref{tab:corpus-inventory}, Supplementary Note~6). Every corpus is scored against
+Supplementary Table~\ref{tab:corpus-inventory}, Supplementary Note~\ref{note:corpora}). Every corpus is scored against
 the same \texttt{run\_optimize()}-tuned CRoaring baseline used throughout Results, so this comparison
 is continuous with the synthetic sweeps above rather than separate from them.
 
 Table~\ref{tab:corpora} reports, for every corpus, universe size and density, the pairing cell that
 won under best-cell (oracle) selection, and the ratio against tuned CRoaring and against an
-all-bitmap baseline. \textbf{Both ratios are oracle}: hindsight choice of representation pairing with
+all-bitmap baseline. Both ratios are oracle: hindsight choice of representation pairing with
 no selection cost charged, not the deployed selector run end to end (Methods, ``Selection policies:
 per-pair, per-tile, and probe-and-commit''); an end-to-end evaluation of the deployed selector is
 not part of this study.
@@ -39,7 +39,7 @@ real corpora (Methods, ``Corpora, provenance and loaders''; full inventory in Su
 Table~\ref{tab:corpus-inventory}), grouped by density band and chosen to span every domain and both
 speedup extremes; the remaining \prov{9} corpora are summarised in the final row.
 \texttt{1KGP3 chr20} (haplotype-major) is included in the Mixed band as this paper's own stated
-counterexample and is not omitted for being unflattering. \textbf{Both ratio columns are oracle}:
+counterexample and is not omitted for being unflattering. Both ratio columns are oracle:
 best-cell selection with hindsight, no selection cost charged, not the deployed end-to-end selector
 (Methods, ``Selection policies: per-pair, per-tile, and probe-and-commit''). ``vs.\ CRoaring'' is
 against a \texttt{run\_optimize()}-tuned baseline
@@ -120,7 +120,7 @@ persists there too (it does). Roaring assigns a bitset
 container to a $2^{16}$-bit chunk only when that chunk's own cardinality exceeds a fixed compile-time
 constant \prov{(4096; vendor source, not measured here)} --- a per-chunk statistic, not the corpus's
 global density --- so a corpus that is dense in aggregate can receive almost no bitset containers.
-\textbf{Total chunks} sums the three container counts. Bold marks the plurality container type per
+Total chunks sums the three container counts. Bold marks the plurality container type per
 row; all four rows are plurality-array. \draftnote{All values provisional, pending the final
 measurement campaign.}}
 \label{tab:census}
@@ -202,7 +202,7 @@ The third boundary is the selector's own metadata. The rank index and zone map t
 near-free are built unconditionally and scale with universe size rather than with the data they
 describe: on \texttt{enwiki-categorylinks} that is \prov{4} MB of metadata attached to \prov{155}
 bytes of chosen-representation data, a \prov{26{,}312$\times$} overhead (Supplementary
-Table~\ref{tab:metadata}, Supplementary Note~7). Metadata built at ingest is meant to be amortised
+Table~\ref{tab:metadata}, Supplementary Note~\ref{note:metadata}). Metadata built at ingest is meant to be amortised
 over a set's whole lifetime, the same assumption Roaring's own container choice makes (above); that
 amortisation pays only if the metadata is bounded, and here nothing yet declines to build it for a
 small, sparse row over a large universe. This is a known property of the current implementation

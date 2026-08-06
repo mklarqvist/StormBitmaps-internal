@@ -75,6 +75,18 @@
   \newcommand{\draftnote}[1]{}
 \fi
 
+% ---------------------------------------------------------------------------
+% Supplementary Notes. These were previously \subsection*{Supplementary Note N:
+% ...} with N typed by hand in the heading AND typed again by hand at every
+% citation -- two independent numberings, each silently wrong after any
+% reorder. \suppnote drives both from one counter, and \refstepcounter makes a
+% following \label resolvable, so the main text cites \ref and never a literal.
+% ---------------------------------------------------------------------------
+\newcounter{suppnote}
+\newcommand{\suppnote}[1]{%
+  \refstepcounter{suppnote}%
+  \subsection*{Supplementary Note \thesuppnote: #1}}
+
 % Placeholder for a figure whose data the final campaign has not yet produced.
 % #1 = width fraction, #2 = what the figure will show (one line).
 \newcommand{\figplaceholder}[2]{%

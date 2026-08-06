@@ -13,7 +13,6 @@
 \setcounter{table}{0}\renewcommand{\thetable}{S\arabic{table}}
 \setcounter{equation}{0}\renewcommand{\theequation}{S\arabic{equation}}
 \setcounter{section}{0}
-\renewcommand{\thesection}{Supplementary Note \arabic{section}}
 
 \section*{Supplementary Information}
 
@@ -21,8 +20,8 @@
 % with a one-line statement of what it contains and which main-text sentence
 % points at it.
 
-\subsection*{Supplementary Note 1: The fixed-cost headroom argument}
-\label{sec:supp-note-1}
+\suppnote{The fixed-cost headroom argument}
+\label{note:headroom}
 
 Relocated from the Introduction, where it followed the statement that the $\Theta(m)$ bitmap
 kernel pays the same fixed cost regardless of skew, spending most of that cost combining zeros
@@ -47,8 +46,8 @@ comes from executing it as fast as the hardware allows --- which is what two dec
 it can be avoided, accelerate it where it cannot: this paper contributes the first axis, and a
 cheap way of knowing which of the two applies.
 
-\subsection*{Supplementary Note 2: Narrowing the query}
-\label{sec:supp-note-2}
+\suppnote{Narrowing the query}
+\label{note:narrowing}
 
 Relocated from the Introduction, where it followed the statement of Roaring's fixed, per-chunk
 granularity (main text).
@@ -59,9 +58,9 @@ sizes, then the two cardinalities alone cap the similarity a pair can reach, so 
 discarded before either operand is read \cite{swamidass2007bounds,bayardo2007allpairs} --- knowing
 what is being looked for is itself a way of not doing work, and it is the cheapest one available.
 
-\subsection*{Supplementary Note 3: Thresholded-mode filtering --- the size bound and prefix
+\suppnote{Thresholded-mode filtering --- the size bound and prefix
 filtering}
-\label{sec:supp-note-3}
+\label{note:threshold}
 
 Full derivation for the opt-in thresholded mode named third in the mechanism ladder that opens
 Results, and stated with its hypotheses in Methods, ``What makes work avoidable''
@@ -85,8 +84,8 @@ mandated spectrum and not a stand-in for it --- the fraction of pairs that can p
 $1 - (1 - \ln(1/t)/\ln K)^{2}$ (Methods, Eq.~\eqref{eq:survive}), which agrees with a $10^{5}$-sample
 simulation to three decimals. At $K = 10^{4}$ that leaves $14.5\%$ of pairs at $t = \tfrac12$, $4.8\%$
 at $t = 0.8$, $2.3\%$ at $t = 0.9$ and $1.1\%$ at $t = 0.95$, so examining every pair does $6.9\times$
-to $90.0\times$ the work of examining only the survivors. \textbf{The expression falls as $K$ rises:
-the wider the spread of set sizes, the more pairs are ruled out by the ratio alone.} That is the
+to $90.0\times$ the work of examining only the survivors. The expression falls as $K$ rises:
+the wider the spread of set sizes, the more pairs are ruled out by the ratio alone. That is the
 reverse of the dependence every other mechanism in this paper has. The null models of
 Fig.~\ref{fig:density-sweep} are all stated at a \emph{fixed} density and bound what a mechanism is
 worth against within-row arrangement; the size bound is the only one whose value is a function of the
@@ -111,9 +110,9 @@ same composition with the size test decorrelated from cardinality, at an identic
 restores the product to within $0.6\%$, which identifies the shared statistic rather than the shared
 granularity as the cause. The composition remains firmly worth taking --- it costs $10.0\%$ of the
 better of the two mechanisms alone, and a bitmap pass over every pair does $660\times$ its work --- so
-what this refutes is the product, not the composition. \textbf{Mechanisms compose multiplicatively when
+what this refutes is the product, not the composition. Mechanisms compose multiplicatively when
 they act on different waste \emph{and} read different operand statistics; acting at different
-granularities is necessary and not sufficient.} These are analytic values over the model above, and
+granularities is necessary and not sufficient. These are analytic values over the model above, and
 like the rest of this note they count work rather than time.
 
 The thresholded mode changes the contract rather than the kernel: only pairs above a similarity
@@ -172,8 +171,8 @@ the true curve lies below this one.}}
 \label{fig:prefix}
 \end{figure}
 
-\subsection*{Supplementary Note 4: Derivation of the zone-map cost model and its crossings}
-\label{sec:supp-note-4}
+\suppnote{Derivation of the zone-map cost model and its crossings}
+\label{note:zonemap}
 
 Relocated from Results, ``The cost of intersection is U-shaped in density,'' which points here for
 the full derivation behind Fig.~\ref{fig:density-sweep}b--d: the null-model floor, the four counting
@@ -190,7 +189,7 @@ saying what the bet is worth if it does not. Fixing the density and placing elem
 the most pessimistic assumption available about \emph{arrangement}, and it is pessimistic in the same
 direction for all of them: independent placement maximises the number of maximal runs a set has,
 maximises the fraction of bins it occupies, and maximises the chance that two prefixes collide.
-\textbf{The null model is therefore a floor and not a prediction.} Real structure can only move each
+The null model is therefore a floor and not a prediction. Real structure can only move each
 mechanism further into profit, and the size of that movement is exactly what the mechanism converts
 into speed.
 
@@ -209,35 +208,35 @@ has to see arrangement, or be a direct measurement of the kernels themselves.
 Four properties of the summary in Fig.~\ref{fig:density-sweep}b--c follow from counting alone, and
 they are worth stating plainly because together they say what a summary can and cannot buy.
 
-\emph{Why there is a floor, and where it is.} A zone map is a bitmap of bitmaps: one bit per bin of
+Why there is a floor, and where it is. A zone map is a bitmap of bitmaps: one bit per bin of
 $W_z$ positions, so $m/W_z$ bits against the row's $m$. Reading it therefore costs $1/W_z$ of reading
 the row, and no pairing that consults a summary can cost less than reading that summary --- $0.195\%$
 of a bitmap at $W_z = 512$. That is the floor, and it is a property of the bin width alone, not of the
 data.
 
-\emph{Why the leverage is so large.} The exchange rate is the same $W_z$: one summary bit decides the
+Why the leverage is so large. The exchange rate is the same $W_z$: one summary bit decides the
 fate of $W_z$ data bits, so a bin proved empty returns $W_z$ bits of work for the one bit spent
 asking. This is why a coarser bin buys a deeper floor --- and, symmetrically, why it stops paying at a
 lower density, since a wider bin is harder to leave empty.
 
-\emph{Why the advantage is flat across the sparse range and then erodes quadratically.} A bin
+Why the advantage is flat across the sparse range and then erodes quadratically. A bin
 survives only if \emph{both} operands occupy it, so the surviving fraction goes as the product of the
 two occupancies. For clustered operands, where a run longer than a bin occupies exactly a $d$ fraction
 of bins, that product is $d^2$, and the cost is $1/W_z + d^2\kappa$ with $\kappa$ the cost of a bin's
 contents. The two terms are equal when $d^2\kappa = 1/W_z$; with $\kappa$ the cost of one run in a
-bin, $\kappa = w/W_z$, this reduces to $d = 1/\sqrt{w} = 1/8$ --- \textbf{independent of the bin
-width}. Below that density the summary term dominates and the advantage is constant; above it the
+bin, $\kappa = w/W_z$, this reduces to $d = 1/\sqrt{w} = 1/8$ --- independent of the bin
+width. Below that density the summary term dominates and the advantage is constant; above it the
 surviving-bin term dominates and the advantage decays as $d^{2}$. Changing $W_z$ moves the floor but
 not the knee.
 
-\emph{Why a summary can be a liability, and exactly when.} The floor cuts both ways, and the reason is
-structural rather than a property of any one representation: \textbf{a summary is indexed by the
-universe, while every compressed representation is indexed by the data}. The zone map costs $1/W_z$
+Why a summary can be a liability, and exactly when. The floor cuts both ways, and the reason is
+structural rather than a property of any one representation: a summary is indexed by the
+universe, while every compressed representation is indexed by the data. The zone map costs $1/W_z$
 of a bitmap whatever the operands contain, because its size is set by $m$. The cost of $\rS$, $\rR$
 and $\rW$ is set instead by a quantity that shrinks with the set --- cardinality, run count, or
 literal-and-fill count --- and each of those falls without limit as the operands sparsify. A fixed
-cost and a vanishing one must cross. \textbf{Below that crossing, consulting a summary costs more than
-the entire computation it was meant to shorten, and a zone map is worse than not having one.}
+cost and a vanishing one must cross. Below that crossing, consulting a summary costs more than
+the entire computation it was meant to shorten, and a zone map is worse than not having one.
 
 Where the crossing falls depends on which representation is being displaced, and one case fixes the
 scale. A representation costing one word per element costs $w\,d$ of a bitmap, so it meets the
@@ -273,8 +272,8 @@ measured rather than modelled'' (Fig.~\ref{fig:selection-cost}c). That divergenc
 the derivation; it is the reason the gate is decided by measurement rather than by the model, and the
 per-bin and per-word constants needed to convert these curves into time are given in Methods.
 
-\subsection*{Supplementary Note 5: What repeats across a batch, and how each mechanism amortises it}
-\label{sec:supp-note-5}
+\suppnote{What repeats across a batch, and how each mechanism amortises it}
+\label{note:batch}
 
 Relocated from Results, ``Selection must be hoisted, and measured rather than modelled,'' which points
 here for the four quantities that repeat when a batch of pairs is run naively and how each is
@@ -328,8 +327,8 @@ always on. Schematic; no measured data.}
 \label{fig:batch}
 \end{figure}
 
-\subsection*{Supplementary Note 6: Corpus provenance and inventory}
-\label{sec:supp-note-6}
+\suppnote{Corpus provenance and inventory}
+\label{note:corpora}
 
 Supplementary Table~\ref{tab:corpus-inventory} gives full provenance and per-corpus statistics for
 every corpus referenced anywhere in this paper, including the corpora scored only against an
@@ -391,25 +390,25 @@ Corpus & Group & Rows/sets & Universe $m$ & Mean $|X_i|$ & Density & Origin / no
 \texttt{\seqsplit{weather\_sept\_85\_srt}} & G1 & \prov{200} & \prov{1{,}015{,}367} & \prov{80{,}540} & \prov{7.9e-2} & as above, rows sorted \\
 \texttt{\seqsplit{wikileaks-noquotes}} & G1 & \prov{200} & \prov{1{,}353{,}179} & \prov{1{,}377} & \prov{1.0e-3} & WikiLeaks cable corpus, term/attribute postings \\
 \texttt{\seqsplit{wikileaks-noquotes\_srt}} & G1 & \prov{200} & \prov{1{,}353{,}133} & \prov{1{,}440} & \prov{1.1e-3} & as above, rows sorted \\
-\texttt{\seqsplit{uscensus2000}} & G1 & \prov{200} & \prov{36{,}974{,}578} & \prov{30} & \prov{8.1e-7} & US Census 2000; \textbf{sparsest and largest-universe G1 corpus} \\
+\texttt{\seqsplit{uscensus2000}} & G1 & \prov{200} & \prov{36{,}974{,}578} & \prov{30} & \prov{8.1e-7} & US Census 2000; sparsest and largest-universe G1 corpus \\
 \texttt{\seqsplit{dimension\_003}} & G1 & \prov{15{,}482} & \prov{3{,}866{,}847} & \prov{91} & \prov{2.4e-5} & Druid-derived dimension column \\
 \texttt{\seqsplit{dimension\_008}} & G1 & \prov{5{,}240} & \prov{3{,}866{,}845} & \prov{347} & \prov{9.0e-5} & Druid-derived dimension column \\
 \texttt{\seqsplit{dimension\_033}} & G1 & \prov{173} & \prov{3{,}866{,}847} & \prov{22{,}352} & \prov{5.8e-3} & Druid-derived dimension column \\
 \addlinespace
 \texttt{\seqsplit{as-skitter}} & G2 & \prov{1{,}696{,}415} & \prov{1{,}696{,}415} & \nm{n} & \prov{9.1e-6} & CAIDA skitter internet AS topology, 2005; undirected, symmetrized \\
 \texttt{\seqsplit{wiki-Talk}} & G2 & \prov{2{,}394{,}385} & \prov{2{,}394{,}385} & \nm{n} & \prov{2.2e-5} & Wikipedia talk-page edits; directed; only 67{,}492 vertices have out-degree $\geq 2$ \\
-\texttt{\seqsplit{soc-Pokec}} & G2 & \prov{1{,}632{,}803} & \prov{1{,}632{,}804} & \nm{n} & \prov{1.6e-5} & Pokec social network (Slovakia); directed; \textbf{lowest skew of the graphs} -- top 1\% of sets hold only 8.8\% of elements \\
+\texttt{\seqsplit{soc-Pokec}} & G2 & \prov{1{,}632{,}803} & \prov{1{,}632{,}804} & \nm{n} & \prov{1.6e-5} & Pokec social network (Slovakia); directed; lowest skew of the graphs -- top 1\% of sets hold only 8.8\% of elements \\
 \texttt{\seqsplit{com-LiveJournal}} & G2 & \prov{3{,}997{,}962} & \prov{4{,}036{,}538} & \nm{n} & \prov{5.1e-6} & LiveJournal friendship, ground-truth communities; undirected, symmetrized \\
-\texttt{\seqsplit{com-Orkut}} & G2 & \prov{3{,}072{,}441} & \prov{3{,}072{,}627} & \nm{n} & \prov{2.7e-5} & Orkut social network; undirected, symmetrized; \textbf{largest input in this set} \\
+\texttt{\seqsplit{com-Orkut}} & G2 & \prov{3{,}072{,}441} & \prov{3{,}072{,}627} & \nm{n} & \prov{2.7e-5} & Orkut social network; undirected, symmetrized; largest input in this set \\
 \addlinespace
 \texttt{\seqsplit{chr20.bin}} & G3 (scoping) & \nm{n} & \prov{5{,}008} & \nm{n} & \prov{3.5e-2} & 1/i site-frequency spectrum, 43.6\% singletons; variant-major, universe 626 bytes, L1-resident \\
-\texttt{\seqsplit{chr20\_hap.bin}} & G3 (scoping) & \nm{n} & \prov{$\approx$1{,}048{,}576} & \nm{n} & \prov{3.1e-2} & haplotype-major; large universe but 3.1\% dense -- \textbf{nothing beats all-bitmap (0.93$\times$) at this density and layout} \\
+\texttt{\seqsplit{chr20\_hap.bin}} & G3 (scoping) & \nm{n} & \prov{$\approx$1{,}048{,}576} & \nm{n} & \prov{3.1e-2} & haplotype-major; large universe but 3.1\% dense -- nothing beats all-bitmap (0.93$\times$) at this density and layout \\
 \addlinespace
 \texttt{\seqsplit{dbpedia-link}} & G4 & \prov{4{,}384{,}102} & \prov{18{,}268{,}993} & \prov{29.8} & \prov{1.63e-6} & KONECT \\
 \texttt{\seqsplit{wikipedia\_link\_en}} & G4 & \prov{5{,}978{,}043} & \prov{11{,}206{,}012} & \prov{46.4} & \prov{4.15e-6} & KONECT \\
-\texttt{\seqsplit{livejournal-groupmemberships}} & G4 & \prov{2{,}197{,}915} & \prov{7{,}489{,}074} & \prov{48.7} & \prov{6.50e-6} & KONECT, bipartite; universe \textbf{inflated} $\sim$2.3$\times$ (single id space for both columns; true member domain is 3{,}201{,}203) \\
-\texttt{\seqsplit{usher\_sarscov2}} & G4 & \prov{29{,}411} & \prov{8{,}451{,}771} & \prov{15{,}769.3} & \prov{1.87e-3} & UCSC UShER SARS-CoV-2; mean dominated by near-universal variants (max 99.7\% carriers), \textbf{median only 404} \\
-\texttt{\seqsplit{enwiki-categorylinks}} & G4 & \prov{2{,}165{,}205} & \prov{129{,}698{,}523} & \prov{102.3} & \prov{7.89e-7} & Wikimedia dumps; \textbf{largest universe, lowest density in the full set} \\
+\texttt{\seqsplit{livejournal-groupmemberships}} & G4 & \prov{2{,}197{,}915} & \prov{7{,}489{,}074} & \prov{48.7} & \prov{6.50e-6} & KONECT, bipartite; universe inflated $\sim$2.3$\times$ (single id space for both columns; true member domain is 3{,}201{,}203) \\
+\texttt{\seqsplit{usher\_sarscov2}} & G4 & \prov{29{,}411} & \prov{8{,}451{,}771} & \prov{15{,}769.3} & \prov{1.87e-3} & UCSC UShER SARS-CoV-2; mean dominated by near-universal variants (max 99.7\% carriers), median only 404 \\
+\texttt{\seqsplit{enwiki-categorylinks}} & G4 & \prov{2{,}165{,}205} & \prov{129{,}698{,}523} & \prov{102.3} & \prov{7.89e-7} & Wikimedia dumps; largest universe, lowest density in the full set \\
 \texttt{\seqsplit{gnomad\_chr21\_exomes\_af1e-3}} & G4 & \prov{625{,}656} & \prov{1{,}461{,}894} & \prov{28.2} & \prov{1.93e-5} & gnomAD v4.1 \\
 \texttt{\seqsplit{msprime\_10k}} & G4 (sim) & \prov{$\approx$42k} & \prov{2e4} & \prov{1{,}887} & \prov{9.4e-2} & msprime coalescent simulation; out of target regime \\
 \texttt{\seqsplit{msprime\_100k}} & G4 (sim) & \prov{$\approx$51k} & \prov{2e5} & \prov{15{,}720} & \prov{7.9e-2} & as above; out of target regime \\
@@ -417,8 +416,8 @@ Corpus & Group & Rows/sets & Universe $m$ & Mean $|X_i|$ & Density & Origin / no
 \end{longtable}
 \endgroup
 
-\subsection*{Supplementary Note 7: Selector-metadata overhead and storage cost}
-\label{sec:supp-note-7}
+\suppnote{Selector-metadata overhead and storage cost}
+\label{note:metadata}
 
 Storage is a reported trade-off rather than an objective this paper optimizes for. The two tables
 below separate the two costs that the main text keeps apart. Supplementary Table~\ref{tab:metadata}
@@ -434,9 +433,9 @@ that metadata excluded, so the two are never conflated.
 \renewcommand\arraystretch{1.05}
 \centering
 \caption{\textbf{Selector metadata is universe-proportional, and that is a defect.} The rank index
-and zone map are constructed unconditionally, and both scale with \textbf{universe}, not
-cardinality. \textbf{Meta B/row} and \textbf{data B/row} are bytes of selector metadata and bytes of
-the chosen data representation, per row; \textbf{ratio} is meta:data. On
+and zone map are constructed unconditionally, and both scale with universe, not
+cardinality. Meta B/row and data B/row are bytes of selector metadata and bytes of
+the chosen data representation, per row; ratio is meta:data. On
 \texttt{enwiki-categorylinks} that is \prov{4} MB of selector metadata attached to \prov{155} bytes
 of data -- a \prov{26{,}312$\times$} overhead. The complement representation already carries a guard,
 built only when $2n > \text{universe}$; rank and occupancy carry none. Rows on which metadata exceeds data by more than $10^{3}\times$ are bold. This is a known, unfixed
@@ -465,7 +464,7 @@ Corpus & Universe $m$ & Meta B/row & Data B/row & Ratio (meta:data, $\times$) \\
 \centering
 \caption{\textbf{Storage cost, bits per value, data and metadata separated.} Reported the way the
 Roaring papers report it \cite{lemire2016roaring}, so corpora of different cardinality are
-comparable. \textbf{Metadata is excluded from every column here}: the zone map and rank index are
+comparable. Metadata is excluded from every column here: the zone map and rank index are
 what the selector needs to \emph{choose} a representation, not a representation themselves, and
 folding them into a data column would hide the cost of the mechanism this paper adds
 (Supplementary Table~\ref{tab:metadata}). \textbf{Best} is the minimum of the four representation columns, per
@@ -495,8 +494,8 @@ Corpus & Universe $m$ & \multicolumn{5}{c}{Bits per value} \\
 \end{tabular}
 \end{table}
 
-\subsection*{Supplementary Note 8: Formal treatment of work avoidance --- full proofs}
-\label{sec:supp-note-8}
+\suppnote{Formal treatment of work avoidance --- full proofs}
+\label{note:proofs-avoidance}
 
 Methods (``What makes work avoidable'') states each result of this development as an equation with
 its hypotheses and a pointer here. This note supplies the proof, the worked numerical checks and the
@@ -559,7 +558,7 @@ Comparing descriptor items touched, $\kappa(\rB)/U=\lceil m/w\rceil/(m\,s)$. Tak
 the implementation, which pads to a whole number of words) this is exactly $1/(w\,s)$; otherwise read
 it as $\ge$ with an additive $w/m$ term (relative error at $m=1000,w=64$ is $2.4\%$, at $m=65$ it is
 $97\%$; nothing downstream changes). The ratio exceeds one whenever $s<1/w$ and is unbounded as
-$s\to0$. \textbf{What this does and does not assert:} it asserts that a specific, exact, correct
+$s\to0$. What this does and does not assert: it asserts that a specific, exact, correct
 algorithm exists whose cost is $m\,s$ items where $\cell{\rB}{\rB}$ spends $m/w$ items, and that the
 ratio between the two achieved costs diverges. It does \emph{not} assert that $m\,s$ is a lower bound
 on the work any algorithm must do (``Why the interval width is not a lower bound on work'', below);
@@ -596,7 +595,7 @@ Summing the indicator expectations over $i=0,\dots,m-1$ gives the exact Bernoull
 $\mathbb{E}[r]=d+(m-1)d(1-d)$; under the fixed-cardinality model (uniform random $k$-subset) the same
 argument gives the exact $\mathbb{E}[r]=k(m-k+1)/m$. Both equal $m\,d(1-d)(1+O(1/m))$, whose
 leading-order form in $s=\min(d,1-d)$ is $m\,s(1-s)$, the form used in Eq.~\eqref{eq:expected}.
-\textbf{The sandwich is exact, not merely leading-order:} writing $p_0=(1-d)^w$ is not needed here, but
+The sandwich is exact, not merely leading-order: writing $p_0=(1-d)^w$ is not needed here, but
 the two exact forms bound each other by
 \begin{equation}
 \tfrac12\,m\,s \;\le\; \mathbb{E}\,\kappa(\rR) \;\le\; m\,s+1,
@@ -622,7 +621,7 @@ which to leading order in $n$ is $n[1-p_0^2-p_1^2]$, matching Eq.~\eqref{eq:expe
 $(m/w)[1-(1-s)^{2w}-s^{2w}]$ (the exact form exceeds the leading-order one by at most
 $p_0^2+p_1^2\le2$ words, immaterial at any $n$ of interest). The encoding must compress both all-zero
 \emph{and} all-one fills for the symmetry claims below to hold; an encoder compressing only zero fills
-is not complement-symmetric. \textbf{Sparse limit.}
+is not complement-symmetric. Sparse limit.
 $(1/w)[1-(1-s)^{2w}-s^{2w}]\to2s$ as $s\to0$, so under the null model \rW\ costs about \emph{twice} \rS\
 in the sparse tail, not the same --- the reason \rW\ never appears on the cost envelope in either tail.
 
@@ -663,8 +662,8 @@ Each leading-order entry of Eq.~\eqref{eq:expected} is, as a function of $s$, ei
 strictly increasing on $[0,\tfrac12]$: best-of-$\rS/\rC\!\circ\!\rS$ is $m\,s$, increasing; \rR\ is
 $m\,s(1-s)$, and $\mathrm{d}/\mathrm{d}s[s(1-s)]=1-2s>0$ for $s<\tfrac12$; \rW\ is
 $(m/w)[1-(1-s)^{2w}-s^{2w}]$, with derivative $(m/w)\cdot2w[(1-s)^{2w-1}-s^{2w-1}]>0$ for $s<\tfrac12$.
-Each is symmetric about $d=\tfrac12$ by construction. \textbf{This is a statement about the
-leading-order forms, not the exact ones}: the exact Bernoulli $\mathbb{E}[r]=d+(m-1)d(1-d)$ is not
+Each is symmetric about $d=\tfrac12$ by construction. This is a statement about the
+leading-order forms, not the exact ones: the exact Bernoulli $\mathbb{E}[r]=d+(m-1)d(1-d)$ is not
 itself a function of $s$ (at $m=1000$ it is $90.01$ at $d=0.1$ and $90.81$ at $d=0.9$, a gap of
 $1-2d$, and its maximum sits at $d=\tfrac12+1/(2(m-1))$ rather than at $d=\tfrac12$), while
 $\mathbb{E}\,\kappa(\rW)$ \emph{is} exactly a function of $s$, since $(1-d)^{2w}+d^{2w}$ is symmetric
@@ -682,8 +681,8 @@ $10^4$. What collapses under randomness is the choice among the compressed repre
 not collapse is the choice between the bitmap and the rest. Correspondingly it is the \emph{envelope},
 not every cell, that is $\Theta(\min(m/w,m\,s))$ --- $\kappa(\rB)$ is $m/w$ regardless. The crossover of
 that envelope sits at $w\,s\approx1$, i.e.\ $s^*\approx1/w$, about $1.6\%$ for $w=64$ before per-item
-constants. \textbf{The U-shape is a genuine theorem of the null model and of the bitmap's flatness. It
-is not a property of the method, and the method is not in the business of reproducing it} --- on real
+constants. The U-shape is a genuine theorem of the null model and of the bitmap's flatness. It
+is not a property of the method, and the method is not in the business of reproducing it --- on real
 data the representations deviate below the null without limit, and that deviation, not the U itself, is
 the contribution (next).
 
@@ -732,10 +731,10 @@ $\mathbb{E}[r]=k(m-k+1)/m$; since $xy/\min(x,y)=\max(x,y)$, the ratio is $\max(k
 exceeds $\tfrac12$ because $k+(m-k+1)=m+1>m$ forces the larger term above $m/2$. This is stronger than
 a $d\le\tfrac12$-only bound: the restricted form $1-d+1/m$ degenerates to $0.002$ at $d=0.999$, a
 spurious $500\times$ worst case, where the true bound is $\sigma_\rR\ge0.999$. Read as a sentence:
-\textbf{real data can be arbitrarily cheaper than random data at the same density, and at most about
-twice as expensive.}
+real data can be arbitrarily cheaper than random data at the same density, and at most about
+twice as expensive.
 
-\emph{The impossibility (Corollary B), stated at the strength it is actually proved.} Any selector
+The impossibility (Corollary B), stated at the strength it is actually proved. Any selector
 whose input is $d$ (or $a$, $b$, or any function of them) evaluates one fixed function $f(d)$ on every
 row of that density; by the range above, $\kappa(\rR)$ takes every value in $[1,k]$ at $d=k/m$, so
 $f(d)$ mis-predicts $\kappa(\rR)$ by an unbounded factor on some rows at every density, and no such
@@ -783,11 +782,11 @@ either, and \rW\ has degenerated into \rB\ with header overhead. So the headroom
 Eq.~\eqref{eq:headroom} does not merely shrink at $s=\tfrac12$ --- it falls below one ($1/(w\,s)=1/32$
 at $w=64$), and the correct behaviour of a selector there is to choose $\cell{\rB}{\rB}$. (The ratio is
 of course positive; ``negative headroom'' is the wrong description for a quantity that has fallen
-below unity.) \textbf{This is a statement about the generic case and is false for structured rows at
-mid density}: $X_{\mathrm{block}}$ sits at $d=\tfrac12$ with $r=1$. The honest form is: given only
+below unity.) This is a statement about the generic case and is false for structured rows at
+mid density: $X_{\mathrm{block}}$ sits at $d=\tfrac12$ with $r=1$. The honest form is: given only
 cardinalities, and absent structure, the mid-band is where nothing can be avoided; a structural summary
-can still find something there, which is why the zone map earns its place. Call this a \textbf{metadata
-floor} or an \textbf{identifiability floor} --- never an information-theoretic floor, since nothing
+can still find something there, which is why the zone map earns its place. Call this a \emph{metadata
+floor} or an \emph{identifiability floor} --- never an information-theoretic floor, since nothing
 here lower-bounds the work of an arbitrary algorithm --- and name what it floors: what cardinality
 metadata determines, not what any kernel must spend.
 
@@ -805,8 +804,8 @@ gives the mean; the second moment follows the same way from $\mathbb{E}[K^2]=W_z
 variance is the difference. As $d\to0$ the conditional distribution collapses onto the single value $1$
 (coefficient of variation $0.016$ at $d=10^{-6}$, $W_z=512$), so in the regime where concentration
 matters most, ``an occupied bin'' means ``a bin with exactly one bit'' almost surely: $d/p\to1/W_z$ as
-$d\to0$ and $d/p\to d$ as $d\to1$. \textbf{A zone map cannot hand a kernel anything sparser than one bit
-per bin} --- that is the whole phenomenon, and it is why the composition is not a product.
+$d\to0$ and $d/p\to d$ as $d\to1$. A zone map cannot hand a kernel anything sparser than one bit
+per bin --- that is the whole phenomenon, and it is why the composition is not a product.
 
 Let $\kappa(d)\in(0,1]$ be the cheapest-representation envelope of Eq.~\eqref{eq:expected}, normalised
 so $\kappa=1$ is a plain bitmap, and let the zone-map pass cost a fraction $c/W_z$ of a plain-bitmap
@@ -818,7 +817,7 @@ $d/p$ of Eq.~\eqref{eq:s3-concentration}, not at $d$. Two consequences are exact
 costs more than the zone map alone, since $\kappa\le1$ and zone-map-alone is $c/W_z+p_Ap_B$. And the
 composition does not dominate the representation alone: it is floored at $c/W_z$, whereas
 $\kappa(d)\to0$ as $d\to0$, so below that floor the summary costs more than a sparse representation
-pays outright. \textbf{Hence three regimes, not two.} In the sparse band $\kappa(d)=w\,d$, so the
+pays outright. Hence three regimes, not two. In the sparse band $\kappa(d)=w\,d$, so the
 composition beats both the representation alone and the bitmap exactly when
 \begin{equation}
 x\,e^{-x} \;>\; c/w, \qquad x=W_z\,d \text{ (expected set bits per bin)},
@@ -840,12 +839,12 @@ is generic. Prefix filtering has the same shape in $y=p^2/m$: for $y\ll1$ the su
 itself, so pruning improves quadratically as prefixes shorten, while for $y>1$ prefixes collide by
 default and the index earns nothing.
 
-\emph{Refinement is monotone but the zone-map popcount is an upper bound, not an exact count.}
+Refinement is monotone but the zone-map popcount is an upper bound, not an exact count.
 Partitioning $[0,m)$ into $n_\beta=m/\beta$ bins with per-bin cardinalities $a_k,b_k$,
 $\sum_k\max(0,a_k+b_k-\beta)\le|A\cap B|\le\sum_k\min(a_k,b_k)$, the refined interval is contained in
 the global one and its width is $\sum_k\min(a_k,b_k,\beta-a_k,\beta-b_k)\le U$ --- apply
-Eq.~\eqref{eq:interval} inside each bin and sum. \textbf{The relation to the zone-map popcount is an
-inequality, not an equality:}
+Eq.~\eqref{eq:interval} inside each bin and sum. The relation to the zone-map popcount is an
+inequality, not an equality:
 \begin{equation}
 \#\{\text{bins with a non-degenerate refined interval}\} \;\le\; \mathrm{popcount}(\mathrm{occ}_A\wedge\mathrm{occ}_B),
 \label{eq:s3-p11}
@@ -874,8 +873,8 @@ the algorithm cannot have halted while both $q\le m-a$ and $q_B<m-b$, giving
 $q\ge\min(m-a+1,\,m-b)\ge m/2$ since $a,b\le m/2$. This bound is $\Omega(m)$ at \emph{every} density
 --- at $a=b=1$ it already forces $m-1$ probes --- so it tracks nothing about the interval width. The
 reason is that a membership-probe model cannot read a sorted array, which is precisely the capability
-the proof of Eq.~\eqref{eq:headroom} assumes. \textbf{The interval width is therefore not a lower bound
-in any model considered here}, and the nearest model that does give a lower bound gives one insensitive
+the proof of Eq.~\eqref{eq:headroom} assumes. The interval width is therefore not a lower bound
+in any model considered here, and the nearest model that does give a lower bound gives one insensitive
 to $s$; a matching bound in a representation-aware model is a comparison-complexity question with its
 own literature and is not attempted here.
 
@@ -972,8 +971,8 @@ different operand statistics, and sharing a statistic costs the composition
 Eq.~\eqref{eq:shortfall}'s factor even across granularities. All values here are analytic, computed
 over the log-uniform model at $m=10^6$, and count work rather than time.
 
-\subsection*{Supplementary Note 9: The representation-choice optimisation problem --- full proofs}
-\label{sec:supp-note-9}
+\suppnote{The representation-choice optimisation problem --- full proofs}
+\label{note:proofs-choice}
 
 Methods (``Choosing a representation is a different problem from choosing a size'' onward) states
 this development's results as closed forms with their hypotheses and a pointer here. Chunked setting:
@@ -1048,9 +1047,9 @@ shrinks pointwise as $\lambda$ grows; it equals $\tau_\cap$ at $\lambda=0$ (the 
 $\Delta w(k)>0$) and tends to $\tau_{\mathrm{stor}}$ as $\lambda\to\infty$ (only $\Delta b\le0$
 survives); and its range is, up to integer rounding, exactly $[\tau_\cap,\tau_{\mathrm{stor}}]$, since
 the threshold is the crossing point of two continuous functions of $k$ moving continuously between the
-two endpoints. \textbf{So $\tau_\cap$ and $\tau_{\mathrm{stor}}$ are not a right answer and a wrong
+two endpoints. So $\tau_\cap$ and $\tau_{\mathrm{stor}}$ are not a right answer and a wrong
 answer; they are the two limits $\lambda\to0$ and $\lambda\to\infty$ of one family, and every threshold
-between them is optimal at some price of a byte.} A vendor's fixed threshold is the unique member of
+between them is optimal at some price of a byte. A vendor's fixed threshold is the unique member of
 that family at which promotion is never paid for in bytes --- the largest threshold at which the
 compute-favourable move is footprint-neutral, since promoting a chunk of cardinality $k$ multiplies its
 footprint by $\tau_{\mathrm{stor}}/k$. One consequence is worth isolating: the threshold depends on
@@ -1060,7 +1059,7 @@ is not a function of the container at all, and no per-container rule attains it.
 
 \paragraph*{Proof of Eq.~\eqref{eq:taustar} and the full statement of the five hypotheses (the
 fixed-threshold-is-optimal result, stated first in the direction that weakens it).}
-\textbf{The claim, at its correct strength.} If (H1) the candidate set is $\{\rS,\rB\}$ only, (H2) the
+The claim, at its correct strength. If (H1) the candidate set is $\{\rS,\rB\}$ only, (H2) the
 operation is count-only intersection, (H3) the per-item constants do not depend on resident footprint,
 (H4) there is no byte budget, and (H5) every chunk faces the same partner mix, then the optimal
 assignment \emph{is} the fixed threshold $\tau_\cap$ --- a machine constant independent of the corpus
@@ -1102,7 +1101,7 @@ promotion helps at every $k$ there and only above $\tau_\cap>0$ for a count --- 
 $0$ and $\tau_\cap$, and no single stored assignment is optimal for a workload mixing the two unless one
 operation dominates.
 
-\emph{Dropping H3 (residency), and this is the one the measurements say dominates.} $c_w$ is not a
+Dropping H3 (residency), and this is the one the measurements say dominates. $c_w$ is not a
 constant: a bitset chunk occupies $M/8$ bytes and an array chunk $ek/8$, so promoting a container
 multiplies its footprint by $M/(ek)=\tau_{\mathrm{stor}}/k$ --- $64\times$ at $k=64$ and $1\times$ at
 $k=\tau_{\mathrm{stor}}$. $\tau_{\mathrm{stor}}$ is therefore also the unique threshold at which
@@ -1112,7 +1111,7 @@ cache. This is the only one of the five hypotheses whose failure is not analytic
 a measurement question rather than an analytic one, exactly as Eq.~\eqref{eq:compose}'s divergence
 between a work model and measured time is.
 
-\emph{How far a fixed choice can be from optimal.} Bounded exactly under H1--H3 and H5, against the
+How far a fixed choice can be from optimal. Bounded exactly under H1--H3 and H5, against the
 family of the previous paragraph: a container at cardinality $k$ paired with bitsets costs
 $\min(c_pk,c_wn)$ at the optimum and $c_pk$ or $c_wn$ under a fixed $\tau$, and the worst case sits at
 the far endpoint, $\max_kC(\tau_{\mathrm{stor}};k)/C(\tau_\cap;k)=c_p\tau_{\mathrm{stor}}/(c_wn)
@@ -1136,9 +1135,9 @@ modelled cost, $C_1\le C_2\le\dots$, and define the margin $\Lambda=C_2/C_1$. \e
 $\Lambda>\eta$, even the most adverse admissible perturbation of the constants leaves $C_1<C_2$, so
 the true ordering of the two best cells is determined and the selector's choice is correct. If
 $\Lambda\le\eta$, then $C_2\le\eta C_1$, so the ordering is not determined by $\mu$ but the cost of
-choosing wrong is at most $\eta$, by the definition of $\Lambda$. \textbf{So for every pair, either
+choosing wrong is at most $\eta$, by the definition of $\Lambda$. So for every pair, either
 the metadata settles the decision or the decision does not matter to within the precision of the
-constants}, and the undetermined set is an $\eta$-neighbourhood of the boundaries derived above rather
+constants, and the undetermined set is an $\eta$-neighbourhood of the boundaries derived above rather
 than a region of unbounded error. This is a different mid-band from the one in Eq.~\eqref{eq:width}:
 Proposition~2 (main text) says the \emph{answer} is pinned by cardinality only at the density extremes;
 this result says the \emph{decision} is pinned everywhere except an $\eta$-neighbourhood of a
@@ -1192,7 +1191,7 @@ ratio. At $\theta_{pw}=16$, $w=64$, $c=2$ the valid window is $128\le W_z\le1024
 ceiling is $11.3\times$; at $W_z=512$ (the configuration used throughout the figures) the closed form
 gives $16.0\times$.
 
-\textbf{Two consequences are stated rather than smoothed.} Eq.~\eqref{eq:gmax} is a null-model ceiling
+Two consequences are stated rather than smoothed. Eq.~\eqref{eq:gmax} is a null-model ceiling
 on structureless data, and by the one-sidedness of $\sigma$ (Supplementary Note 8), real corpora can
 only fall below the null, so a measured advantage exceeding the ceiling is evidence of structure and
 must be reported as such rather than as agreement with the model --- a measured range whose lower and
