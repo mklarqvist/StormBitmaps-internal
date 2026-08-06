@@ -190,6 +190,42 @@ constant on read (\texttt{roaring.c:14421}, \texttt{roaring.c:14553}). The same 
 charging for its length (\texttt{run\_bitset\_container\_intersection\_cardinality},
 \texttt{roaring.c:10901}).
 
+\subsection*{A compute-priced CRoaring baseline, and why it must be a second pass}
+
+Because \texttt{DEFAULT\_MAX\_SIZE} prices storage rather than query cost, comparing against stock
+CRoaring would compare against a library configured for a different objective. Every CRoaring number
+in this paper is therefore reported against a baseline we first re-priced ourselves, so that the
+comparison is against Roaring's structure under \emph{our} objective and not against its storage
+objective. The re-pricing is a runtime, in-memory pass that promotes any container still held as an
+array past a compute threshold into a bitset
+(\texttt{roaring\_bitmap\_storm\_promote\_arrays}). It is a pure representation change --- the set of
+values encoded is unchanged, and every cardinality query returns an identical answer before and
+after, cross-checked against the independent oracle on every pair before any timing is taken. Nothing
+is serialized: the promoted state exists only for the duration of the run, so the portable format and
+its cardinality-inferred container types are untouched.
+
+The threshold is not \texttt{DEFAULT\_MAX\_SIZE}. The measured crossover at which an array--array
+scalar merge loses to a bitset--bitset popcount for a count-only AND is
+a cardinality of \prov{64--128}; the pass uses a default of
+\prov{512} to leave margin for non-uniform data.
+
+\textbf{The pass must run after \texttt{run\_optimize()}, not before, and lowering the insertion
+threshold instead is worse than doing nothing.} We first tried the obvious thing --- lowering the
+constant that \texttt{container\_add} tests --- and measured a \prov{46}\,per cent
+regression on \texttt{census1881} (\prov{1496}\,ns to \prov{2186}\,ns per pair). The
+cause is that CRoaring's run conversion is not confluent with container type. Deciding whether a
+container should become a run compares the run encoding against the size of the encoding it currently
+has: for an array container that is $2c+2$ bytes and scales with cardinality, but for a bitset
+container it is a fixed 8192 bytes. Promoting a borderline container to a bitset \emph{before} run
+conversion therefore changes which comparison that container faces, and flips containers into runs
+that would otherwise have stayed arrays --- a worse choice for AND-cardinality cost on the
+weakly clustered data this paper is concerned with. Running the promotion afterwards removes the
+interaction: run conversion has already made its choice on its own terms, so any container still an
+array has already been judged not worth converting, and the only decision left is a pure
+array-versus-bitset compute call. This ordering dependence is a property of the library's conversion
+rules rather than of our pass, and it is the reason a compute-priced Roaring cannot be obtained by
+retuning a single constant.
+
 \subsection*{Benchmark protocol and cache-residency statement}
 
 Every reported cell variant, including CRoaring, was compiled with the same compiler and flags,

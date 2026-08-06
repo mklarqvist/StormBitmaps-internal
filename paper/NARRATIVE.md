@@ -364,6 +364,28 @@ grounds. The effect surfaced once, anecdotally, was traded away as a memory deci
 characterised. Cite it by number: it makes "nobody investigated the consequence" concrete rather
 than asserted, and it independently corroborates that the compute win is real.
 
+### Architecture — state it correctly, it has been mis-stated twice
+
+**Storm implements its own representations; it does not call CRoaring.** The cells
+(`kernels/cell_bb`, `cell_bs`, `cell_br`, `cell_wah`, `cell_sparse`, `cell_comp`) are built against
+Storm's own representation layer. `kernels/` contains **zero** references to Roaring. CRoaring is
+vendored and used as the external baseline, exactly as `methods.tex` already states: "Roaring is
+never constructed as a cell of this matrix; it is used throughout as an external baseline only."
+
+So the paper is: **per-row/per-pair selection among B, S, R, W and the complement view — Roaring's
+container types plus EWAH and the complement — benchmarked against Roaring.** That framing is
+accurate and is the paper.
+
+**Do NOT write that Storm wraps, embeds, or extends Roaring's containers as-is**, and do not promise
+a deployment story in which a user keeps their existing `roaring_bitmap_t` and opts into a Storm
+metadata layer. That would be a true and considerably stronger story, but it describes software that
+does not exist in this tree. If it is built, this section must be rewritten before the claim is made.
+
+The one place Storm *does* touch CRoaring is the baseline re-pricing pass
+(`roaring_bitmap_storm_promote_arrays`, `third_party/croaring_modified`), invoked from
+`bench/bench_baseline.cpp` and `bench/bench_allpairs.cpp`. That is a benchmark-fairness measure and a
+demonstration that Roaring can be re-priced without touching its format — not an integration.
+
 ### The seven-step arc — the narrative spine
 
 Chronological order is permitted here because the construction is genuinely staged: each step exists
@@ -378,6 +400,17 @@ order to be visible in the text; make it so.
    which is the objective it was designed against. Under a query-cost objective the optimum sits
    elsewhere. Characterise both, and show they are limits of one parameterised objective 32–64×
    apart.
+   **Report the non-confluence result here — it is measured, unpublished, and it is what makes the
+   step non-trivial.** Lowering the insertion threshold directly, the obvious move, is *worse than
+   doing nothing*: a 46% regression on `census1881` (1496 → 2186 ns/pair). CRoaring's run
+   conversion is not confluent with container type — deciding whether to become a run compares the
+   run encoding against the encoding the container currently has, which is `2c+2` bytes for an
+   array but a fixed 8192 for a bitset. Promoting before run conversion changes which comparison a
+   borderline container faces and flips containers into runs that are worse for AND-cardinality on
+   weakly clustered data. The promotion must therefore run *after* `run_optimize()`. This is a
+   property of the library's conversion rules, not of our pass, and it is the reason a
+   compute-priced Roaring cannot be obtained by retuning one constant. Written up in Methods,
+   "A compute-priced CRoaring baseline, and why it must be a second pass".
 4. **Re-measure against Roaring at its best.** Apply the compute-oriented choice to CRoaring itself
    and re-run. Much of step 2's margin disappears; say so plainly. This is what makes every later
    number credible. Establish here that the container constant is fixed by the interoperable format
@@ -408,10 +441,21 @@ model that predicts it. Without that, the arc reads as a tuning exercise on one 
 - `wu2006wah` is **in `references.bib` and cited nowhere in the manuscript text**, while the paper
   re-derives its central equation. Cite it at THEORY/Methods as the source of the per-format
   expected-size model.
-- **Tree-Encoded Bitmaps** (Lang, Beischl, Leis, Boncz, Neumann & Kemper, SIGMOD 2020) is absent
-  entirely. It uses the same (density, clustering-factor) parameterisation, plots the symmetric
-  curves for Roaring specifically, and maps where uncompressed wins in space *and* time. Most
-  damaging single omission.
+- **Tree-Encoded Bitmaps** (Lang, Beischl, Leis, Boncz, Neumann & Kemper, SIGMOD 2020) was absent
+  and is now cited. It was read in full on 2026-08-06, which corrected two things the first
+  fact-check got wrong. (i) The (density, clustering-factor) parameterisation is **not TEB's** —
+  TEB cites Wu et al. 2006 for it, so attribute it there. (ii) **TEB is not a performance
+  competitor and must not be treated as a baseline to beat.** Its own Fig. 17 puts it at ~2.85×
+  and ~2.88× the time of a plain Boost `dynamic_bitset` on intersection; its AND is a scalar lazy
+  run-merge that cannot produce a compressed result; its only SIMD is in the tree-traversal scan
+  iterator; and Roaring beats it on read, intersect (1.6–1.9×) and update (1.8×). Its own
+  conclusion proposes TEB as a *container type for Roaring*.
+  **Cite it for what it concedes**, which supports this paper: an uncompressed bitmap reads faster
+  than all three compressed formats over `16 ≤ f ≤ 128` and `0.01 ≤ d < 1`, and the authors
+  "expect a performance-optimized implementation to dominate an even larger space" than their
+  unoptimised baseline. Two caveats if quoting its numbers: the whole evaluation is at n = 2^20
+  (cache-resident, residency never stated), and the intersect measurements cover exactly two
+  (d,f) configurations.
 - Size filter is **Arasu, Ganti & Kaushik (VLDB 2006)**, not Bayardo; prefix filtering is
   **Chaudhuri, Ganti & Kaushik (ICDE 2006)**, not Xiao (Xiao cites it as "[8, Lemma 1]"). Currently
   misattributed at `sections/supplementary.tex:76`.
