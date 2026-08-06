@@ -96,11 +96,12 @@ struct Kernels {
      * the baseline read 649 ns/pair where a real B x B moves 32 MB per pair and
      * takes ~506,000 ns -- a 780x understatement of the baseline, and therefore
      * of every speedup derived from it. */
-    fn_bb bb; fn_bb bb_plain; fn_bs bs; fn_br br; fn_bw bw;
+    fn_bb bb; fn_bb bb_plain; fn_bs bs; fn_bs bs_small; fn_br br; fn_bw bw;
     fn_ss ss; fn_sr sr; fn_rr rr; fn_ww ww;
     Kernels()
         : bb(pick(cell_bb(), "occ_sel")), bb_plain(pick(cell_bb(), "dense")),
           bs(pick(cell_bs(), variant_override("STORM_VARIANT_BS", "ilp8"))),
+          bs_small(pick(cell_bs(), "small")),
           br(pick(cell_br(), variant_override("STORM_VARIANT_BR", "hybrid4"))), bw(pick(cell_bw(), "skip")),
           ss(pick(cell_ss(), variant_override("STORM_VARIANT_SS", "adaptive2"))), sr(pick(cell_sr(), "adaptive2")),
           rr(pick(cell_rr(), "adaptive2")), ww(pick(cell_ww(), "skip2")) {}
@@ -111,7 +112,24 @@ inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
     switch (p) {
         case Pairing::BB: return plain_bb ? K.bb_plain(d.B(), s.B())
                                           : K.bb(d.B(), s.B());
-        case Pairing::BS: return K.bs(d.B(), s.S());
+        /* POINT DISPATCH: |S| <= 4 gets the peeled kernel.
+         *
+         * cell_bs has a `small` variant that peels |S| <= 4 -- "89% of real
+         * 1KGP3 pairs" -- and it was unreachable, because Kernels binds one
+         * B x S variant for the whole run. Selected as the global variant it
+         * helps the small-cardinality corpora and costs the large ones
+         * (enwiki-categorylinks 2.65x -> 3.02x, uscensus2000 2.29x -> 2.70x,
+         * gnomad 2.80x -> 3.01x, against msprime_100k 1.73x -> 1.65x), because
+         * its peel test sits inside the hot loop and every long list pays it.
+         *
+         * Hoisting the test here costs nothing: the dispatch already branches
+         * on cardinality to orient the pair, so `s` is in a register and this
+         * is one more compare on a branch that predicts almost perfectly (a
+         * density-sorted tile is nearly all-small or nearly all-large). This is
+         * the point representation for very low cardinality: at |S| <= 4 the
+         * set IS its indices and no list machinery is worth entering. */
+        case Pairing::BS: return s.meta.cardinality <= 4 ? K.bs_small(d.B(), s.S())
+                                                         : K.bs(d.B(), s.S());
         case Pairing::BR: return K.br(d.B(), s.R());
         case Pairing::BW: return K.bw(d.B(), s.W());
         case Pairing::SS: return K.ss(d.S(), s.S());
