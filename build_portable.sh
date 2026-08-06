@@ -74,9 +74,11 @@ fi
 # Storm API. CLAUDE.md says "zero __Z", which is right about the invariant and
 # imprecise about the check: a plain grep for __Z reports those five and always
 # will, on any C++ translation unit that instantiates a container.
+# (nm prefixes each line with an address, so the filter matches "std::"
+# anywhere in the line, not anchored -- an anchored ^std:: matches nothing.)
 if [ -f "$OUT/storm.o" ]; then
   n_c=$(nm -gU "$OUT/storm.o" | grep -c "_STORM_" || true)
-  n_cpp=$(nm -gU "$OUT/storm.o" | grep "__Z" | c++filt | grep -vc "^std::" || true)
+  n_cpp=$(nm -gU "$OUT/storm.o" | grep "__Z" | c++filt | grep -vc "std::" || true)
   echo "== ABI: $n_c unmangled STORM_ exports, $n_cpp mangled non-std symbols"
   [ "$n_cpp" -eq 0 ] || echo "!! C++ symbols leaked into the C ABI"
 fi
