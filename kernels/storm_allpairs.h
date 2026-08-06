@@ -94,10 +94,31 @@ enum class Policy : uint8_t {
      * never run a kernel, so it describes the live pairs worst precisely where
      * per-pair refinement is cheapest to amortise.
      *
-     * It is not yet usable: the empty fraction is known after the tile is
-     * walked, not when its decision is made. Estimating it at decision time
-     * from the two tiles' [first_set, last_set] spans is the obvious next step
-     * and is O(1), but it is unbuilt and unmeasured. */
+     * BUILT AND MEASURED. The empty fraction can be estimated at decision
+     * time by sampling span tests over the tile pair -- ~64 integer compares
+     * against the thousands of kernel calls the decision governs -- and gating
+     * refinement on it at a 40% threshold. Paired within-process, it does what
+     * the predicate predicted:
+     *
+     *   census1881     refine 1.21x faster  (kept: 63.3% empty, gate fires)
+     *   dimension_008  0.565 -> 1.026       (gate correctly declines)
+     *   wiki-Talk      0.832                (some tiles are locally sparse
+     *                                        enough to trip the gate anyway)
+     *
+     * Folding the gated refinement into PerTile so it ships as one policy then
+     * FAILED on the full sweep. census1881 flipped to 1.10x -- the last loss
+     * gone -- but dimension_008 fell to 0.91x, so the loss moved rather than
+     * closed, and the cost was broad: uscensus2000 2.66x -> 1.47x, gnomad
+     * 3.06x -> 2.31x, enwiki 2.69x -> 2.09x, as-skitter 1.14x -> 1.02x.
+     * Reverted; PerTile stays pure and Refine stays a separate policy with
+     * refine_ratio() defaulting to never.
+     *
+     * So the predicate is real and the gate works per corpus, but a 40%
+     * empty-fraction threshold is too blunt to apply globally: it fires on
+     * tiles of corpora whose aggregate empty fraction is low, and the pairs it
+     * then refines are not the ones that benefit. What is missing is a gate on
+     * the tile's HETEROGENEITY -- how much its rows differ from the aggregate
+     * standing in for them -- of which the empty fraction is only a proxy. */
     Refine,
 };
 
