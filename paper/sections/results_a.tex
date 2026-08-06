@@ -274,26 +274,142 @@ axis, the same argument this paper makes generally, now applied to the incumbent
 points at why: \prov{4096} is where a stored array and a bitset consume equal memory -- a size
 crossover, chosen for storage rather than for compute -- while the compute crossover for a
 count-only AND on this host sits at cardinality \prov{64--128}, so the stock threshold is
-\prov{30--60$\times$} too high for this workload. We tested the prediction directly: promoting array
-containers above cardinality \prov{$\approx$64} to bitsets after
-\texttt{run\_optimize()} -- a twenty-line change to CRoaring -- removes most of the dense-corpus
-advantage above (\texttt{census1881} \prov{$13.40\times \to 0.59\times$}; \texttt{census-income}
-\prov{$10.65\times \to 1.88\times$}; \texttt{wikileaks-noquotes} \prov{$5.15\times \to 3.67\times$}),
-while several sparse corpora are unaffected or improve (\texttt{as-skitter}
-\prov{$3.35\times \to 3.23\times$}; \texttt{dbpedia-link} \prov{$2.44\times \to 2.79\times$};
-\texttt{uscensus2000} \prov{$2.27\times \to 2.76\times$}), for a net \prov{$\approx19.5\times$} gain on
-dense corpora against a \prov{$0.6$--$0.8\times$} loss on sparse ones. Neither \prov{4096} nor
-\prov{64} is correct at both ends of the density axis: this is the paper's own thesis demonstrated
-inside the incumbent, and it reframes the finding above from a defect in Roaring to a case for
-adaptive selection in Roaring, for the same reason Storm needs it.
+\prov{30--60$\times$} too high for this workload. We tested the prediction directly, with a
+twenty-line change to CRoaring: after \texttt{run\_optimize()}, promote any array container
+above cardinality $\approx$64 to a bitset (Methods, ``Array promotion'').
 
-What this withdraws is a kernel-level advantage -- Storm's dense cells beating CRoaring's dense cells
--- which was never the paper's contribution. With the avoidance mechanisms above (zone maps, gating,
-the size bound) applied on top of either CRoaring configuration, representation selection still wins,
-because those mechanisms sit above whichever kernel is underneath them and compose with a better one
-exactly as they compose with a worse one. The array-promotion fix itself is offered upstream rather
-than scored against: it is a twenty-line change to a widely deployed library, not a criticism of
-its engineering. \draftnote{Re-derive every CRoaring column in
-Table~\ref{tab:corpora} against the array-promotion baseline before submission, and report both
-baselines throughout.}
+\subsection*{Fixing the incumbent moves the error rather than removing it}
+\label{sec:r3b}
+
+Table~\ref{tab:threeway} reports all three systems on identical pairs. Against CRoaring as
+shipped, selection wins on 22 of 23 corpora, ratio range $0.91\times$ to $30.59\times$. The
+promotion patch is worth $0.96\times$ to $24.65\times$ to CRoaring itself, and with it in
+place selection still wins on 22 of 23, range $0.93\times$ to $6.47\times$. We quote no
+average over these: the distributions span more than an order of magnitude and are
+structured rather than scattered, so a single figure describes no corpus in the set and
+conceals the only thing worth reporting, which is which corpora sit where and why.
+
+The patch's benefit is bimodal, and that is the substantive finding rather than the speedup.
+It is worth $24.65\times$ on \texttt{census1881}, $14.54\times$ on \texttt{weather\_sept\_85},
+$8.85\times$ on \texttt{census-income} and $6.5$--$8.0\times$ across the \texttt{msprime}
+family --- and $0.96$--$1.15\times$, which is to say nothing, on all fifteen sparse graph and
+IR corpora. It fires only where rows are dense enough to hold many mid-sized array containers,
+because that is the only regime in which the storage-priced threshold binds. Neither constant
+is right at both ends: 64 is wrong at the sparse end for the same reason 4096 is wrong at the
+dense end, and the patch relocates the error rather than eliminating it. This is the paper's
+thesis demonstrated inside the incumbent, and it is why the answer is selection rather than
+retuning. The change is offered upstream rather than scored against: it is a twenty-line patch
+to a widely deployed library, not a criticism of its engineering.
+
+\subsection*{Where the margin comes from, and where the method converges on Roaring}
+\label{sec:r3d}
+
+Storm and Roaring select from the same three representation families: Roaring's array, bitset
+and run containers are $\rS$, $\rB$ and $\rR$. The methods differ in granularity --- Roaring
+chooses per $2^{16}$ chunk against fixed thresholds, we choose per row and per pair from a
+calibrated model --- and every regime in Table~\ref{tab:threeway} follows from that.
+
+The largest margins, $3.1\times$ to $6.5\times$, arise where a run representation spans the
+whole row. A Roaring run container is confined to one chunk, so runs that cross chunk
+boundaries are invisible to it, while $\cell{\rB}{\rR}$ sees them: \texttt{wikileaks-noquotes}
+$6.47\times$ with $\cell{\rB}{\rR}$ on \prov{39.0\%} of pairs, \texttt{dimension\_033}
+$3.08\times$ on \prov{70.5\%}, \texttt{usher\_sarscov2} $1.92\times$ on \prov{25.5\%}.
+
+The second source of large margins is Roaring running out of chunks to adapt over, and the
+\texttt{msprime} family isolates it as a controlled test: one generator, one
+allele-frequency distribution, universe the only variable, so Roaring's chunk count is the
+only thing that changes. At $m = 2.0\times10^{4}$ the universe is smaller than one chunk,
+Roaring holds a single container and has no adaptivity at all --- precisely the fixed
+representation this work argues against --- and we measure $3.77\times$. At
+$2.0\times10^{5}$, four chunks, $1.74\times$. At $2.0\times10^{6}$, thirty-one chunks,
+$1.31\times$. The margin decays monotonically as the incumbent regains per-chunk selection,
+which is the clearest evidence in this work that the two methods are one idea at two
+granularities.
+
+The middle band, $1.8\times$ to $2.7\times$, is the sparse graph and IR corpora, where
+$\cell{\rB}{\rS}$ carries \prov{70--99\%} of pairs: one well-chosen representation per row
+and a near-free decision, against a per-chunk key merge.
+
+At the bottom, $1.18\times$ to $1.74\times$, the method converges on Roaring, and does so for
+a reason that is not a deficiency. \texttt{weather\_sept\_85} routes \prov{45.9\%} of pairs to
+$\cell{\rB}{\rB}$ and \texttt{census-income} \prov{46.1\%}. When both operands are dense the
+correct answer is an \textsc{and} and a popcount; both systems execute exactly that, and
+there is nothing left to select. Convergence here is the selector working: it has established
+that no cheaper representation exists, and the residual margin is kernel quality alone.
+
+One negative result belongs with these. The $O(1)$ span test settles \prov{63.3\%} of
+\texttt{census1881}'s pairs without touching data, yet that corpus reaches only $1.24\times$,
+because Roaring's chunk-key merge disposes of disjoint pairs cheaply as well. Avoiding empty
+work is not where the margin comes from; both methods already do it.
+
+\begin{table}[!t]
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\renewcommand\arraystretch{1.05}
+\centering
+\caption{\textbf{Selection beats CRoaring in both configurations, and the container patch only
+pays on dense corpora.} All three timed in one process on the same rows and the same pair set,
+one untimed warm-up each, repeated to a 100\,ms floor, minimum taken, median of three
+whole-process runs; exact cardinalities, checksums identical across all three on every corpus
+(Methods, ``Timing protocol''). ``stock'' is CRoaring with \texttt{run\_optimize()};
+``patched'' adds array promotion above cardinality 64. ``Ro patch'' is stock\,/\,patched: the
+patch's value to CRoaring alone, Storm not involved. Storm is the shipped online policy, one
+policy selected from the data at tile-decision time, not a per-corpus choice. Bold marks Storm
+wins; \texttt{dimension\_008} is the sole loss and is analysed in the text.}
+\label{tab:threeway}
+\begin{tabular}{@{}l r r r r r r@{}}
+\toprule
+Corpus & {stock (ns)} & {patched (ns)} & {Storm (ns)} & {vs.\ stock} & {vs.\ patched} & {Ro patch} \\
+\midrule
+\texttt{enwiki-categorylinks} & {30.9} & {30.6} & {\textbf{13.3}} & {2.33} & {\textbf{2.31}} & {1.01} \\
+\texttt{uscensus2000} & {14.3} & {12.4} & {\textbf{5.4}} & {2.66} & {\textbf{2.31}} & {1.15} \\
+\texttt{dbpedia-link} & {100.3} & {99.1} & {\textbf{52.3}} & {1.92} & {\textbf{1.89}} & {1.01} \\
+\texttt{wikipedia\_link\_en} & {106.0} & {109.9} & {\textbf{60.1}} & {1.77} & {\textbf{1.83}} & {0.97} \\
+\texttt{livejournal-groupmemberships} & {29.9} & {27.8} & {\textbf{19.6}} & {1.53} & {\textbf{1.42}} & {1.08} \\
+\texttt{com-Orkut} & {196.7} & {193.2} & {\textbf{90.3}} & {2.18} & {\textbf{2.14}} & {1.02} \\
+\texttt{com-LiveJournal} & {49.1} & {48.2} & {\textbf{33.2}} & {1.48} & {\textbf{1.45}} & {1.02} \\
+\texttt{soc-Pokec} & {93.7} & {95.6} & {\textbf{40.5}} & {2.31} & {\textbf{2.36}} & {0.98} \\
+\texttt{as-skitter} & {27.0} & {27.7} & {\textbf{20.4}} & {1.32} & {\textbf{1.35}} & {0.98} \\
+\texttt{wiki-Talk} & {48.2} & {37.4} & {\textbf{16.9}} & {2.85} & {\textbf{2.22}} & {1.29} \\
+\texttt{dimension\_003} & {3.0} & {2.9} & {\textbf{1.8}} & {1.70} & {\textbf{1.64}} & {1.04} \\
+\texttt{dimension\_008} & {7.6} & {7.7} & {\textbf{8.3}} & {0.91} & {\textit{0.93}} & {0.99} \\
+\texttt{dimension\_033} & {99.5} & {97.2} & {\textbf{31.5}} & {3.16} & {\textbf{3.08}} & {1.02} \\
+\texttt{census1881} & {1261.9} & {51.2} & {\textbf{41.2}} & {30.59} & {\textbf{1.24}} & {24.65} \\
+\texttt{census1881\_srt} & {61.1} & {58.9} & {\textbf{15.3}} & {4.00} & {\textbf{3.86}} & {1.04} \\
+\texttt{wikileaks-noquotes} & {388.7} & {367.9} & {\textbf{56.9}} & {6.83} & {\textbf{6.47}} & {1.06} \\
+\texttt{weather\_sept\_85} & {17825.5} & {1225.7} & {\textbf{1038.6}} & {17.16} & {\textbf{1.18}} & {14.54} \\
+\texttt{census-income} & {3828.6} & {432.6} & {\textbf{248.2}} & {15.43} & {\textbf{1.74}} & {8.85} \\
+\texttt{usher\_sarscov2} & {940.6} & {976.6} & {\textbf{507.6}} & {1.85} & {\textbf{1.92}} & {0.96} \\
+\texttt{gnomad\_chr21\_exomes\_af1e-3} & {61.6} & {62.0} & {\textbf{23.2}} & {2.66} & {\textbf{2.67}} & {0.99} \\
+\texttt{msprime\_1M} & {11259.6} & {1729.0} & {\textbf{1317.1}} & {8.55} & {\textbf{1.31}} & {6.51} \\
+\texttt{msprime\_100k} & {1658.5} & {209.6} & {\textbf{120.7}} & {13.74} & {\textbf{1.74}} & {7.91} \\
+\texttt{msprime\_10k} & {700.4} & {87.7} & {\textbf{23.3}} & {30.11} & {\textbf{3.77}} & {7.99} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{The one corpus selection does not win, and why}
+\label{sec:r3c}
+
+\texttt{dimension\_008} is the single loss, at $0.93\times$ against patched CRoaring, and it is
+not a kernel deficit. Applying $\cell{\rR}{\rR}$ to every pair of that corpus measures
+$1.05\times$ against patched CRoaring --- the winning cell exists, is implemented, and is
+already in the matrix --- while the selector routes zero pairs to it.
+
+The cause is a commensurability failure in the work function, not an error in the calibrated
+rates. $\cell{\rR}{\rR}$ is charged $r_a + r_b$, both run arrays, because a run-vs-run merge
+walks both; $\cell{\rB}{\rR}$ is charged $\min(r_a, r_b)$, one array, because it iterates one
+side and probes the other. One unit counts both operands and the other counts one. At the
+calibrated rates those units place $\cell{\rR}{\rR}$ at least $4.6\times$ above
+$\cell{\rB}{\rR}$ whenever $r_a \approx r_b$, so it is excluded arithmetically and no
+measurement of how fast it runs can rescue it. Five independent attempts to correct this by
+changing what is measured --- recalibrating on the caller's own rows in three variants,
+calibrating the run-consuming cells on run-structured input, and scaling $\cell{\rR}{\rR}$'s
+rate directly --- all failed, and the last is instructive: the scale at which
+$\cell{\rR}{\rR}$ begins winning the pairs it should costs \texttt{wikileaks-noquotes} two
+thirds of its margin. A scalar on either rate cannot reconcile units that measure different
+things. The correction is to give $\cell{\rR}{\rR}$ a unit commensurate with
+$\cell{\rB}{\rR}$'s, which is a change to the work function and is left as one.
+\draftnote{Open item: work\_units commensurability for the run-merge cells. Data and the full
+three-way table in results/THREE\_WAY.md.}
 
