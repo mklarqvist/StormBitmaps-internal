@@ -69,7 +69,35 @@ enum class Policy : uint8_t {
      * keep the top two, and let each pair choose between just those two -- two
      * predict() calls on metadata already in registers. The expensive part of
      * selection is hoisted and the part that actually varies per pair is not.
-     */
+     *
+     * --- MEASURED, AND IT IS DECISIVE IN BOTH DIRECTIONS -------------------
+     *
+     * bench_allpairs prints per-tile and refine from the SAME process and the
+     * same warm-up, so comparing those two lines within each run is perfectly
+     * paired -- no drift, no ordering. Median of 7 runs, >1 means refine wins:
+     *
+     *                     k=2    k=3    k=8
+     *   census1881       1.028  1.308  1.327     <- refine 31% FASTER
+     *   dimension_008    0.565  0.575  0.559     <- per-tile 1.8x faster
+     *   wiki-Talk        0.665  0.688  0.717     <- per-tile 1.4x faster
+     *
+     * Refine at k=3 would take census1881 -- the last corpus still losing to
+     * fixed Roaring -- from 0.91x to roughly 1.20x, and cost dimension_008 44%.
+     * Enabling it globally trades one loss for another; that is why
+     * refine_ratio() defaults to 1 (never refine).
+     *
+     * THE CANDIDATE PREDICATE, which earlier attempts did not have: the empty
+     * fraction. census1881 settles 63.3% of its pairs by the O(1) span test;
+     * dimension_008 settles 12.6% and wiki-Talk 14.4%. That ordering matches
+     * the result exactly, and it is mechanistically sensible -- when most pairs
+     * are disjoint, the tile aggregate is computed over rows whose pairs will
+     * never run a kernel, so it describes the live pairs worst precisely where
+     * per-pair refinement is cheapest to amortise.
+     *
+     * It is not yet usable: the empty fraction is known after the tile is
+     * walked, not when its decision is made. Estimating it at decision time
+     * from the two tiles' [first_set, last_set] spans is the obvious next step
+     * and is O(1), but it is unbuilt and unmeasured. */
     Refine,
 };
 
