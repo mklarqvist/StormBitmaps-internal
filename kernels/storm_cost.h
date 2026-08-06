@@ -162,6 +162,19 @@ void calibrate_on_rows(CostModel& m, const std::vector<Row>& rows,
 // A hardcoded model, for builds that cannot afford startup calibration. These
 // are this host's measured values and are WRONG on any other machine -- which
 // is the entire argument for calibrating instead. Labelled, not hidden.
+/* THE variant name for a cell -- the single source of truth.
+ *
+ * calibrate() decides what gets TIMED and storm_allpairs.cpp's Kernels decides
+ * what gets RUN, and they used to hold independent hardcoded lists that agreed
+ * only because both were edited to. Any variant override then changed the
+ * kernel while leaving the constant that prices it describing a different one,
+ * which silently invalidates variant sweeps and is the same model-vs-code
+ * mismatch that made B x R and B x W a coin flip. Both now call this.
+ *
+ * `cell` is the two-letter tag ("bs", "br", "rr", ...); STORM_VARIANT_<CELL>
+ * overrides. */
+const char* chosen_variant(const char* cell, const char* dflt);
+
 void default_model(CostModel& m);
 
 // Predicted cost in nanoseconds of computing |A ∩ B| via `p`.

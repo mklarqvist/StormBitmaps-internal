@@ -181,12 +181,12 @@ struct Kernels {
     fn_bb bb; fn_bb bb_plain; fn_bs bs; fn_bs bs_small; fn_br br; fn_bw bw;
     fn_ss ss; fn_sr sr; fn_rr rr; fn_ww ww;
     Kernels()
-        : bb(pick(cell_bb(), "occ_sel")), bb_plain(pick(cell_bb(), "dense")),
-          bs(pick(cell_bs(), variant_override("STORM_VARIANT_BS", "ilp8"))),
+        : bb(pick(cell_bb(), chosen_variant("bb", "occ_sel"))), bb_plain(pick(cell_bb(), "dense")),
+          bs(pick(cell_bs(), chosen_variant("bs", "ilp8"))),
           bs_small(pick(cell_bs(), "small")),
-          br(pick(cell_br(), variant_override("STORM_VARIANT_BR", "hybrid4"))), bw(pick(cell_bw(), "skip")),
-          ss(pick(cell_ss(), variant_override("STORM_VARIANT_SS", "adaptive2"))), sr(pick(cell_sr(), "adaptive2")),
-          rr(pick(cell_rr(), variant_override("STORM_VARIANT_RR", "adaptive2"))), ww(pick(cell_ww(), "skip2")) {}
+          br(pick(cell_br(), chosen_variant("br", "hybrid4"))), bw(pick(cell_bw(), chosen_variant("bw", "skip"))),
+          ss(pick(cell_ss(), chosen_variant("ss", "adaptive2"))), sr(pick(cell_sr(), chosen_variant("sr", "adaptive2"))),
+          rr(pick(cell_rr(), chosen_variant("rr", "adaptive2"))), ww(pick(cell_ww(), chosen_variant("ww", "skip2"))) {}
 };
 
 inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,

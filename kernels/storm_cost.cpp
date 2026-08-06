@@ -469,6 +469,16 @@ Pairing select_pairing(const CostModel& m, const RowMeta& a, const RowMeta& b,
  * calibration at startup, and WRONG anywhere else -- which is precisely why
  * calibrate() exists. Anyone shipping this on another machine and trusting
  * these numbers is making the mistake this whole section is about. */
+const char* chosen_variant(const char* cell, const char* dflt) {
+    char env[32] = "STORM_VARIANT_";
+    size_t k = 14;
+    for (size_t i = 0; cell[i] && k < sizeof(env) - 1; ++i)
+        env[k++] = (char)(cell[i] >= 'a' && cell[i] <= 'z' ? cell[i] - 32 : cell[i]);
+    env[k] = '\0';
+    const char* v = std::getenv(env);
+    return (v && *v) ? v : dflt;
+}
+
 void default_model(CostModel& m) {
     m.ns_per_unit[(int)Pairing::BB] = 0.116;   // per word
     m.ns_per_unit[(int)Pairing::BS] = 0.30;    // per list element
@@ -595,29 +605,28 @@ void calibrate(CostModel& m, uint32_t universe, double density) {
      * runtime list and not this one, so a variant sweep changes the kernel
      * while leaving the constant that prices it describing a different kernel.
      *
-     * That is the same class of defect as the B x R / B x W coin flip -- model
-     * and code disagreeing about what is being executed -- and it is why the
-     * R x R variant sweep could not be run: calibrate() would have kept timing
-     * adaptive2 whatever the runtime used. The lists should be one list.
-     * Recorded rather than merged because merging them touches the kernel
-     * selection path and the session's remaining budget is better spent not
-     * breaking it. */
+     * FIXED: both now call chosen_variant() (storm_cost.h), so the constant
+     * always describes the kernel that will run. With that in place the R x R
+     * variant sweep is finally meaningful, and it closes the hypothesis that
+     * prompted it -- adaptive2 2.04, clip 2.05, merge_bl 2.17, gallop_sym 4.01,
+     * so adaptive2 is already the best variant and R x R's rate is genuine
+     * rather than an artefact of timing the wrong kernel. */
     // The best variant of each cell, as measured in round 10.
     auto V = [](auto list, const char* nm) {
         for (size_t i = 0; i < list.n; ++i)
             if (std::string(list.v[i].name) == nm) return list.v[i].fn;
         return list.v[0].fn;
     };
-    const auto f_bb = V(cell_bb(), "occ_sel");
-    const auto f_bs = V(cell_bs(), "ilp8");
-    const auto f_br = V(cell_br(), "hybrid4");
-    const auto f_bw = V(cell_bw(), "skip");
-    const auto f_ss = V(cell_ss(), "adaptive2");
-    const auto f_sr = V(cell_sr(), "adaptive2");
-    const auto f_sw = V(cell_sw(), "adaptive");
-    const auto f_rr = V(cell_rr(), "adaptive2");
-    const auto f_rw = V(cell_rw(), "skip");
-    const auto f_ww = V(cell_ww(), "skip2");
+    const auto f_bb = V(cell_bb(), chosen_variant("bb", "occ_sel"));
+    const auto f_bs = V(cell_bs(), chosen_variant("bs", "ilp8"));
+    const auto f_br = V(cell_br(), chosen_variant("br", "hybrid4"));
+    const auto f_bw = V(cell_bw(), chosen_variant("bw", "skip"));
+    const auto f_ss = V(cell_ss(), chosen_variant("ss", "adaptive2"));
+    const auto f_sr = V(cell_sr(), chosen_variant("sr", "adaptive2"));
+    const auto f_sw = V(cell_sw(), chosen_variant("sw", "adaptive"));
+    const auto f_rr = V(cell_rr(), chosen_variant("rr", "adaptive2"));
+    const auto f_rw = V(cell_rw(), chosen_variant("rw", "skip"));
+    const auto f_ww = V(cell_ww(), chosen_variant("ww", "skip2"));
 
     time_cell(Pairing::BB, [&](const Row& a, const Row& b) { return f_bb(a.B(), b.B()); });
     time_cell(Pairing::BS, [&](const Row& a, const Row& b) { return f_bs(a.B(), b.S()); });
@@ -813,14 +822,14 @@ void calibrate_on_rows(CostModel& m, const std::vector<Row>& rows,
             if (std::string(list.v[i].name) == nm) return list.v[i].fn;
         return list.v[0].fn;
     };
-    const auto f_bb = V(cell_bb(), "occ_sel");
-    const auto f_bs = V(cell_bs(), "ilp8");
-    const auto f_br = V(cell_br(), "hybrid4");
-    const auto f_bw = V(cell_bw(), "skip");
-    const auto f_ss = V(cell_ss(), "adaptive2");
-    const auto f_sr = V(cell_sr(), "adaptive2");
-    const auto f_rr = V(cell_rr(), "adaptive2");
-    const auto f_ww = V(cell_ww(), "skip2");
+    const auto f_bb = V(cell_bb(), chosen_variant("bb", "occ_sel"));
+    const auto f_bs = V(cell_bs(), chosen_variant("bs", "ilp8"));
+    const auto f_br = V(cell_br(), chosen_variant("br", "hybrid4"));
+    const auto f_bw = V(cell_bw(), chosen_variant("bw", "skip"));
+    const auto f_ss = V(cell_ss(), chosen_variant("ss", "adaptive2"));
+    const auto f_sr = V(cell_sr(), chosen_variant("sr", "adaptive2"));
+    const auto f_rr = V(cell_rr(), chosen_variant("rr", "adaptive2"));
+    const auto f_ww = V(cell_ww(), chosen_variant("ww", "skip2"));
 
     /* Total work over the sample, computed once: the ratio's denominator does
      * not depend on how many times the numerator is measured. */
