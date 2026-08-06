@@ -124,6 +124,44 @@ static double probe_scale() {
     return v;
 }
 
+/* Orient B x R / B x W by RUN COUNT (default) or by cardinality (the previous
+ * behaviour, STORM_BR_ORIENT=0). Lives here rather than in storm_allpairs.cpp
+ * because work_units() must read the same switch the dispatch does -- pricing
+ * one orientation while running the other is the mismatch that made B x R and
+ * B x W a coin flip once already. */
+/* MEASURED PAIRED (bench/ab.sh), and it is a magnitude-vs-count trade, so it
+ * is OFF. A/B where >1 means the run-count orientation is faster:
+ *
+ *   wikileaks-noquotes  1.380  faster in 5/7   (sweep 5.49x -> 7.12x)
+ *   usher_sarscov2      1.039           5/7
+ *   msprime_100k        1.017           4/7
+ *   census1881          0.964           2/7
+ *   dimension_033       0.951           2/7
+ *   dimension_008       0.901           1/9   (sweep 1.17x -> 0.81x, a LOSS)
+ *
+ * +38% on one corpus against -10% on another, and the -10% costs a win: the
+ * sweep goes 22/23 to 21/23. The objective is to beat Roaring everywhere, so
+ * losing a corpus outright is not paid for by widening a 5.5x margin to 7.1x.
+ *
+ * A guard was tried -- swap only when it does not give up the rank index,
+ * since C33 builds rank only above mean run length 512 and handing
+ * br_hybrid4 an unindexed bitmap drops it to br_scalar. It does not work:
+ * dimension_008 stays lost (0.939, old orientation faster 9/9) and wikileaks
+ * loses most of the gain (1.380 -> 1.072). So the rank index is not the
+ * mechanism, and what makes dimension_008 prefer the cardinality orientation
+ * is still unexplained.
+ *
+ * Kept because the effect is real and the largest single paired result this
+ * project has measured; it needs a predicate that separates wikileaks from
+ * dimension_008, which is an open question rather than a tuning knob. */
+bool br_orient_by_runs() {
+    static const bool v = [] {
+        if (const char* e = std::getenv("STORM_BR_ORIENT")) return std::atoi(e) != 0;
+        return false;
+    }();
+    return v;
+}
+
 static double bs_touches(const RowMeta& a, const RowMeta& b) {
     return (a.cardinality <= b.cardinality) ? (double)a.n_nonzero_w
                                             : (double)b.n_nonzero_w;
@@ -196,8 +234,12 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
         // pairs, 3.05x) for a B x S / B x W / W x W mixture at 0.46x, and it
         // did so at every positive weight down to 0.125.
         case Pairing::BS: return s_card;
-        case Pairing::BR: return s_runs;
-        case Pairing::BW: return s_ewah;
+        /* min, because run() now hands B x R and B x W whichever side has
+         * FEWER RUNS rather than whichever is sparser by cardinality. The two
+         * differ whenever a dense row is run-compressible, which is exactly
+         * when these cells are worth choosing. */
+        case Pairing::BR: return br_orient_by_runs() ? std::min(ra, rb) : s_runs;
+        case Pairing::BW: return br_orient_by_runs() ? std::min(wa, wb) : s_ewah;
         // Integer log2, NOT std::log2. The first version of this called the
         // libm double routine inside the selection loop and selection cost
         // measured 24 ns/pair -- 36% of runtime against a 2% gate. Standing

@@ -11,6 +11,8 @@
 
 namespace storm {
 
+bool br_orient_by_runs();   // defined in storm_cost.cpp
+
 const char* name_of(Policy p) {
     switch (p) {
         case Policy::AllBitmap: return "all-bitmap";
@@ -176,8 +178,36 @@ inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
          * set IS its indices and no list machinery is worth entering. */
         case Pairing::BS: return s.meta.cardinality <= point_max() ? K.bs_small(d.B(), s.S())
                                                                    : K.bs(d.B(), s.S());
-        case Pairing::BR: return K.br(d.B(), s.R());
-        case Pairing::BW: return K.bw(d.B(), s.W());
+        /* Orient B x R by RUN COUNT, not by cardinality.
+         *
+         * The driver orients every pair by cardinality and hands B x R the
+         * sparser side's runs. For B x S that is right -- the sparser side has
+         * fewer elements by definition. For B x R it is not, because run count
+         * and cardinality are not co-monotone: a DENSE row of a few long runs
+         * has fewer runs than a sparse row of isolated bits, and B x R's cost
+         * is the run count of whichever side supplies the runs.
+         *
+         * So the kernel can be handed the cheaper side. |A n B| is symmetric;
+         * nothing else in the pair cares which row provides the bitmap.
+         *
+         * work_units(BR) returns min(ra, rb) to match -- which is what it
+         * returned before it was "fixed" to track the driver's cardinality
+         * orientation. That fix made the model agree with the code; this makes
+         * the code agree with the algorithm, and the model is now right about
+         * both. */
+        /* Orient B x R by RUN COUNT rather than cardinality -- OFF by default
+         * (STORM_BR_ORIENT=1 enables). See br_orient_by_runs() in storm_cost.cpp
+         * for the measurements and why it is not the default. */
+        case Pairing::BR: return (br_orient_by_runs() && d.meta.n_runs <= s.meta.n_runs
+                                  )
+                               ? K.br(s.B(), d.R())
+                               : K.br(d.B(), s.R());
+        // Same argument: the EWAH stream length, not the cardinality, is what
+        // B x W pays for, and the shorter stream may belong to either side.
+        case Pairing::BW: return (br_orient_by_runs() && d.meta.n_runs <= s.meta.n_runs
+                                  )
+                               ? K.bw(s.B(), d.W())
+                               : K.bw(d.B(), s.W());
         case Pairing::SS: return K.ss(d.S(), s.S());
         case Pairing::SR: return K.sr(s.S(), d.R());
         case Pairing::RR: return K.rr(d.R(), s.R());
