@@ -288,6 +288,23 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
         // the cheaper of the two orderings.
         case Pairing::SR: return s_card + d_runs;
         case Pairing::SW: return s_card + d_ewah;
+        /* R x R is the last loss, and it is a PRICING failure, not a kernel
+         * one. On dimension_008, fixed R x R applied to every pair measures
+         * 1.05x against fixed Roaring -- a win -- while the selector routes
+         * 0% of pairs to it and the shipped policy measures 0.87x. Paired in
+         * one process, refine/fixed-RR = 0.965.
+         *
+         * The arithmetic: work_units(RR) = ra + rb against work_units(BR) =
+         * min(ra, rb), at calibrated rates near 2.0 and 0.8. For ra ~ rb that
+         * makes R x R look 5x more expensive than B x R, and it is measurably
+         * cheaper. The synthetic calibration corpus does not produce rows whose
+         * runs are long enough for a run-vs-run merge to show its advantage, so
+         * ns_per_unit[RR] is inflated relative to the cells it competes with.
+         *
+         * Left as the diagnosis rather than a patched constant: lowering it by
+         * hand would be a fitted tier-2 number of exactly the kind three
+         * separate attempts have shown does not generalise, and the honest fix
+         * is a calibration corpus with realistic run structure. */
         case Pairing::RR: return ra + rb;
         case Pairing::RW: return std::min(ra + wb, rb + wa);
         case Pairing::WW: return wa + wb;
