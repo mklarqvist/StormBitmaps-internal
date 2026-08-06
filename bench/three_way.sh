@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Storm vs STOCK CRoaring vs FIXED CRoaring, all three on identical pairs.
 #
-# The distinction between the two Roarings is C35, this project's own finding:
+# The two Roarings differ by one patch of ours (RESEARCH_PLAN.md claim C35):
 # CRoaring's constructor keeps an array container up to 4096 elements, and on
 # these corpora an array of a few hundred 16-bit keys is slower to intersect
 # than the 8 kB bitset that replaces it. croaring_modified adds
@@ -71,7 +71,7 @@ med(){ # $1 bin  $2 file  $3 rows  $4 stride  $5 awk-pattern
 
 echo "corpus,domain,universe,rows,roaring_stock_ns,roaring_fixed_ns,storm_ns,vs_stock,vs_fixed,fix_gain" > "$OUT"
 printf "%-30s %12s %10s %10s %10s %9s %9s %8s\n" \
-       corpus universe "stock Ro" "fixed Ro" "Storm" "vs stock" "vs fixed" "fix gain"
+       corpus universe "stock Ro" "fixed Ro" "Storm" "vs stock" "vs fixed" "Ro patch"
 ws=0; wf=0; tot=0
 while read -r n total dom; do
   [ -z "$n" ] && continue

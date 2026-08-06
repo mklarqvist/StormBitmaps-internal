@@ -282,31 +282,59 @@ process on the same rows and the same pair set. Both sides get one untimed
 warm-up pass and then repeat to a 100 ms floor, minimum taken; the table is the
 median of three whole-process runs, with the observed range beside it.
 
-| corpus | domain | universe m | Roaring ns | Storm ns | **vs Roaring** | range | cell mix |
-|---|---|---:|---:|---:|---:|---|---|
-| enwiki-categorylinks | IR | 129,698,523 | 29.4 | 12.3 | **2.11×** | 2.06–2.24 | B×S=89.1% ∅=10.9% |
-| uscensus2000 | census | 36,974,578 | 11.0 | 5.2 | **2.00×** | 1.89–2.36 | B×S=41.1% S×S=4.1% ∅=54.8% |
-| dbpedia-link | graph | 18,268,993 | 99.5 | 53.5 | **1.91×** | 1.86–1.92 | B×S=92.8% S×S=5.7% ∅=1.4% |
-| wikipedia_link_en | graph | 11,206,012 | 102.9 | 63.2 | **1.71×** | 1.68–1.73 | B×S=96.9% S×S=1.1% ∅=2.0% |
-| livejournal-groupmemberships | graph | 7,489,074 | 27.6 | 19.0 | **1.18×** | 1.13–1.37 | B×S=54.9% S×S=23.1% ∅=21.9% |
-| com-Orkut | graph | 3,072,627 | 197.2 | 97.9 | **1.97×** | 1.88–1.99 | B×S=99.5% ∅=0.5% |
-| com-LiveJournal | graph | 4,036,538 | 48.1 | 36.7 | **1.43×** | 1.37–1.44 | B×S=81.6% S×S=3.6% ∅=14.8% |
-| soc-Pokec | graph | 1,632,804 | 93.5 | 40.5 | **2.33×** | 2.29–2.40 | B×S=90.6% S×S=4.9% ∅=4.5% |
-| as-skitter | graph | 1,696,415 | 25.7 | 22.6 | **1.16×** | 1.13–1.29 | B×S=73.9% S×S=8.9% ∅=17.2% |
-| wiki-Talk | graph | 2,394,385 | 37.0 | 17.8 | **2.15×** | 1.71–2.38 | B×S=69.1% S×S=16.5% ∅=14.4% |
-| dimension_003 | druid | 3,866,847 | 2.8 | 1.7 | **1.69×** | 1.68–1.69 | B×S=0.1% B×R=0.3% ∅=99.5% |
-| dimension_008 | druid | 3,866,845 | 7.8 | 7.8 | *0.87×* | 0.83–0.92 | B×S=52.1% B×R=26.3% S×S=7.1% ∅=14.6% |
-| dimension_033 | druid | 3,866,847 | 95.8 | 31.9 | **2.87×** | 2.85–3.05 | B×R=70.5% B×W=1.5% ∅=28.0% |
-| census1881 | census | 4,277,806 | 49.7 | 57.1 | **1.22×** | 1.19–1.27 | B×B=0.1% B×S=22.9% B×R=8.8% S×S=4.8% ∅=63.3% |
-| census1881_srt | census | 4,277,735 | 57.1 | 15.4 | **3.94×** | 3.90–3.98 | B×B=0.0% B×S=35.7% B×R=11.8% S×S=15.8% ∅=36.6% |
-| wikileaks-noquotes | text | 1,353,179 | 369.5 | 67.3 | **6.34×** | 6.13–6.50 | B×B=0.1% B×S=24.7% B×R=39.0% ∅=36.1% |
-| weather_sept_85 | sensor | 1,015,367 | 1299.8 | 1104.7 | **1.19×** | 1.04–1.22 | B×B=45.9% B×S=53.4% ∅=0.6% |
-| census-income | census | 199,523 | 433.6 | 254.1 | **1.70×** | 1.68–1.72 | B×B=46.1% B×S=53.8% ∅=0.1% |
-| usher_sarscov2 | genomics | 8,451,771 | 949.0 | 527.6 | **1.76×** | 1.73–1.85 | B×S=73.9% B×R=25.5% ∅=0.5% |
-| gnomad_chr21_exomes_af1e-3 | genomics | 1,461,894 | 62.0 | 21.9 | **2.67×** | 2.67–2.76 | B×S=70.2% S×S=12.3% ∅=17.4% |
-| msprime_1M | genomics-sim | 2,000,000 | 1836.7 | 1180.1 | **1.53×** | 1.05–1.70 | B×B=14.0% B×S=83.7% S×S=0.4% ∅=1.9% |
-| msprime_100k | genomics-sim | 200,000 | 222.0 | 124.8 | **1.78×** | 1.73–1.81 | B×B=14.0% B×S=83.7% S×S=0.4% ∅=1.9% |
-| msprime_10k | genomics-sim | 20,000 | 87.8 | 23.2 | **3.76×** | 3.70–4.36 | B×B=25.0% B×S=72.4% S×S=0.3% ∅=2.4% |
+### Against both CRoaring configurations
+
+`stock Roaring` is CRoaring as shipped, with `run_optimize()`. `fixed Roaring`
+adds one patch of ours: CRoaring keeps a chunk as an **array container** up to
+4096 elements, which on these corpora is far too high — an array of a few
+hundred 16-bit keys intersects slower than the 8 kB bitset that would replace
+it. `third_party/croaring_modified` promotes arrays above 64 elements after
+`run_optimize()`. The `Ro patch` column is stock ÷ fixed: what that patch is
+worth **to Roaring alone**, with Storm not involved.
+
+All three are timed in the same process on the same rows and the same pairs,
+one untimed warm-up each, repeated to a 100 ms floor, minimum taken, median of
+three whole-process runs. Exact cardinalities; checksums identical on every
+corpus. Reproduce with `bench/three_way.sh`.
+
+| corpus | domain | universe m | stock Roaring | fixed Roaring | **Storm** | vs stock | **vs fixed** | Ro patch |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| enwiki-categorylinks | IR | 129,698,523 | 30.9 | 30.6 | **13.3** | 2.33× | **2.31×** | 1.01× |
+| uscensus2000 | census | 36,974,578 | 14.3 | 12.4 | **5.4** | 2.66× | **2.31×** | 1.15× |
+| dbpedia-link | graph | 18,268,993 | 100.3 | 99.1 | **52.3** | 1.92× | **1.89×** | 1.01× |
+| wikipedia_link_en | graph | 11,206,012 | 106.0 | 109.9 | **60.1** | 1.77× | **1.83×** | 0.97× |
+| livejournal-groupmemberships | graph | 7,489,074 | 29.9 | 27.8 | **19.6** | 1.53× | **1.42×** | 1.08× |
+| com-Orkut | graph | 3,072,627 | 196.7 | 193.2 | **90.3** | 2.18× | **2.14×** | 1.02× |
+| com-LiveJournal | graph | 4,036,538 | 49.1 | 48.2 | **33.2** | 1.48× | **1.45×** | 1.02× |
+| soc-Pokec | graph | 1,632,804 | 93.7 | 95.6 | **40.5** | 2.31× | **2.36×** | 0.98× |
+| as-skitter | graph | 1,696,415 | 27.0 | 27.7 | **20.4** | 1.32× | **1.35×** | 0.98× |
+| wiki-Talk | graph | 2,394,385 | 48.2 | 37.4 | **16.9** | 2.85× | **2.22×** | 1.29× |
+| dimension_003 | druid | 3,866,847 | 3.0 | 2.9 | **1.8** | 1.70× | **1.64×** | 1.04× |
+| dimension_008 | druid | 3,866,845 | 7.6 | 7.7 | **8.3** | 0.91× | *0.93×* | 0.99× |
+| dimension_033 | druid | 3,866,847 | 99.5 | 97.2 | **31.5** | 3.16× | **3.08×** | 1.02× |
+| census1881 | census | 4,277,806 | 1261.9 | 51.2 | **41.2** | 30.59× | **1.24×** | 24.65× |
+| census1881_srt | census | 4,277,735 | 61.1 | 58.9 | **15.3** | 4.00× | **3.86×** | 1.04× |
+| wikileaks-noquotes | text | 1,353,179 | 388.7 | 367.9 | **56.9** | 6.83× | **6.47×** | 1.06× |
+| weather_sept_85 | sensor | 1,015,367 | 17825.5 | 1225.7 | **1038.6** | 17.16× | **1.18×** | 14.54× |
+| census-income | census | 199,523 | 3828.6 | 432.6 | **248.2** | 15.43× | **1.74×** | 8.85× |
+| usher_sarscov2 | genomics | 8,451,771 | 940.6 | 976.6 | **507.6** | 1.85× | **1.92×** | 0.96× |
+| gnomad_chr21_exomes_af1e-3 | genomics | 1,461,894 | 61.6 | 62.0 | **23.2** | 2.66× | **2.67×** | 0.99× |
+| msprime_1M | genomics-sim | 2,000,000 | 11259.6 | 1729.0 | **1317.1** | 8.55× | **1.31×** | 6.51× |
+| msprime_100k | genomics-sim | 200,000 | 1658.5 | 209.6 | **120.7** | 13.74× | **1.74×** | 7.91× |
+| msprime_10k | genomics-sim | 20,000 | 700.4 | 87.7 | **23.3** | 30.11× | **3.77×** | 7.99× |
+
+**Storm beats stock CRoaring on 22/23 (geometric mean 3.76×) and fixed CRoaring on 22/23 (geometric mean 1.99×).**
+
+The `Ro patch` column is bimodal, and that is the interesting part: 24.65× on
+`census1881`, 14.54× on `weather_sept_85`, ~8× across the msprime family — and
+**1.0×, nothing, on all fifteen sparse graph and IR corpora**. It only fires
+where rows are dense enough to hold many mid-sized array containers. C35 is
+itself a container-*selection* fix, which is this project's argument applied
+inside Roaring's own per-chunk choice.
+
+Storm uses more memory than either: it holds several representations per row.
+The objective is throughput ([`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md)),
+so this comparison is not memory-neutral.
 
 ∅ = pairs settled as provably disjoint by the O(1) span test, no kernel run.
 
