@@ -17,7 +17,18 @@ cd "$here"
 # LaTeX escapes underscores, so match with the underscore optional.
 pattern='RESEARCH.?_?PLAN|NARRATIVE|LANDSCAPE|PROBLEM.?_?STATEMENT|DISPLAY.?_?ITEMS|SECTION.?_?SPEC|ROARING.?_?PROPOSALS|BIB.?_?STATUS|NEXT\.md|AGENTS\.md|CLAUDE\.md|scratchpad|/tmp/|GAP ?[0-9]+|\bC[0-9]{2}[a-z]?\b'
 
-hits=$(grep -rnoE "$pattern" sections/*.tex figures/*.tex storm.tex 2>/dev/null || true)
+# Strip LaTeX comments before matching. A source comment pointing a maintainer
+# at an internal document is legitimate -- it never reaches a reader. Only
+# rendered content is contamination. Escaped \% is not a comment.
+#
+# Comments are blanked rather than deleted so line numbers stay true, and the
+# pattern is passed to grep as an argument rather than interpolated into a perl
+# program -- interpolating it silently broke the match and the check passed on
+# contaminated input.
+hits=$(for f in sections/*.tex figures/*.tex storm.tex; do
+    [ -f "$f" ] || continue
+    perl -pe 's/(?<!\\)%.*$//' "$f" | grep -noE "$pattern" | sed "s|^|$f:|"
+done 2>/dev/null || true)
 
 if [ -n "$hits" ]; then
     echo "FAIL — repo-internal references found in the manuscript:"
