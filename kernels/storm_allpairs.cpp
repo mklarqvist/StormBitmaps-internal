@@ -104,6 +104,39 @@ inline uint64_t now_ns() {
  * unpaired medians within one sweep credited it with nothing. Alternating the
  * two configurations in time, so each measurement of one is adjacent to a
  * measurement of the other, gives 6-12% and a consistent sign. */
+/* max/mean cardinality a tile must reach before its pairs are refined.
+ *
+ * 8, swept. Paired within one process (per-tile and refine share the run and
+ * the warm-up, so the comparison carries no drift), median of 5, >1 means
+ * refinement wins:
+ *
+ *                    g=1.5   g=3    g=8
+ *   census1881       1.257  1.361  1.411
+ *   dimension_008    0.621  0.947  1.007
+ *   wiki-Talk        0.724  0.911  0.875
+ *   dimension_003      -      -    0.976
+ *   uscensus2000       -      -    0.991
+ *   gnomad_chr21       -      -    0.984
+ *
+ * At 8 the gate separates: census1881 gains 41% and the corpora that do not
+ * want refinement sit at parity, because the gate declines for them. Only
+ * wiki-Talk still loses, by 12%, and it has margin (2.02x vs Roaring).
+ *
+ * This is the third predicate tried for this decision. The top-two cost ratio
+ * gates on how close the CANDIDATES are and helps 2 of 14. The empty fraction
+ * gates on how many pairs the span test settles, works per corpus, and fires
+ * on locally-sparse tiles of corpora that do not want it. Heterogeneity gates
+ * on the thing the mechanism is actually about -- how badly the tile aggregate
+ * represents the rows it stands in for -- and is the first to separate all
+ * three test corpora at one setting. */
+static double het_gate() {
+    static const double v = [] {
+        if (const char* e = std::getenv("STORM_HET_GATE")) return std::atof(e);
+        return 8.0;
+    }();
+    return v;
+}
+
 static uint32_t point_max() {
     static const uint32_t v = [] {
         if (const char* e = std::getenv("STORM_POINT_MAX")) {
@@ -372,7 +405,7 @@ double refine_ratio() {
             const double d = std::atof(e);
             if (d > 0.0) return d;
         }
-        return 1.0;   // never refine: Refine == PerTile unless asked otherwise
+        return 3.0;   // paired with het_gate(); see the heterogeneity gate above
     }();
     return v;
 }
@@ -527,10 +560,32 @@ AllPairsStats allpairs_sum(const std::vector<Row>& rows, const CostModel& model,
                 } else if (policy == Policy::Refine) {
                     const Top2 t = tile_top2(model, a, b);
                     tp = t.first;
+                    /* Gate refinement on tile HETEROGENEITY.
+                     *
+                     * Refining is worth its per-pair cost exactly when the tile
+                     * aggregate is a poor stand-in for the rows it summarises.
+                     * The empty fraction was tried as a proxy and gates
+                     * correctly per corpus but not globally -- it fires on
+                     * locally-sparse tiles of corpora that do not want it.
+                     * max/mean cardinality measures the departure directly,
+                     * and rows are density-sorted so within a tile it is a
+                     * clean spread statistic. One pass over <=64 metadata
+                     * records per tile decision. */
+                    auto spread = [&](uint32_t lo, uint32_t hi) {
+                        uint64_t sum = 0; uint32_t mx = 0;
+                        for (uint32_t k = lo; k < hi; ++k) {
+                            const uint32_t c = rows[ord[k]].meta.cardinality;
+                            sum += c; if (c > mx) mx = c;
+                        }
+                        const double mean = hi > lo ? (double)sum / (hi - lo) : 0.0;
+                        return mean > 0.0 ? (double)mx / mean : 1.0;
+                    };
+                    const double het = std::max(spread(i0, i1), spread(j0, j1));
+                    const bool heterogeneous = het >= het_gate();
                     // Decline to refine when the runner-up is far behind: no
                     // pair in this tile can flip, so the per-pair evaluation
                     // would be pure overhead. Collapses to PerTile exactly.
-                    tp2 = (t.ratio <= refine_ratio()) ? t.second : t.first;
+                    tp2 = (heterogeneous && t.ratio <= refine_ratio()) ? t.second : t.first;
                 } else {
                     tp = select_pairing(model, a, b);
                 }
