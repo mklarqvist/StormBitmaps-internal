@@ -154,13 +154,38 @@ static double probe_scale() {
  * Kept because the effect is real and the largest single paired result this
  * project has measured; it needs a predicate that separates wikileaks from
  * dimension_008, which is an open question rather than a tuning knob. */
-bool br_orient_by_runs() {
-    static const bool v = [] {
-        if (const char* e = std::getenv("STORM_BR_ORIENT")) return std::atoi(e) != 0;
-        return false;
+/* Returns the required MARGIN: swap only when the other side's run array is at
+ * least this many times shorter. 0 disables the swap entirely; 1 swaps on any
+ * improvement, which is what the measurements above used. A margin is the
+ * obvious missing predicate -- swapping on a tie pays the switch and gains
+ * nothing -- and it is available from RowMeta, unlike everything else tried.
+ *
+ * 16, measured. Paired A/B against no swap at all, >1 means the swap wins:
+ *
+ *              m=1                    m=4                    m=16
+ *   wikileaks  1.125 (1/7 against)    1.342 (0/7 against)    1.188 (0/7 against)
+ *   dim_008    0.870 (6/7 against)    0.947 (7/7 against)    1.010 (2/7 against)
+ *
+ * m=1 -- swap on any improvement -- is what the first attempt did, and it is
+ * why the change had to be shelved: +38% on wikileaks against a consistent
+ * -13% on dimension_008 that cost a win. m=4 keeps more of the upside and
+ * still loses dimension_008 in 7 rounds of 7. m=16 is the first setting where
+ * nothing loses: wikileaks holds +19% in 7 rounds of 7, and dimension_008
+ * crosses to neutral.
+ *
+ * The reason a margin was needed is that swapping is not free. It exchanges
+ * which row supplies the bitmap and which supplies the runs, and the two rows
+ * are in different cache states -- the dense side has just been used by the
+ * previous pair in the tile row. Swapping on a tie pays that and gains
+ * nothing; only a decisively shorter run array covers it. */
+double br_orient_margin() {
+    static const double v = [] {
+        if (const char* e = std::getenv("STORM_BR_ORIENT")) return std::atof(e);
+        return 16.0;
     }();
     return v;
 }
+bool br_orient_by_runs() { return br_orient_margin() > 0.0; }
 
 static double bs_touches(const RowMeta& a, const RowMeta& b) {
     return (a.cardinality <= b.cardinality) ? (double)a.n_nonzero_w
@@ -238,8 +263,17 @@ static double work_units(Pairing p, const RowMeta& a, const RowMeta& b) {
          * FEWER RUNS rather than whichever is sparser by cardinality. The two
          * differ whenever a dense row is run-compressible, which is exactly
          * when these cells are worth choosing. */
-        case Pairing::BR: return br_orient_by_runs() ? std::min(ra, rb) : s_runs;
-        case Pairing::BW: return br_orient_by_runs() ? std::min(wa, wb) : s_ewah;
+        case Pairing::BR: {
+            const double dr = a_sparse ? rb : ra, sr = a_sparse ? ra : rb;
+            const bool sw = br_orient_margin() > 0.0 && dr * br_orient_margin() <= sr;
+            return sw ? dr : sr;
+        }
+        case Pairing::BW: {
+            const double dr = a_sparse ? rb : ra, sr = a_sparse ? ra : rb;
+            const bool sw = br_orient_margin() > 0.0 && dr * br_orient_margin() <= sr;
+            return sw ? (2.0*dr+1.0+(a_sparse?b.n_nonzero_w:a.n_nonzero_w))
+                      : (2.0*sr+1.0+(a_sparse?a.n_nonzero_w:b.n_nonzero_w));
+        }
         // Integer log2, NOT std::log2. The first version of this called the
         // libm double routine inside the selection loop and selection cost
         // measured 24 ns/pair -- 36% of runtime against a 2% gate. Standing

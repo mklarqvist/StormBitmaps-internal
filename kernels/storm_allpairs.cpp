@@ -12,6 +12,7 @@
 namespace storm {
 
 bool br_orient_by_runs();   // defined in storm_cost.cpp
+double br_orient_margin();  //   "
 
 const char* name_of(Policy p) {
     switch (p) {
@@ -198,14 +199,14 @@ inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
         /* Orient B x R by RUN COUNT rather than cardinality -- OFF by default
          * (STORM_BR_ORIENT=1 enables). See br_orient_by_runs() in storm_cost.cpp
          * for the measurements and why it is not the default. */
-        case Pairing::BR: return (br_orient_by_runs() && d.meta.n_runs <= s.meta.n_runs
-                                  )
+        case Pairing::BR: return (br_orient_margin() > 0.0 &&
+                                  d.meta.n_runs * br_orient_margin() <= s.meta.n_runs)
                                ? K.br(s.B(), d.R())
                                : K.br(d.B(), s.R());
         // Same argument: the EWAH stream length, not the cardinality, is what
         // B x W pays for, and the shorter stream may belong to either side.
-        case Pairing::BW: return (br_orient_by_runs() && d.meta.n_runs <= s.meta.n_runs
-                                  )
+        case Pairing::BW: return (br_orient_margin() > 0.0 &&
+                                  d.meta.n_runs * br_orient_margin() <= s.meta.n_runs)
                                ? K.bw(s.B(), d.W())
                                : K.bw(d.B(), s.W());
         case Pairing::SS: return K.ss(d.S(), s.S());
