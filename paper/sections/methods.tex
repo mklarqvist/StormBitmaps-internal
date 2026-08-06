@@ -92,7 +92,8 @@ whose bins are uniformly occupied, the filter finds nothing to skip and its cost
 policy that decides, per pair, whether the filter is worth consulting is described as a selection
 policy in the next subsection, and its necessity is established as a result rather than assumed as a
 procedure (Fig.~\ref{fig:selection-cost}c). This is a re-parameterization of established occupancy-summary mechanisms rather
-than a new one: BitFunnel's hierarchical block index \cite{goodwin2017bitfunnel}, WAH/EWAH's own
+than a new one: BitFunnel's hierarchical block index \cite{goodwin2017bitfunnel}, the hierarchical bitmap index
+of \cite{morzy2003hierarchical}, WAH/EWAH's own
 uniform-fill words, and Lucene's sparse-block bitset all skip empty regions by a similar test; what is
 specific to this setting is applying the same test as an \emph{exact} work-count for
 intersection cardinality, where the summary's own popcount is the number of bins that must be visited

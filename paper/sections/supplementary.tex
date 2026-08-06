@@ -73,7 +73,9 @@ integers, before either operand is read. An absolute threshold behaves the same 
 \tau$ requires only $\min(a,b) \ge \tau$. Restricting the \emph{inputs} to a band of sizes --- ignoring
 the extremely rare, or keeping only those --- is that same comparison applied before a pair is formed
 rather than after. The bound is the Swamidass--Baldi pruning result \cite{swamidass2007bounds}
-together with the size filter of the similarity-join literature \cite{bayardo2007allpairs,xiao2008ppjoin};
+together with the size (length) filter of \cite{arasu2006exact}, shipped over popcount-sorted
+fingerprint bitmaps at all-pairs scale as BitBound in chemfp \cite{dalke2019chemfp}, and layered as a
+popcount-based bound onto set-similarity joins by \cite{sandes2020bitmapfilter};
 what is reported here is not the bound but where it sits relative to the rest and how it composes with
 them.
 
@@ -138,7 +140,8 @@ held.}
 \caption{\textbf{Prefix filtering, analysed on the same terms --- and reducible to a single
 variable.} Prefix filtering serves the opt-in thresholded mode, in which only pairs of Jaccard
 similarity at least $t$ are reported. With elements in a global order and prefix length
-$p(X) = |X| - \lceil t|X| \rceil + 1$, any qualifying pair must share an element between its
+$p(X) = |X| - \lceil t|X| \rceil + 1$ \cite{xiao2008ppjoin}, following the prefix-filtering
+principle of \cite{chaudhuri2006primitive}, any qualifying pair must share an element between its
 prefixes, so indexing prefixes alone answers the thresholded question exactly --- and unlike the
 mechanisms of Fig.~\ref{fig:density-sweep}c--d it is candidate \emph{generation}: the quadratic pair
 set is never enumerated. Reading key as in Fig.~\ref{fig:density-sweep}; an ordered series takes a
@@ -915,8 +918,9 @@ $|A\cap B|\ge\tau$ requires $\min(a,b)\ge\tau$. Both conditions are necessary an
 sufficient, so the test only discards pairs and never reports one; survivors still go to an exact
 kernel. Hypotheses: $a,b>0$, $t\in(0,1]$; nothing is assumed about arrangement, about $m$, or about how
 either operand is stored. This is the Swamidass--Baldi pruning bound \cite{swamidass2007bounds}
-together with the size filter of the similarity-join literature
-\cite{bayardo2007allpairs,xiao2008ppjoin}; the contribution of this note is its placement against the
+together with the size (length) filter of
+\cite{arasu2006exact}, in the two-sided form standardised by \cite{mann2016empirical} and applied
+jointly with prefix filtering to Tanimoto over binary vectors by \cite{anastasiu2016tapnn}; the contribution of this note is its placement against the
 mechanisms above, not the bound itself.
 
 \paragraph*{Full derivation of Eq.~\eqref{eq:survive} and its two hypotheses.}
@@ -1143,7 +1147,7 @@ Proposition~2 (main text) says the \emph{answer} is pinned by cardinality only a
 this result says the \emph{decision} is pinned everywhere except an $\eta$-neighbourhood of a
 boundary, and the two regions have different consequences and must not be merged --- at $d=\tfrac12$
 cardinality determines nothing about the answer while determining the decision completely
-($\cell{\rB}{\rB}$, Supplementary Note 8). The caveat that makes $\eta$ interesting rather than
+($\cell{\rB}{\rB}$, Supplementary Note~\ref{note:proofs-avoidance}). The caveat that makes $\eta$ interesting rather than
 cosmetic: $\eta$ is the uncertainty of the \emph{model}, not of the constants alone, and where the
 model omits the memory system --- the same divergence recorded under Eq.~\eqref{eq:compose} --- it is
 not small. That is the derived motivation for measuring a candidate kernel rather than only modelling
@@ -1176,7 +1180,7 @@ chunk-level skip in full), against an incumbent already holding the compute-opti
 $\tau_\cap$, with the challenger adding a zone map of bin width $W_z$ at overhead $c/W_z$, the modelled
 advantage is $G(d)=\kappa_{\mathrm{Ro}}(d)/\big(c/W_z+p_Ap_B\,\kappa(d/p)\big)$ with
 $\kappa_{\mathrm{Ro}}(d)=\min(1,\theta_{pw}wd)$ the two-cell (array/bitset) envelope and $p=1-(1-d)^{W_z}$
-(Supplementary Note 8, Eq.~\eqref{eq:s3-concentration}). In the sparse band, where $d/p\to1/W_z$ puts a
+(Supplementary Note~\ref{note:proofs-avoidance}, Eq.~\eqref{eq:s3-concentration}). In the sparse band, where $d/p\to1/W_z$ puts a
 singly-occupied bin above the compute crossover whenever $W_z\le\theta_{pw}w$, $\kappa(d/p)\equiv1$ and,
 substituting $p\approx x=W_zd$ for $x\ll1$, $G(x)=\theta_{pw}wx/\big(c+W_z(1-e^{-x})^2\big)$. Setting
 $\mathrm dG/\mathrm dx=0$ gives $x^*=\sqrt{c/W_z}$ and the peak value of Eq.~\eqref{eq:gmax}, valid on
@@ -1192,7 +1196,7 @@ ceiling is $11.3\times$; at $W_z=512$ (the configuration used throughout the fig
 gives $16.0\times$.
 
 Two consequences are stated rather than smoothed. Eq.~\eqref{eq:gmax} is a null-model ceiling
-on structureless data, and by the one-sidedness of $\sigma$ (Supplementary Note 8), real corpora can
+on structureless data, and by the one-sidedness of $\sigma$ (Supplementary Note~\ref{note:proofs-avoidance}), real corpora can
 only fall below the null, so a measured advantage exceeding the ceiling is evidence of structure and
 must be reported as such rather than as agreement with the model --- a measured range whose lower and
 middle values sit inside the ceiling and whose top exceeds it is the expected signature of real

@@ -110,6 +110,55 @@
   (\bibinfo{year}{2017}).
 \newblock \bibinfo{note}{Software repository, created 2017-07-17}.
 
+\bibitem{wu2006wah}
+\bibinfo{author}{Wu, K.}, \bibinfo{author}{Otoo, E.~J.} \&
+  \bibinfo{author}{Shoshani, A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Optimizing bitmap indices with
+  efficient compression}}.
+\newblock {\emph{\JournalTitle{ACM Transactions on Database Systems}}}
+  \textbf{\bibinfo{volume}{31}}, \bibinfo{pages}{1--38},
+  \doiprefix\url{10.1145/1132863.1132864} (\bibinfo{year}{2006}).
+
+\bibitem{mood1940runs}
+\bibinfo{author}{Mood, A.~M.}
+\newblock \bibinfo{journal}{\bibinfo{title}{The distribution theory of runs}}.
+\newblock {\emph{\JournalTitle{The Annals of Mathematical Statistics}}}
+  \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{367--392},
+  \doiprefix\url{10.1214/aoms/1177731825} (\bibinfo{year}{1940}).
+
+\bibitem{lang2020teb}
+\bibinfo{author}{Lang, H.} \emph{et~al.}
+\newblock \bibinfo{title}{Tree-encoded bitmaps}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{937--967},
+  \doiprefix\url{10.1145/3318464.3380588} (\bibinfo{year}{2020}).
+
+\bibitem{arasu2006exact}
+\bibinfo{author}{Arasu, A.}, \bibinfo{author}{Ganti, V.} \&
+  \bibinfo{author}{Kaushik, R.}
+\newblock \bibinfo{title}{Efficient exact set-similarity joins}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 32nd International
+  Conference on Very Large Data Bases (VLDB)}}, \bibinfo{pages}{918--929}
+  (\bibinfo{year}{2006}).
+
+\bibitem{mann2016empirical}
+\bibinfo{author}{Mann, W.}, \bibinfo{author}{Augsten, N.} \&
+  \bibinfo{author}{Bouros, P.}
+\newblock \bibinfo{journal}{\bibinfo{title}{An empirical evaluation of set
+  similarity join techniques}}.
+\newblock {\emph{\JournalTitle{Proceedings of the VLDB Endowment}}}
+  \textbf{\bibinfo{volume}{9}}, \bibinfo{pages}{636--647},
+  \doiprefix\url{10.14778/2947618.2947620} (\bibinfo{year}{2016}).
+
+\bibitem{anastasiu2016tapnn}
+\bibinfo{author}{Anastasiu, D.~C.} \& \bibinfo{author}{Karypis, G.}
+\newblock \bibinfo{title}{Efficient identification of {Tanimoto} nearest
+  neighbors}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the IEEE International
+  Conference on Data Science and Advanced Analytics (DSAA)}},
+  \bibinfo{pages}{156--165}, \doiprefix\url{10.1109/DSAA.2016.23}
+  (\bibinfo{year}{2016}).
+
 \bibitem{jacobson1989succinct}
 \bibinfo{author}{Jacobson, G.}
 \newblock \bibinfo{title}{Space-efficient static trees and graphs}.
@@ -132,6 +181,17 @@
   \doiprefix\url{10.1007/978-3-540-68552-4_12} (\bibinfo{publisher}{Springer},
   \bibinfo{year}{2008}).
 
+\bibitem{morzy2003hierarchical}
+\bibinfo{author}{Morzy, M.}, \bibinfo{author}{Morzy, T.},
+  \bibinfo{author}{Nanopoulos, A.} \& \bibinfo{author}{Manolopoulos, Y.}
+\newblock \bibinfo{title}{Hierarchical bitmap index: An efficient and scalable
+  indexing technique for set-valued attributes}.
+\newblock In \emph{\bibinfo{booktitle}{Advances in Databases and Information
+  Systems (ADBIS)}}, vol. \bibinfo{volume}{2798} of
+  \emph{\bibinfo{series}{Lecture Notes in Computer Science}},
+  \bibinfo{pages}{236--252}, \doiprefix\url{10.1007/978-3-540-39403-7\_19}
+  (\bibinfo{year}{2003}).
+
 \bibitem{lemire2016roaring}
 \bibinfo{author}{Lemire, D.}, \bibinfo{author}{Ssi-Yan-Kai, G.} \&
   \bibinfo{author}{Kaser, O.}
@@ -141,5 +201,23 @@
   \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{1547--1569},
   \doiprefix\url{10.1002/spe.2402} (\bibinfo{year}{2016}).
 \newblock \bibinfo{note}{ArXiv:1603.06549}.
+
+\bibitem{sandes2020bitmapfilter}
+\bibinfo{author}{Sandes, E. F. d.~O.}, \bibinfo{author}{Teodoro, G.} \&
+  \bibinfo{author}{Melo, A. C. M.~A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Bitmap filter: Speeding up exact
+  set similarity joins with bitwise operations}}.
+\newblock {\emph{\JournalTitle{Information Systems}}}
+  \textbf{\bibinfo{volume}{88}}, \bibinfo{pages}{101449},
+  \doiprefix\url{10.1016/j.is.2019.101449} (\bibinfo{year}{2020}).
+
+\bibitem{chaudhuri2006primitive}
+\bibinfo{author}{Chaudhuri, S.}, \bibinfo{author}{Ganti, V.} \&
+  \bibinfo{author}{Kaushik, R.}
+\newblock \bibinfo{title}{A primitive operator for similarity joins in data
+  cleaning}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 22nd International
+  Conference on Data Engineering (ICDE)}}, \bibinfo{pages}{5--16},
+  \doiprefix\url{10.1109/ICDE.2006.9} (\bibinfo{year}{2006}).
 
 \end{thebibliography}
