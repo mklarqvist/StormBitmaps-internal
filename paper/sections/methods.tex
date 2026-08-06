@@ -178,8 +178,14 @@ total container count. The threshold governing that choice is a vendor fact rath
 of ours: CRoaring stores a $2^{16}$-bit chunk as an array container unless the chunk's own cardinality
 exceeds the compile-time constant \texttt{DEFAULT\_MAX\_SIZE}, whose value is
 4096 (declared as
-\texttt{enum \{ DEFAULT\_MAX\_SIZE = 4096 \}} at \texttt{roaring.h:2486}, and tested at dispatch as
-\texttt{size <= DEFAULT\_MAX\_SIZE} at \texttt{roaring.h:5515}, in the pinned version below). The same fixed commitment prices a run container against a bitset by iterating every run and
+\texttt{enum \{ DEFAULT\_MAX\_SIZE = 4096 \}} at \texttt{roaring.h:2486}, and applied at insertion by
+\texttt{array\_container\_try\_add(ac, val, DEFAULT\_MAX\_SIZE)} in \texttt{container\_add},
+\texttt{roaring.h:5690}, in the pinned version below). The constant is not a tuning knob: it is an
+\texttt{enum} with no override, it is enforced as a structural invariant by
+\texttt{array\_container\_validate} and \texttt{bitset\_container\_validate}
+(\texttt{roaring.c:7133}, \texttt{roaring.c:8263}), and the portable serialization format writes no
+array-versus-bitset type tag at all, reconstructing the type from cardinality against this same
+constant on read (\texttt{roaring.c:14421}, \texttt{roaring.c:14553}). The same fixed commitment prices a run container against a bitset by iterating every run and
 charging for its length (\texttt{run\_bitset\_container\_intersection\_cardinality},
 \texttt{roaring.c:10901}).
 

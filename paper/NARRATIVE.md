@@ -297,6 +297,138 @@ reader who has not read §3, and a title must not require the paper to explain i
 
 ---
 
+## 1d. Narrative arc and novelty position — REFRAMED 2026-08-06, supersedes conflicting text below
+
+Five novelty claims were adversarially fact-checked against the literature on 2026-08-06 (one
+subagent per claim, each instructed to refute rather than confirm). **Three were refuted and two
+were partially covered.** The corrected position is recorded here because it changes what the paper
+may claim, not what it may report. Nothing measured is retracted.
+
+### What the checks actually found
+
+| Claim as posed | Verdict | Why |
+|---|---|---|
+| Analytic theory of why Roaring works | already covered | Wu, Otoo & Shoshani (LBNL-49626, 2004; TODS 31(1), 2006) §4.2 Eq. (1) is *algebraically identical* to THEORY.md Prop. 8's `W` row — both are `(m/p)[1−(1−d)^{2p}−d^{2p}]`, differing only in payload width `p=w` (EWAH) vs `p=w−1` (WAH). Symmetry about `d=½` is their §6. `E[r]=k(m−k+1)/m` is Mood (1940). |
+| Container threshold is mistuned | partially | That 4096 minimises *storage* is the published design rationale, in the authors' words. The *compute* crossover (k≈64–128) is unmeasured anywhere public — that part stands. |
+| Zone maps are novel here | already covered as a mechanism | Roaring's key array is an occupancy summary at 2^16; BitFunnel §4.1 higher-rank rows are near-exact; Lucene `SparseFixedBitSet` is one occupancy bit per 64-bit word. |
+| Bounded queries are novel here | partially | Size bound is Swamidass–Baldi on fingerprint bitmaps; shipped as chemfp's BitBound over popcount-sorted fingerprints at N×N scale. Prefix filtering is Chaudhuri et al. (ICDE 2006); the `p(X)` formula is Xiao et al. Anastasiu & Karypis (2016) already combine both for Tanimoto on binary vectors. |
+| Remembering block decisions is novel | already covered | CRoaring stores the decision: `roaring_array_t.typecodes` (`roaring.h:862`), `container_and` dispatches over stored tags (`roaring.h:5915`), and `lazy_or`/`repair_after_lazy` amortise per-block bookkeeping across a batch by design. |
+
+### The position that replaces them — collegial, and it needs no invention claim
+
+**This paper does not find fault with Roaring and must never read as though it does.** Roaring
+minimises serialised size and is excellent at it. This work asks a different question: *what if
+query performance is what matters, and some storage may be spent to get it?* That is a different
+objective, not a better answer to Roaring's.
+
+Two results follow, and they should be presented as two tracks because they have different costs:
+
+**Track A — speedups at no storage cost.** Roaring carries a second constant of an entirely
+different kind from the container threshold: `const int threshold = 64;  // subject to tuning`, at
+four sites (`roaring.c:6956`, `:6995`, `:7021`, `:7041`), selecting merge versus galloping inside
+array×array intersection. It is pure compute — no bytes stored, nothing serialised, no format
+implication — and the authors flag it as untuned in the paper itself: *"We arrived at this threshold
+(c₁/64 < c₂ < 64c₁) empirically as a reasonable choice, but it has not been finely tuned."* Tuning
+it is a free win, upstreamable as-is, and it costs the user nothing. Note the contrast the library
+itself draws: this constant is annotated *subject to tuning*; the container enum at `roaring.h:2486`
+is not, because it is not that kind of constant. **The library already separates storage constants
+from compute constants; it has simply never documented which is which.**
+
+**Track B — larger speedups, paid for in storage.** Runtime container promotion, a sub-container
+occupancy summary, and thresholded operation. This is where the 10–100× lives, and it is explicitly
+a trade: query cost down, bytes up. State the exchange rate rather than burying it. (C33 must be
+fixed before this is quotable.)
+
+**The mechanisms in Track B are established elsewhere and absent from this lineage. The measured
+gain is the evidence that the absence was costly and the transfer non-obvious.** That is a
+legitimate, common, defensible contribution and it is what the measurements support. Show the
+absence in CRoaring's own source rather than asserting it:
+
+- **No occupancy summary below container granularity.** Zero occurrences of any such structure; the
+  key array summarises at 2^16 and nothing summarises beneath it.
+- **No size-bound pruning, with the statistic already in hand.** `roaring_bitmap_jaccard_index`
+  (`roaring.c:17892`) reads `c1` and `c2` and then calls `roaring_bitmap_and_cardinality`
+  unconditionally. The size bound needs only `min(c1,c2)/max(c1,c2)`; there is no threshold
+  parameter in the API, so there is nothing to prune against. Six lines, and they make the point.
+- **Rank exists but is not used to skip intersection work** — it serves `select`/`rank` queries.
+
+**Never write that Roaring is handicapped, mistuned, or defective.** 4096 is the exact optimum of
+the objective its authors stated ("To decide the best container type, we are motivated to minimize
+storage"). Nobody characterised the constant a *query-cost* objective induces. That is a question
+not asked, not a flaw missed — and it is the framing most likely to survive a reviewer who may well
+be Lemire.
+
+**Supporting evidence nobody has published.** RoaringBitmap/roaring (Go) PR #107 forced bitmap
+containers for speed, measured 50× in production, and was reverted by Lemire in PR #331 on memory
+grounds. The effect surfaced once, anecdotally, was traded away as a memory decision, and was never
+characterised. Cite it by number: it makes "nobody investigated the consequence" concrete rather
+than asserted, and it independently corroborates that the compute win is real.
+
+### The seven-step arc — the narrative spine
+
+Chronological order is permitted here because the construction is genuinely staged: each step exists
+because the previous one exposed a limit. `manuscript-architecture` requires the reason for the
+order to be visible in the text; make it so.
+
+1. **Test Roaring at scale** on the largest bitsets, under a query-cost objective rather than a
+   storage one, and observe where time actually goes.
+2. **Build a representation-pairing implementation** and measure a large margin over stock Roaring.
+   **Report this as a diagnostic, not as the result** — step 4 explains why.
+3. **Attribute the margin.** It is not a defect: the container rule is optimal for serialised size,
+   which is the objective it was designed against. Under a query-cost objective the optimum sits
+   elsewhere. Characterise both, and show they are limits of one parameterised objective 32–64×
+   apart.
+4. **Re-measure against Roaring at its best.** Apply the compute-oriented choice to CRoaring itself
+   and re-run. Much of step 2's margin disappears; say so plainly. This is what makes every later
+   number credible. Establish here that the container constant is fixed by the interoperable format
+   — type is inferred from cardinality on read (`roaring.c:14421`, `:14553`; RoaringFormatSpec §2)
+   and `bitset_container_validate` (`roaring.c:8263`) rejects deviation — so a compute-oriented
+   choice must be a runtime, in-memory, never-serialised pass. This is *why* the remaining gains
+   have to come from a layer above the container rather than from retuning it.
+   Report Track A here too: the galloping constant is a free speedup with no storage or format
+   consequence, and it is the one change upstream can take unmodified.
+5. **Add an occupancy summary below the container.** Introduce as a known mechanism (BitFunnel;
+   Roaring's own key array at coarser grain); claim the sub-container placement, the gating policy,
+   and the cost model. Measure against the step-4 baseline, not against stock.
+6. **Narrow the question** — thresholded and size-banded operation. Introduce as known (Arasu;
+   Chaudhuri; Swamidass–Baldi; chemfp BitBound; Anastasiu & Karypis); claim the composition
+   analysis. Frame as narrowing the *question*, not as a pairwise workload — do not re-enter the
+   retired all-pairs framing.
+7. **Assemble.** This is where the strongest unclaimed result lives: **the mechanisms do not all
+   multiply.** They compose only when they act on different waste *and* read different operand
+   statistics — which is why prefix filtering composes with a zone map and the size bound does not
+   (verified: 4.44× → 1.02× under a decorrelation control). Do not demote this to a concluding
+   paragraph; it is visible only at assembly, and it is the paper's best finding.
+
+**The cost model is not a step — it is the connective tissue.** Pair every empirical step with the
+model that predicts it. Without that, the arc reads as a tuning exercise on one corpus.
+
+### Citation repairs — unconditional, required under any framing
+
+- `wu2006wah` is **in `references.bib` and cited nowhere in the manuscript text**, while the paper
+  re-derives its central equation. Cite it at THEORY/Methods as the source of the per-format
+  expected-size model.
+- **Tree-Encoded Bitmaps** (Lang, Beischl, Leis, Boncz, Neumann & Kemper, SIGMOD 2020) is absent
+  entirely. It uses the same (density, clustering-factor) parameterisation, plots the symmetric
+  curves for Roaring specifically, and maps where uncompressed wins in space *and* time. Most
+  damaging single omission.
+- Size filter is **Arasu, Ganti & Kaushik (VLDB 2006)**, not Bayardo; prefix filtering is
+  **Chaudhuri, Ganti & Kaushik (ICDE 2006)**, not Xiao (Xiao cites it as "[8, Lemma 1]"). Currently
+  misattributed at `sections/supplementary.tex:76`.
+- Add: Mann/Augsten/Bouros (PVLDB 2016), Anastasiu & Karypis (DSAA 2016), Sandes et al.
+  (Inf. Syst. 2020), Morzy et al. (ADBIS 2003), Mood (1940), Fréchet/Boole.
+- `1 − e^{−y}` is the `p/m → 0` limit, **not exact** (exact: `1 − C(m−p,p)/C(m,p)`), and it assumes
+  uniformly scattered prefixes — the model the similarity-join literature explicitly abandoned,
+  since frequency-ordered prefixes are what make the filter work. Present as a null-model gate, not
+  a law. Drop "regardless of density, threshold or universe size."
+
+### Bookkeeping
+
+CRoaring PR #851 and issues #822/#823/#824/#841 are **this project's own 2026 filings**. They are
+not independent prior art and must never be cited as such.
+
+---
+
 ## 2. The thesis
 
 **The one-line form, in the author's words, and the sharpest statement of it:**
