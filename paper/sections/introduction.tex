@@ -55,11 +55,12 @@ matrix of \nm{count of representation-pairing cells evaluated} cells over dense-
 sorted-array, run, and fill-compressed representations and their complements, and we measure, per
 cell, which pairing is fastest across the full density range, on \nm{count of microarchitectures
 tested} microarchitectures, and on \nm{count of real corpora tested} real corpora drawn from graph,
-text, and tabular sources. Cost across that range is U-shaped rather than monotonic, so the
-operative variable is distance from density one half and not sparsity. A throughput-optimized kernel
-wins none of \nm{count of asymmetric measurement points tested} asymmetric measurement points
-tested; the decision itself stays within a small, budgeted fraction of runtime once it is hoisted
-above the innermost loop; the winning pairing migrates with density across every real corpus tested;
-and the reference implementation's own container statistics show why a threshold fixed at compile
-time misprices a corpus that is dense in aggregate. We also report where the approach does not pay:
-a mid-density band in which the plain bitmap kernel is, and remains, the right choice.
+text, and tabular sources. Cost across that range is U-shaped rather than monotonic, so the operative
+variable is distance from density one half, and the winning pairing migrates with density across
+every real corpus tested. The reference implementation's container statistics show why: its rule is
+the exact optimum of a serialized-size objective, and a query-cost objective places the crossover
+elsewhere. A throughput-optimized kernel wins none of \nm{count of asymmetric measurement points
+tested} asymmetric points tested, so the advantage is work avoided rather than work accelerated, and
+the decision itself stays within a budgeted fraction of runtime once hoisted above the innermost
+loop. We also report where the approach does not pay: a mid-density band in which the plain bitmap
+kernel is, and remains, the right choice.

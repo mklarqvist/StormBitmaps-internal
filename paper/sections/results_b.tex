@@ -1,181 +1,152 @@
 % sections/results_b.tex
-% Results R5-R7: real-corpus evaluation, the CRoaring container-threshold
-% mechanism, and the method's scope limits. Continues \section{Results}
+% Results R4-R6: which kind of speedup wins, what the choice itself costs,
+% and the method's scope limits. Continues \section{Results}
 % opened in sections/results_a.tex; do not re-issue \section{Results} here.
 
-\subsection*{The winning representation pairing migrates across real corpora}
+\subsection*{Avoiding work beats accelerating it, and the gap widens with working-set size}
 \label{sec:r4}
 
-The sweeps above vary density and working-set size by construction, and a generator can always be
-suspected of encoding exactly the structure its own kernels are built to exploit. We therefore
-repeated the central comparison on corpora of independent provenance: the twelve corpora CRoaring's
-own benchmark harness runs by default \cite{chambi2016roaring,lemire2018roaring}, together with
-\prov{five} larger modern graphs, for \prov{17} corpora spanning \prov{$7.89\times10^{-7}$ to
-$1.73\times10^{-1}$} in density and \prov{$1.995\times10^{5}$ to $3.697\times10^{7}$} bits in universe
-size (full provenance, and the further corpora scored only against an all-bitmap baseline, in
-Supplementary Table~\ref{tab:corpus-inventory}, Supplementary Note~\ref{note:corpora}). Every corpus is scored against
-the same \texttt{run\_optimize()}-tuned CRoaring baseline used throughout Results, so this comparison
-is continuous with the synthetic sweeps above rather than separate from them.
+The subsections above establish \emph{which} pairing to choose and why a container rule priced for
+storage does not choose it; this one asks \emph{what kind of speedup} the choice actually delivers
+-- accelerating work or avoiding it -- holding corpus shape fixed and varying working-set size and
+microarchitecture instead. Given that most cells beat
+$\cell{\rB}{\rB}$, we asked what mechanism is responsible for the asymmetric cells' advantage,
+since the answer determines what those kernels should be built around. We raced all
+\nm{count of asymmetric pairing cells raced} asymmetric cells ($\cell{\rB}{\rS}$, $\cell{\rB}{\rR}$,
+$\cell{\rB}{\rW}$, $\cell{\rS}{\rR}$, $\cell{\rS}{\rW}$) at \nm{count of corpus shapes tested} corpus
+shapes -- \nm{count of asymmetric-cell measurement points, expected twenty-five} measurement points in
+total -- with work-avoidance strategies (a rank lookup, a zone-map skip \cite{goodwin2017bitfunnel},
+a galloping search) raced head to head against SIMD-throughput variants of the same cells. Separately,
+we repeated the comparison as corpus footprint crossed from L1- to L2- to DRAM-resident, on
+\nm{count of microarchitectures in the working-set sweep} microarchitectures.
 
-Table~\ref{tab:corpora} reports, for every corpus, universe size and density, the pairing cell that
-won under best-cell (oracle) selection, and the ratio against tuned CRoaring and against an
-all-bitmap baseline. Both ratios are oracle: hindsight choice of representation pairing with
-no selection cost charged, not the deployed selector run end to end (Methods, ``Selection policies:
-per-pair, per-tile, and probe-and-commit''); an end-to-end evaluation of the deployed selector is
-not part of this study.
-Storm's best cell beat tuned CRoaring on \prov{17 of 17} corpora tested, ratio range
-\prov{$1.12\times$ to $16.06\times$}, median \prov{$\approx 6.1\times$}, excluding
-\texttt{uscensus2000} and \texttt{dimension\_033}, whose repeats could not be pinned to the precision
-shown (Methods, ``Statistics and aggregation''; their density and winning cell are unaffected and
-still reported).
+The winning variant at essentially every asymmetric measurement point was a rank lookup, a zone-map
+skip, or a search-strategy choice, never a wider vector: \nm{count of asymmetric measurement points
+won by a work-avoidance strategy} of \nm{total asymmetric measurement points, expected twenty-five}
+(Fig.~\ref{fig:strategy-decay}a). Read as a map rather than a count, that panel gives the winning
+strategy class for every cell at every corpus shape, and the work-avoidance class occupies all of it
+except the $\cell{\rB}{\rB}$ column. This is the positive result the asymmetric cells are built
+around: each is already proportional to the small side of the pair, so the available saving lies in
+not touching the large side at all, and the measurement confirms that is exactly where the winning
+variants put their effort.
 
-\begin{table}[!t]
-\scriptsize
-\setlength{\tabcolsep}{2.2pt}
-\renewcommand\arraystretch{1.05}
+This outcome is scoped to the \emph{asymmetric} cells alone, and the scope matters because the
+obvious misreading is available and wrong. Those cells are already work-proportional to the smaller
+operand, so the quantity a wider vector could accelerate is
+small by construction; there is little there for throughput to win, and the remaining saving lies in
+not touching the larger operand. The complement holds with equal force and is measured here too.
+$\cell{\rB}{\rB}$ is the one cell whose work is, in the generic case, not avoidable --- it is the
+red waist of Fig.~\ref{fig:density-sweep}d --- and it is exactly there that throughput optimization
+pays: adding an AVX-512 \texttt{VPOPCNTQ} path took that cell from \nm{scalar $\cell{\rB}{\rB}$
+cost, ns per pair} to \nm{AVX-512 $\cell{\rB}{\rB}$ cost, ns per pair}, an improvement of
+\nm{$\cell{\rB}{\rB}$ speedup from the AVX-512 \texttt{VPOPCNTQ} path}, and it was the right
+investment for precisely the reason the asymmetric cells did not need one. The finding is not that
+vectorization fails to help; it is that the two mechanisms have disjoint domains, and that the
+density analysis of the preceding subsection tells a system which domain it is in before it commits.
+
+The same asymmetry widened with working-set size. On every microarchitecture measured, the
+SIMD-throughput advantage on $\cell{\rB}{\rB}$ -- the one cell whose underlying work is, in the
+generic case, not avoidable -- shrank as the corpus grew past L2 residency, from \nm{SIMD speedup over scalar
+$\cell{\rB}{\rB}$ at L2 residency, per host} at L2 residency to \nm{SIMD speedup over scalar
+$\cell{\rB}{\rB}$ at DRAM residency, per host} at DRAM residency, while the work-avoidance advantage
+on the asymmetric cells held or grew over the same range, from \nm{work-avoidance speedup at L2
+residency, per host} to \nm{work-avoidance speedup at DRAM residency, per host}.
+\spec{We expect this widening to hold as genuine growth, not merely a plateau, on every host measured,
+resolving the asymmetry between hosts observed previously.} The
+two mechanisms therefore scale in opposite directions with the memory hierarchy: vector width buys
+relatively less as the hierarchy gets less friendly to it, on the one cell whose work cannot in the
+generic case be avoided, while the cells built around skipping keep or extend their edge
+(Fig.~\ref{fig:strategy-decay}b).
+
+\begin{figure}[!t]
 \centering
-\caption{\textbf{The winning representation pairing migrates with corpus density.} \prov{14 of 23}
-real corpora (Methods, ``Corpora, provenance and loaders''; full inventory in Supplementary
-Table~\ref{tab:corpus-inventory}), grouped by density band and chosen to span every domain and both
-speedup extremes; the remaining \prov{9} corpora are summarised in the final row.
-\texttt{1KGP3 chr20} (haplotype-major) is included in the Mixed band as this paper's own stated
-counterexample and is not omitted for being unflattering. Both ratio columns are oracle:
-best-cell selection with hindsight, no selection cost charged, not the deployed end-to-end selector
-(Methods, ``Selection policies: per-pair, per-tile, and probe-and-commit''). ``vs.\ CRoaring'' is
-against a \texttt{run\_optimize()}-tuned baseline
-\cite{chambi2016roaring,lemire2018roaring}. ``vs.\
-all-bitmap'' is context only, from a separate benchmark, and the two ratio columns in one row need
-not come from the same measurement. Winning cell in bold, and the vs.\ CRoaring ratio is bold on the same rows, marking the
-rows for which a confirmed oracle result exists; ---, not applicable. $^\dagger$ ratio not
-quotable to the precision shown (Methods, ``Statistics and aggregation''); density and winning cell
-are corpus properties and unaffected. $^\ddagger$ vs.\ all-bitmap only; no CRoaring value exists for
-this row. $^\S$ scoping corpus, not part of the 23-corpus set; a ratio below $1.0\times$ is a genuine
-loss for selection at this density and layout. \draftnote{All values provisional, pending the final
-measurement campaign.}}
-\label{tab:corpora}
-\begin{tabular}{@{}c l l r r l r r@{}}
-\toprule
-& Corpus & Domain & {Universe $m$ (bits)} & {Density} & Winning cell & {vs.\ CRoaring (oracle, $\times$)} & {vs.\ all-bitmap ($\times$)} \\
-\midrule
-\multirow{7}{*}{Sparse}
-& \texttt{enwiki-categorylinks} & IR      & {1.30e8} & {7.89e-7} & {\nm{cell}} & {\nm{n/a}} & {\prov{1083}$^\ddagger$} \\
-& \texttt{uscensus2000}$^\dagger$ & census & {3.70e7} & {8.09e-7} & {\prov{B$\times$S}$^\dagger$} & {$^\dagger$} & {$^\dagger$} \\
-& \texttt{dbpedia-link}         & graph   & {1.83e7} & {1.63e-6} & {\nm{cell}} & {\nm{n/a}} & {\prov{311}$^\ddagger$} \\
-& \texttt{as-skitter}           & graph   & {1.70e6} & {9.08e-6} & \textbf{\prov{B$\times$S}} & {\textbf{\prov{4.02}}} & {\prov{756}} \\
-& \texttt{wiki-Talk}            & graph   & {2.39e6} & {2.17e-5} & \textbf{\prov{B$\times$S}} & {\textbf{\prov{8.80}}} & {\prov{910}} \\
-& \texttt{gnomad\_chr21\_exomes\_af1e-3} & genomics & {1.46e6} & {1.93e-5} & {\nm{cell}} & {\nm{n/a}} & {\prov{222}$^\ddagger$} \\
-& \texttt{dimension\_008}       & druid   & {3.87e6} & {8.98e-5} & \textbf{\prov{R$\times$R}} & {\textbf{\prov{1.73}}} & {\prov{2846}} \\
-\midrule
-\multirow{5}{*}{Mixed}
-& \texttt{usher\_sarscov2}      & genomics & {8.45e6} & {1.87e-3} & {\nm{cell}} & {\nm{n/a}} & {\prov{121}$^\ddagger$} \\
-& \texttt{wikileaks-noquotes}   & text    & {1.35e6} & {1.02e-3} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{6.79}}} & {\prov{67}} \\
-& \texttt{census1881}           & census  & {4.28e6} & {1.17e-3} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{16.06}}} & {\prov{151}} \\
-& \texttt{dimension\_033}$^\dagger$ & druid & {3.87e6} & {5.78e-3} & {\prov{B$\times$R}$^\dagger$} & {$^\dagger$} & {$^\dagger$} \\
-& \texttt{1KGP3 chr20} (hap.-major)$^\S$ & genomics & {1.05e6} & {3.1e-2} & \textbf{\prov{B$\times$B}} & {\nm{n/a}} & {\prov{0.93}$^\S$} \\
-\midrule
-\multirow{3}{*}{Dense}
-& \texttt{weather\_sept\_85}    & sensor  & {1.02e6} & {6.34e-2} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{15.02}}} & {\prov{2}} \\
-& \texttt{msprime\_10k}         & genomics-sim & {2.00e4} & {9.4e-2} & {\nm{cell}} & {\nm{n/a}} & {\prov{2}$^\ddagger$} \\
-& \texttt{census-income}        & census  & {2.00e5} & {1.73e-1} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{13.11}}} & {\prov{1}} \\
-\addlinespace
-& \multicolumn{2}{l}{remaining \prov{9} corpora (Supplementary Table~\ref{tab:corpus-inventory})} & {---} & {\prov{4.15e-6--7.9e-2}} & varies & {\prov{1.12--6.07}} & {\prov{3--523}} \\
-\bottomrule
-\end{tabular}
-\end{table}
+\figplaceholder{0.9}{(a) winning strategy class for every cell $\times$ corpus shape; (b) SIMD and work-avoidance speedup on B$\times$B against corpus footprint from L1 to DRAM residency, by host}
+\caption{\textbf{Vectorization's advantage decays with working-set size; work avoidance does not.}
+\textbf{a}, Strategy map: for each pairing cell (columns) at each corpus shape (rows), the class of
+the winning variant --- work avoidance (rank lookup, zone-map skip or search-strategy choice) versus
+SIMD throughput --- over \nm{total asymmetric measurement points} measured cell--shape points.
+$\cell{\rB}{\rB}$ is the only cell in which a vectorized variant is available to win at all.
+\textbf{b}, Speedup over a common scalar $\cell{\rB}{\rB}$ baseline against corpus footprint, on
+\nm{host count in the working-set sweep} hosts spanning \nm{list of ISAs covered by the working-set
+sweep}: a SIMD dense-bitmap variant (solid) and a zone-map-planned variant of the same cell
+(dashed), so the two series differ only in mechanism. Line style encodes mechanism, colour encodes
+host. Vertical guides mark the boundary between L2-, last-level-cache- and DRAM-resident footprints
+on \nm{reference host for the cache-boundary guides}; the footprint-to-cache-level mapping differs
+by host (Methods, ``Benchmark protocol and cache-residency statement''). Horizontal dashed line at
+$1.0\times$ (no benefit over scalar). Corpus shape held fixed at \nm{corpus shape held fixed across
+the working-set sweep} throughout \textbf{b}.}
+\label{fig:strategy-decay}
+\end{figure}
 
-More informative than either ratio is which cell wins where. Across the corpus set, \prov{$\cell{\rB}{\rB}$
-wins 10, $\cell{\rB}{\rS}$ wins 3, $\cell{\rB}{\rR}$ wins 2, $\cell{\rS}{\rS}$ wins 1, and
-$\cell{\rR}{\rR}$ wins 1}: no cell accounts for a plurality, let alone all of the corpora. Had one
-cell dominated, the pairing matrix would have had nothing left to select among; instead the winner
-tracks each corpus's density, as the density sweep above predicts. \spec{The sparse end is won by
-array- and rank-based cells, the dense end by $\cell{\rB}{\rB}$, and clustered corpora by run-based
-cells -- the same three regimes the U-shaped curve predicts, now read off independently sourced data
-rather than a generator.} The fill-compressed cell, $\cell{\rW}{\rW}$, underperforms tuned CRoaring on
-\prov{16 of 17} corpora, \spec{the clearest real-data instance of the cost of choosing wrong that this
-paper argues throughout}. Taken together, the migration and the histogram, not any single ratio, are
-the result reported here: a map of which representation is correct for which corpus, read directly
-off data whose structure this project did not generate.
-
-\subsection*{A storage-priced container rule leaves query cost unclaimed}
+\subsection*{Selection must be hoisted, and measured rather than modelled}
 \label{sec:r5}
 
-Several corpora at moderate-to-high global density -- \prov{$1.2\times10^{-3}$ to $1.7\times10^{-1}$}
--- lose to Storm by more than an equally dense popcount workload should explain
-(Table~\ref{tab:corpora}), so we asked whether CRoaring's own container choice, not only Storm's
-kernels, accounts for the gap. We used CRoaring's own introspection API to census the array, bitset
-and run containers a \texttt{run\_optimize()}-tuned bitmap settles on, counted after tuning so the
-census reflects how the library is actually deployed (Methods, ``Container census'').
+Every subsection so far charges only the cost of computing once a cell is chosen; this one charges
+the cost of the choice itself. The cells characterized above are only a saving if selecting among
+them is nearly free, so we measured the cost of that selection at three granularities against a
+runtime budget of \nm{selection-cost budget, as a fraction of runtime} of total runtime. We compared
+selecting per pair -- a decision made at every $(i,j)$ -- against hoisting the decision to tile
+granularity, where a whole pre-partitioned block of pairs shares one kernel choice, and against
+probe-and-commit, the $\varepsilon \to 0$ policy from Micro Adaptivity
+\cite{raducanu2013microadaptivity}, which times a handful of a tile's pairs under the candidate
+kernels and commits to the winner for the rest. We report each policy's cost as a percentage of
+total runtime, and its regret against a bucket oracle that already knows the winning cell, on
+\nm{count of hosts the selection-cost sweep was measured on} hosts. See Methods, ``Selection
+policies: per-pair, per-tile, and probe-and-commit,'' for the budget, the tile geometry and the
+probe count.
 
-\begin{table}[!t]
-\footnotesize
-\setlength{\tabcolsep}{6pt}
-\renewcommand\arraystretch{1.05}
+What those policies have in common is the fourth mechanism of the ladder above: the contract is
+unchanged and the answer is identical, but the saving comes from paying once for a quantity that
+would otherwise repeat across every pair of a batch --- row metadata, the selection decision itself,
+or operand data movement. The measurements reported here were taken in that regime, which applies
+wherever there are enough operations to share a decision; see Supplementary Note~\ref{note:batch} and Supplementary
+Fig.~\ref{fig:batch} for which quantities repeat and how each is amortised.
+
+Per-pair selection failed that budget outright: \nm{per-pair selection cost, percent of runtime,
+range across hosts and corpora} of runtime, well beyond what the budget allows -- the saving
+established above is real, and at per-pair granularity the decision consumes it. Hoisting the
+decision passed the same budget with \nm{headroom of the hoisted policies against the budget, as a
+factor} of headroom: per-tile selection cost \nm{per-tile selection cost, percent of runtime},
+probe-and-commit \nm{probe-and-commit selection cost, percent of runtime}
+(Fig.~\ref{fig:selection-cost}a).
+
+Against the bucket oracle, measured selection beat modelled selection outright: regret ranked
+\nm{regret ranking and magnitude, probe-and-commit vs.\ per-tile vs.\ all-bitmap-always vs.\ a
+closed-form per-pair cost model}, with the closed-form model alone landing worse than making no
+selection at all (Fig.~\ref{fig:selection-cost}b). This is the direct justification for
+probe-and-commit over a cost model: predicting the winning cell from precomputed metadata costs less
+to measure than to model correctly.
+
+The work-avoidance filter is itself a decision, not a fixed component. Applied unconditionally, the
+zone-map filter was a net loss across the corpus set -- geometric mean
+\nm{geomean speedup, filter applied unconditionally}, worst case
+\nm{worst-case speedup, filter applied unconditionally}, and
+\nm{count of corpora harmed when the filter is applied unconditionally} of
+\nm{total corpora in the gating comparison} corpora harmed -- while gating it on a cheap online test
+never lost and often won large (Fig.~\ref{fig:selection-cost}c). A filter only pays when it filters,
+and knowing when it filters is the same selection problem one level down. Selection at this scale is
+therefore no longer harmful, though it is not yet optimal: nothing measured lands within roughly
+\nm{residual factor from the bucket oracle, expected order approximately 1.5$\times$} of the bucket
+oracle.
+
+\begin{figure}[!t]
 \centering
-\caption{\textbf{Roaring's fixed per-chunk threshold is tested against the wrong statistic.}
-Container composition of a \texttt{run\_optimize()}-tuned CRoaring bitmap
-\cite{chambi2016roaring,lemire2018roaring}, counted after tuning (Methods, ``Container census''), for
-\prov{four} corpora spanning the density range of Table~\ref{tab:corpora}, including
-\texttt{uscensus2000} at extreme sparsity to check whether the same array-container plurality
-persists there too (it does). Roaring assigns a bitset
-container to a $2^{16}$-bit chunk only when that chunk's own cardinality exceeds a fixed compile-time
-constant \prov{(4096; vendor source, not measured here)} --- a per-chunk statistic, not the corpus's
-global density --- so a corpus that is dense in aggregate can receive almost no bitset containers.
-Total chunks sums the three container counts. Bold marks the plurality container type per
-row; all four rows are plurality-array. \draftnote{All values provisional, pending the final
-measurement campaign.}}
-\label{tab:census}
-\begin{tabular}{@{}l r r r r r@{}}
-\toprule
-Corpus & {Global density} & {Array containers} & {Bitset containers} & {Run containers} & {Total chunks} \\
-\midrule
-\texttt{uscensus2000}   & {\prov{8.1e-7}} & {\textbf{\prov{2{,}219}}} & {\prov{0}} & {\prov{2}} & {\prov{2{,}221}} \\
-\texttt{census1881}     & {\prov{1.2e-3}} & {\textbf{\prov{1{,}332}}} & {\prov{0}} & {\prov{132}} & {\prov{1{,}464}} \\
-\texttt{weather\_sept\_85} & {\prov{6.3e-2}} & {\textbf{\prov{2{,}274}}} & {\prov{561}} & {\prov{21}} & {\prov{2{,}856}} \\
-\texttt{census-income}  & {\prov{1.7e-1}} & {\textbf{\prov{553}}} & {\prov{180}} & {\prov{35}} & {\prov{768}} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-On \texttt{census1881} at \prov{$1.2\times10^{-3}$} global density, the tuned bitmap holds
-\prov{1{,}332} array containers against \prov{\textbf{0}} bitset and \prov{132} run containers, out of
-\prov{1{,}464} chunks (Table~\ref{tab:census}): essentially no chunk ever crosses the threshold,
-despite the corpus being dense by any global measure. The threshold tests a per-chunk statistic -- a
-chunk's own cardinality -- rather than the corpus's global density, so mass can spread across enough
-chunks that every individual chunk stays under threshold while global density reaches \prov{6.3\%}
-(\texttt{weather\_sept\_85}) or \prov{17.3\%} (\texttt{census-income}), and CRoaring runs array merges
-where a bitmap popcount would be strictly cheaper. This is not evidence of poor engineering; it is
-evidence that a threshold fixed once, at ingest, for a workload built around a single pairwise
-operation cannot be correct at every global density a corpus is later evaluated at -- the
-fixed-granularity limitation this paper's opening names.
-
-That mechanism predicts that no single fixed cardinality threshold can be correct across the density
-axis, the same argument this paper makes generally, now applied to the incumbent. The constant itself
-points at why: \prov{4096} is where a stored array and a bitset consume equal memory -- a size
-crossover, chosen for storage rather than for compute -- while the compute crossover for a
-count-only AND on this host sits at cardinality \prov{64--128}, so the stock threshold is
-\prov{30--60$\times$} too high for this workload. We tested the prediction directly: promoting array
-containers above cardinality \prov{$\approx$64} to bitsets after
-\texttt{run\_optimize()} -- a twenty-line change to CRoaring -- removes most of the dense-corpus
-advantage above (\texttt{census1881} \prov{$13.40\times \to 0.59\times$}; \texttt{census-income}
-\prov{$10.65\times \to 1.88\times$}; \texttt{wikileaks-noquotes} \prov{$5.15\times \to 3.67\times$}),
-while several sparse corpora are unaffected or improve (\texttt{as-skitter}
-\prov{$3.35\times \to 3.23\times$}; \texttt{dbpedia-link} \prov{$2.44\times \to 2.79\times$};
-\texttt{uscensus2000} \prov{$2.27\times \to 2.76\times$}), for a net \prov{$\approx19.5\times$} gain on
-dense corpora against a \prov{$0.6$--$0.8\times$} loss on sparse ones. Neither \prov{4096} nor
-\prov{64} is correct at both ends of the density axis: this is the paper's own thesis demonstrated
-inside the incumbent, and it reframes the finding above from a defect in Roaring to a case for
-adaptive selection in Roaring, for the same reason Storm needs it.
-
-What this withdraws is a kernel-level advantage -- Storm's dense cells beating CRoaring's dense cells
--- which was never the paper's contribution. With the avoidance mechanisms above (zone maps, gating,
-the size bound) applied on top of either CRoaring configuration, representation selection still wins,
-because those mechanisms sit above whichever kernel is underneath them and compose with a better one
-exactly as they compose with a worse one. The array-promotion fix itself is offered upstream rather
-than scored against: it is a twenty-line change to a widely deployed library, not a criticism of
-its engineering. \draftnote{Re-derive every CRoaring column in
-Table~\ref{tab:corpora} against the array-promotion baseline before submission, and report both
-baselines throughout.}
-
+\figplaceholder{0.9}{Selection cost against the runtime budget, regret against a bucket oracle, and gated-vs-unconditional filter speedup, by policy and host}
+\caption{\textbf{Selection is cheap only when hoisted, and work avoidance must itself be gated.}
+\textbf{a}, Selection cost as a percentage of total runtime for three policies -- per-pair, per-tile,
+and probe-and-commit -- on \nm{host count in the selection-cost sweep} hosts. Dashed line marks the
+\nm{selection-cost budget, as a fraction of runtime} runtime budget; hatched bars fail it.
+\textbf{b}, Regret of each policy against a bucket oracle that times every candidate cell in bulk
+over pairs grouped by shape and keeps the per-bucket minimum -- an unattainable, non-deployable
+denominator, and a measured lower bound on true per-pair regret (Methods, ``Selection policies:
+per-pair, per-tile, and probe-and-commit''). Hatched bars (all-bitmap;
+the per-pair cost model) are shown for scale, not as deployment candidates. \textbf{c}, Speedup of
+the zone-map work-avoidance filter over the unfiltered kernel across
+\nm{count of corpora in the gating comparison} corpora (sorted by unconditional-filter speedup),
+applied unconditionally (grey) versus gated by the same selection machinery as \textbf{a} (green).
+Dashed line at $1.0\times$; annotated counts give the number of corpora harmed under each policy.}
+\label{fig:selection-cost}
+\end{figure}
 \subsection*{Where the method does not pay}
 \label{sec:r6}
 
