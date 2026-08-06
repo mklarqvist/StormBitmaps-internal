@@ -587,6 +587,21 @@ void calibrate(CostModel& m, uint32_t universe, double density) {
         m.ns_per_unit[(int)p] = (double)best / (4.0 * work);
     };
 
+    /* VARIANT NAMES ARE DUPLICATED HERE AND IN storm_allpairs.cpp's Kernels.
+     *
+     * Two independent lists pick which variant of each cell exists: this one
+     * decides what gets TIMED, Kernels decides what gets RUN. They agree today
+     * only because both were edited to. STORM_VARIANT_BS/BR/SS/RR override the
+     * runtime list and not this one, so a variant sweep changes the kernel
+     * while leaving the constant that prices it describing a different kernel.
+     *
+     * That is the same class of defect as the B x R / B x W coin flip -- model
+     * and code disagreeing about what is being executed -- and it is why the
+     * R x R variant sweep could not be run: calibrate() would have kept timing
+     * adaptive2 whatever the runtime used. The lists should be one list.
+     * Recorded rather than merged because merging them touches the kernel
+     * selection path and the session's remaining budget is better spent not
+     * breaking it. */
     // The best variant of each cell, as measured in round 10.
     auto V = [](auto list, const char* nm) {
         for (size_t i = 0; i < list.n; ++i)

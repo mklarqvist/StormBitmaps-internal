@@ -186,7 +186,7 @@ struct Kernels {
           bs_small(pick(cell_bs(), "small")),
           br(pick(cell_br(), variant_override("STORM_VARIANT_BR", "hybrid4"))), bw(pick(cell_bw(), "skip")),
           ss(pick(cell_ss(), variant_override("STORM_VARIANT_SS", "adaptive2"))), sr(pick(cell_sr(), "adaptive2")),
-          rr(pick(cell_rr(), "adaptive2")), ww(pick(cell_ww(), "skip2")) {}
+          rr(pick(cell_rr(), variant_override("STORM_VARIANT_RR", "adaptive2"))), ww(pick(cell_ww(), "skip2")) {}
 };
 
 inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
