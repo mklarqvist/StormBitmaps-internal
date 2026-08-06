@@ -66,6 +66,45 @@ inline uint64_t now_ns() {
  * Note the shape of the result: `adaptive` -- which switches on whether the
  * bitmap is L1-resident, exactly the reasoning that failed three times in the
  * cost model this session -- is beaten by the unconditional ilp8 on all three. */
+/* Cardinality at or below which B x S takes the peeled path. Default 4, the
+ * bound cell_bs's `small` variant was written around; STORM_POINT_MAX sweeps
+ * it, since the kernel's peel bound and the dispatch's best threshold are not
+ * the same question -- the kernel pays the test per element and the dispatch
+ * pays it once per pair.
+ *
+ * SWEPT, including pm=0 which disables the dispatch entirely. Medians of three:
+ *
+ *                        pm=0   pm=4   pm=8  pm=16  pm=32
+ *   enwiki-categorylinks 2.93x  2.53x  3.31x  2.38x  4.60x
+ *   gnomad_chr21         3.01x  2.98x  3.05x  2.94x  2.78x
+ *   as-skitter           1.22x  1.24x  1.25x  1.31x  1.41x
+ *   wiki-Talk            2.53x  2.72x  2.55x  2.57x  2.68x
+ *   census1881_srt       3.79x  3.72x  3.49x  3.57x  1.93x
+ *   com-Orkut            2.01x  2.11x  2.19x  2.06x  2.02x
+ *
+ * No threshold dominates: pm=32 is best on as-skitter (1.41x) and ruinous on
+ * census1881_srt (3.79x -> 1.93x). Means across the six are 2.58 / 2.55 / 2.64
+ * / 2.47 / 2.57 -- all inside the run-to-run spread. 4 stays.
+ *
+ * AND pm=0 IS NOT WORSE, which corrects the commit that added this dispatch.
+ * Its gains were measured by comparing two whole sweeps run at different times
+ * (wiki-Talk 2.29x -> 2.77x, census1881_srt 2.75x -> 3.73x); measured as a
+ * within-run A/B against pm=0 on the same six corpora they do not reproduce.
+ * The dispatch is retained because it is free, principled and cannot hurt a
+ * corpus without small rows -- but it should not be credited with a speedup.
+ * enwiki alone spans 2.38x to 4.60x across this table, which is the size of
+ * effect that cross-sweep comparison was attributing to code changes. */
+static uint32_t point_max() {
+    static const uint32_t v = [] {
+        if (const char* e = std::getenv("STORM_POINT_MAX")) {
+            const long d = std::atol(e);
+            if (d >= 0) return (uint32_t)d;
+        }
+        return 4u;
+    }();
+    return v;
+}
+
 static const char* variant_override(const char* env, const char* dflt) {
     const char* v = std::getenv(env);
     return (v && *v) ? v : dflt;
@@ -128,8 +167,8 @@ inline uint64_t run(const Kernels& K, Pairing p, const Row& d, const Row& s,
          * density-sorted tile is nearly all-small or nearly all-large). This is
          * the point representation for very low cardinality: at |S| <= 4 the
          * set IS its indices and no list machinery is worth entering. */
-        case Pairing::BS: return s.meta.cardinality <= 4 ? K.bs_small(d.B(), s.S())
-                                                         : K.bs(d.B(), s.S());
+        case Pairing::BS: return s.meta.cardinality <= point_max() ? K.bs_small(d.B(), s.S())
+                                                                   : K.bs(d.B(), s.S());
         case Pairing::BR: return K.br(d.B(), s.R());
         case Pairing::BW: return K.bw(d.B(), s.W());
         case Pairing::SS: return K.ss(d.S(), s.S());
