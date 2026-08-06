@@ -93,9 +93,25 @@ static double bb_expected_bins(const RowMeta& a, const RowMeta& b) {
  * the prefetcher run ahead; the two patterns differ by more than an order of
  * magnitude and only one of them is B x S.
  *
- * So 0.05 is fitted, tier 2, and labelled. It reproduces the coefficient that
- * measured 22/23 (0.25 element-units at ns_per_unit[BS] = 0.224 is 0.056
- * ns/touch). The honest fix is a microbenchmark that probes in ascending order
+ * So 0.05 is fitted, tier 2, and labelled.
+ *
+ * RE-MEASURED PAIRED (bench/ab.sh), and the direction above is confirmed while
+ * the term's own value is NOT. A/B where >1 means B faster:
+ *
+ *                        off vs 0.05        0.05 vs 0.25
+ *   census1881         1.039 (0.05, 4/7)  0.920 (0.05, 5/7)
+ *   enwiki-categorylinks 0.930 (off, 5/7) 0.876 (0.05, 7/7)
+ *   com-Orkut          0.993 (tie)        1.001 (tie)
+ *   dimension_033      0.999 (tie)        0.978 (0.05, 4/7)
+ *
+ * 0.25 is decisively worse than 0.05 -- enwiki prefers 0.05 in 7 rounds of 7,
+ * the cleanest signal available here. But 0.05 against OFF is a wash: enwiki,
+ * the corpus that most motivated the term, prefers it off by 7%, and only
+ * census1881 prefers it on. The commit that introduced this credited it with
+ * taking the sweep 21/23 -> 22/23; that was a cross-sweep comparison and does
+ * not survive pairing. Kept at 0.05 because census1881 is the corpus still
+ * losing and it is the one that wants the term, but its worth is unproven and
+ * should not be quoted. The honest fix is a microbenchmark that probes in ascending order
  * at a realistic gap distribution rather than a hostile stride -- at which
  * point the scale should go to 1.0 and this knob should disappear. Open item;
  * the measured rates stay in CostModel so it can be done without re-deriving
