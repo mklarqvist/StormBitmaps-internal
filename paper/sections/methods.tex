@@ -146,8 +146,7 @@ has nothing left to prune and adds only a dense scan over all coarse bins. A hie
 avoid visiting empty regions; a list of occupied entries never visits them at all. The result is
 therefore conditional on that representation rather than on the universe size, and it does not
 exclude a hierarchy over a \emph{dense} summary at universes large enough that the flat AND is itself
-expensive \draftnote{RESEARCH\_PLAN 13.2 records this case as unbuilt; keep the claim scoped to the
-compact-list representation actually measured}. The cost model for this filter, the crossings that bound where
+expensive; that case is not evaluated here. The cost model for this filter, the crossings that bound where
 it pays, and the derivation of the bin width used here are given in
 Supplementary Note~\ref{note:zonemap}.
 
