@@ -66,7 +66,7 @@ REPS=${REPS:-3}
 
 echo "corpus,domain,universe,rows,roaring_ns,allbitmap_ns,pertile_ns,probe_ns,best_ns,vs_roaring,vs_roaring_lo,vs_roaring_hi,cells" > "$OUT"
 printf "%-30s %-11s %12s %10s %10s %9s %-15s %s\n" \
-       corpus domain universe roaring per-tile "vs roar" "(range)" "cell mix (per-tile)"
+       corpus domain universe roaring refine "vs roar" "(range)" "cell mix (refine)"
 win=0; tot=0
 while read -r n total dom; do
   [ -z "$n" ] && continue
@@ -87,22 +87,25 @@ f=lambda p:[float(x) for x in re.findall(p,t,re.M)]
 ro=f(r'^roaring(?:-FIX)?\s+([\d.]+)'); ab=f(r'^all-bitmap\s+([\d.]+)')
 pt=f(r'^per-tile\s+([\d.]+)');        pb=f(r'^probe\s+([\d.]+)')
 rf=f(r'^refine\s+([\d.]+)')
-mix=re.findall(r'^per-tile.*\n.*\n\s+(.*?)\s*\$', t, re.M)
+mix=re.findall(r'^refine.*\n.*\n\s+(.*?)\s*\$', t, re.M)
 mix=(mix[-1] if mix else '').strip()
 if not(ro and ab and pt and pb and rf): print('FAIL|%-30s (parse failed)'%'$n'); sys.exit()
 k=min(len(ro),len(pt),len(pb),len(rf))
-# ONE policy, the one a caller actually gets -- per-tile, the default.
+# ONE policy, the one a caller actually gets -- REFINE, which is per-tile plus
+# the heterogeneity-gated per-pair choice between the tile's top two
+# candidates. Still a single policy, not a best-of: the gate is computed from
+# the data at tile-decision time, not chosen per corpus with hindsight.
 # This was min(pt, pb, rf), which picks the best POLICY per corpus with
 # hindsight. That is the same defect as the best-fixed-cell table this
 # file replaced, and it inflated the win count: refine is a net loss
 # across the corpus set (bench/refine_gate.sh) and was still being
 # credited on the two corpora where it happens to win.
-best=[pt[i] for i in range(k)]
+best=[rf[i] for i in range(k)]
 rat=sorted(ro[i]/best[i] for i in range(k))
 med=st.median(rat)
 print('%s|%-30s %-11s %12s %10.2f %10.2f %8.2fx %-15s %s'%(
       'WIN' if med>=1.0 else 'LOSS','$n','$dom',format(int($u),','),
-      st.median(ro),st.median(pt),med,'[%.2f-%.2f]'%(rat[0],rat[-1]),mix))
+      st.median(ro),st.median(rf),med,'[%.2f-%.2f]'%(rat[0],rat[-1]),mix))
 print('CSV|%s,%s,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%s'%(
       '$n','$dom',$u,'$r',st.median(ro),st.median(ab),st.median(pt),st.median(pb),
       st.median(best),med,rat[0],rat[-1],mix.replace(',',';')))
