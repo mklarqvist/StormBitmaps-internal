@@ -217,6 +217,17 @@ struct RowMeta {
     uint32_t n_nonzero_w = 0;   // bitmap words that are not all-zero
     uint32_t first_set   = 0;   // first set bit  (UINT32_MAX if empty)
     uint32_t last_set    = 0;   // last  set bit  (0 if empty)
+    /* Which auxiliary indexes this row actually carries.
+     *
+     * build_row gates both on whether they can pay (C33), so they are no longer
+     * a property of the build -- they are a property of the ROW. The cost model
+     * has to know, because the same Pairing is a different algorithm with and
+     * without them: B x B with a zone map costs the live bins, B x B without one
+     * costs Theta(m), and those differ by 500x on a sparse row. Predicting the
+     * filtered cost for an unfiltered kernel is what made the tile policy route
+     * 6.7% of census1881 to B x B and pay 818 ns/pair for a 73 ns matrix. */
+    bool     has_rank    = false;
+    bool     has_occ     = false;
 };
 
 // ---------------------------------------------------------------------------

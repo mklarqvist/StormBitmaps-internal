@@ -113,7 +113,18 @@ static void check_representations(const std::vector<Row>& rows, const char* ctx)
 
         // rank: exhaustive at every word boundary plus a few interior bits, so
         // both the absolute counters and the packed 9-bit sub-counters are hit.
-        const BitmapView bv = r.B();
+        //
+        // Built HERE rather than read off r.B(). build_row now gates the index on
+        // mean run length (C33) -- it is universe-proportional, so attaching it to
+        // a row of three isolated bits costs more than it can ever save -- which
+        // means r.B().rank is null for most of these fixtures. The index's own
+        // correctness is not conditional on that policy, so the test constructs it
+        // unconditionally and keeps every case, including the sparse ones that the
+        // gate now excludes at runtime.
+        avec<uint64_t> tr;
+        build_rank(r.bitmap.data(), nw, tr);
+        BitmapView bv = r.B();
+        bv.rank = tr.data();
         uint64_t acc = 0;
         for (uint32_t w = 0; w < nw; ++w) {
             ++g_checks;

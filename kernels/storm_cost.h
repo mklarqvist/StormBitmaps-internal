@@ -69,15 +69,112 @@ struct CostModel {
     // pair free.
     double ns_per_occ_word = 0;
 
+    /* Cost of ONE scattered probe into the dense side's bitmap, which is what
+     * B x S pays per distinct word its sparse side occupies.
+     *
+     * Two values because it is not one number. A probe into a 25 kB bitmap is
+     * an L1 hit and a probe into a 15.8 MB one is a DRAM round trip, and the
+     * corpora here span exactly that range -- so a single constant is wrong at
+     * one end whatever it is set to. predict() picks by the dense row's bitmap
+     * size, which it already has in n_words.
+     *
+     * This lives in CostModel rather than in work_units() because it is a
+     * property of the MACHINE, which is the separation this header opens by
+     * claiming: "the work function is a property of the algorithm and is the
+     * same everywhere, while ns_per_unit is a property of the machine". The
+     * first version of this term violated that -- a fitted 0.25 sitting inside
+     * work_units(), tier 2 on the evidence ladder, correct only on this host. */
+    double ns_probe_hot  = 0;   // bitmap fits in L2
+    double ns_probe_cold = 0;   // bitmap exceeds L2
+    double l2_bytes      = 0;   // measured, not assumed
+
     bool calibrated = false;
 };
 
 // Run the calibration microbenchmarks. Costs a few hundred ms; done once.
-void calibrate(CostModel& m);
+/* Measure the constants on THIS host, for the universe and density the caller
+ * is about to run. Both parameters matter: at 2^14 bits every bitmap probe is
+ * an L1 hit and at 1.3e8 none of them are, so the ratio between a per-element
+ * cell and a per-run cell -- which is a ratio of MISS counts -- is not the same
+ * number in the two regimes. The defaults reproduce the historical calibration
+ * point and are the right choice only for a cache-resident workload. */
+void calibrate(CostModel& m, uint32_t universe = 1u << 14, double density = 0.02);
+
+/* Calibrate on the CALLER'S OWN ROWS -- the offline corpus optimiser.
+ *
+ * calibrate() times a synthetic corpus, and two attempts to make that
+ * representative have now failed in opposite directions: at the default 2^14
+ * bits it measures an L1-resident workload the real corpora never resemble, and
+ * at a real corpus's universe and density the synthetic rows are too sparse for
+ * per-call work to exceed fixed overhead, so every constant inflates.
+ *
+ * The way out is to stop synthesising. The rows are already built and the pair
+ * distribution is already known, so sample real pairs, time each cell on them,
+ * and divide by the work those pairs actually represent. No generator, no
+ * shape assumption, and the memory regime is the deployment's by construction.
+ *
+ * This is a build-time step, not a query-time one -- the same offline
+ * optimisation Roaring performs with run_optimize(). Bounded by `budget_ns` per
+ * cell so it stays negligible against N^2: a cell that is slow on this corpus
+ * gets fewer sample pairs rather than more time, which is the correct trade
+ * because a slow cell's constant is easy to estimate from few samples.
+ *
+ * Falls back to the measured-synthetic constant for any cell whose sampled work
+ * is zero (a corpus with no runs cannot calibrate B x R).
+ *
+ * --- OFF BY DEFAULT: A NET LOSS, IN ALL THREE VARIANTS TRIED ----------------
+ *
+ * Enable with STORM_ROWCAL=1 in bench_allpairs. Measured against the synthetic
+ * baseline, per-tile vs fixed Roaring, medians of three:
+ *
+ *                    baseline   rowcal(v3)
+ *   dimension_008      0.93x      1.24x     <- helps
+ *   soc-Pokec          2.32x      2.28x
+ *   weather_sept_85    1.07x      1.07x
+ *   as-skitter         1.12x      0.95x
+ *   census1881         0.92x      0.79x
+ *   dimension_033      3.48x      1.53x     <- hurts badly
+ *
+ * v1 (per-pair clock, one warm-up pair) put census1881 at 0.07x: it measured
+ * cold first-touch of 535 kB rows plus ~25 ns of clock overhead on a ~185 ns
+ * kernel, over-pricing B x S by 27x. v2 (whole-sample, warm, min-of-repeats)
+ * is the version kept here. v3, a median-of-quartile-slopes intended to stop
+ * the ratio of sums being dominated by the largest pairs, was worse again
+ * (census1881 0.41x, weather_sept_85 0.37x, wikileaks 3.56x -> 2.00x).
+ *
+ * The pattern across all three: measuring on real data makes predictions more
+ * accurate and SELECTION worse. That is diagnostic. ns_per_unit is one scalar
+ * per cell, and on a real corpus it absorbs memory-hierarchy effects that
+ * work_units() does not model -- so the constant stops being a property of the
+ * kernel and becomes a property of one corpus's size distribution, which is
+ * precisely what a slope is supposed to factor out. The synthetic constant is
+ * worse per pair and better at ranking because it is closer to the kernel's
+ * intrinsic cost.
+ *
+ * So calibration is the wrong lever. The right one is a work_units() that
+ * models the hierarchy -- charging B x S by DISTINCT CACHE LINES touched
+ * rather than by elements, which is the quantity that actually diverges
+ * between an L1-resident universe and a 1.3e8-bit one. That is a model change,
+ * and it is the open item. */
+void calibrate_on_rows(CostModel& m, const std::vector<Row>& rows,
+                       uint32_t max_pairs = 256, double budget_ns = 2e6);
 
 // A hardcoded model, for builds that cannot afford startup calibration. These
 // are this host's measured values and are WRONG on any other machine -- which
 // is the entire argument for calibrating instead. Labelled, not hidden.
+/* THE variant name for a cell -- the single source of truth.
+ *
+ * calibrate() decides what gets TIMED and storm_allpairs.cpp's Kernels decides
+ * what gets RUN, and they used to hold independent hardcoded lists that agreed
+ * only because both were edited to. Any variant override then changed the
+ * kernel while leaving the constant that prices it describing a different one,
+ * which silently invalidates variant sweeps and is the same model-vs-code
+ * mismatch that made B x R and B x W a coin flip. Both now call this.
+ *
+ * `cell` is the two-letter tag ("bs", "br", "rr", ...); STORM_VARIANT_<CELL>
+ * overrides. */
+const char* chosen_variant(const char* cell, const char* dflt);
+
 void default_model(CostModel& m);
 
 // Predicted cost in nanoseconds of computing |A ∩ B| via `p`.

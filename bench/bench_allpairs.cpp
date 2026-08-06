@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     spec.n_rows = 512; spec.universe = 65536; spec.density = 0.01;
     std::string structure = "clustered", spectrum = "inverse", tag = "host";
     uint32_t tile = 64;
-    const char* infile = nullptr; uint32_t in_stride = 1; bool no_zm = false;
+    const char* infile = nullptr; uint32_t in_stride = 1; bool no_zm = false; Pairing fixed_cell = Pairing::BR;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nx = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -90,6 +90,9 @@ int main(int argc, char** argv) {
         else if (a == "--file")      infile        = nx();
         else if (a == "--in-stride") in_stride     = (uint32_t)atoi(nx());
         else if (a == "--no-zonemap") no_zm        = true;
+        else if (a == "--fixed") { std::string c2 = nx();
+            fixed_cell = c2=="bb"?Pairing::BB: c2=="bs"?Pairing::BS: c2=="br"?Pairing::BR:
+                         c2=="ss"?Pairing::SS: c2=="rr"?Pairing::RR: Pairing::BS; }
     }
     spec.structure = structure == "uniform" ? Structure::Uniform
                    : structure == "runs"    ? Structure::Runs : Structure::Clustered;
@@ -103,7 +106,27 @@ int main(int argc, char** argv) {
             std::printf("FATAL: cannot load %s\n", infile); return 1; }
         spec = c.spec; structure = "real"; spectrum = "real";
     } else generate(c, spec);
+    /* Default calibration point, deliberately -- NOT the corpus's own universe.
+     *
+     * Calibrating at the workload's universe is the obvious response to the
+     * regime mismatch documented in calibrate(), and it was tried here and made
+     * things worse: dimension_008 went 0.80x -> 0.74x against Roaring and its
+     * oracle 7.72 -> 11.03 ns/pair, so the model's DECISIONS degraded. The
+     * reason is that calibrate() measures a synthetic corpus, and at a real
+     * corpus's universe and density that corpus has ~240 elements per row over
+     * 3.9e6 bits: per-call work collapses, fixed overhead dominates the timing,
+     * and dividing by work_units inflates every sparse cell's ns/unit.
+     *
+     * So the regime mismatch is real but calibrating at the workload's shape is
+     * not the fix -- the fix is a calibration corpus that keeps per-call work
+     * large while the working set is large, which is a generator change, not a
+     * parameter change. Left as the documented next step rather than a silent
+     * regression. */
     CostModel m; calibrate(m);
+    /* Re-calibrating on the caller's own rows is OPT-IN (STORM_ROWCAL=1) and
+     * off by default: it is a net loss. See calibrate_on_rows() for the three
+     * variants tried and what each cost. */
+    if (std::getenv("STORM_ROWCAL")) calibrate_on_rows(m, c.rows);
 
     /* CRoaring on the IDENTICAL rows, so "fixed Roaring vs our best" is one
      * measurement rather than two runs stitched together. Built with
@@ -114,32 +137,71 @@ int main(int argc, char** argv) {
      * Pairs here are ALL pairs of the loaded rows, matching the policies below
      * exactly; bench_baseline samples a capped subset and is therefore not
      * directly comparable. */
-    double roar_ns = 0; uint64_t roar_sum = 0;
-    {
-        std::vector<roaring_bitmap_t*> rb(c.rows.size());
-        for (size_t i = 0; i < c.rows.size(); ++i) {
-            rb[i] = roaring_bitmap_create();
-            roaring_bitmap_add_many(rb[i], c.rows[i].list.size(), c.rows[i].list.data());
-            roaring_bitmap_run_optimize(rb[i]);
-            roaring_bitmap_shrink_to_fit(rb[i]);
+    /* TIMING PROTOCOL, applied identically to Roaring and to every Storm policy.
+     *
+     * Roaring was timed best-of-3 first, on a clean machine, and each Storm
+     * policy ran once afterwards -- after all-bitmap had moved gigabytes. Two
+     * separate biases, both against Storm:
+     *
+     *   ORDERING. Roaring measured a warm TLB and an untouched cache; the
+     *   policies measured whatever the previous policy left behind.
+     *
+     *   WINDOW LENGTH. A fast policy on a small corpus finishes in ~700
+     *   microseconds. One scheduler tick or page fault inside that window is a
+     *   multiple, not a percent, and it showed: per-tile on dimension_008
+     *   spanned 6.38 to 42.35 ns/pair across seven runs -- a 6.6x spread --
+     *   while Roaring over the same pairs held 9.07 to 10.35.
+     *
+     * So: one untimed warm-up pass for every contestant before any of them is
+     * timed, then repeat each until it has accumulated MIN_NS of wall clock (or
+     * hits MAX_REPS), and take the minimum. The floor is what makes a fast
+     * policy's measurement as trustworthy as a slow one's; the minimum is the
+     * standard estimator for "the machine was not interrupted this time".
+     */
+    constexpr double MIN_NS   = 100e6;   // 100 ms of accumulated wall clock
+    constexpr int    MAX_REPS = 15;
+
+    std::vector<roaring_bitmap_t*> rb(c.rows.size());
+    for (size_t i = 0; i < c.rows.size(); ++i) {
+        rb[i] = roaring_bitmap_create();
+        roaring_bitmap_add_many(rb[i], c.rows[i].list.size(), c.rows[i].list.data());
+        roaring_bitmap_run_optimize(rb[i]);
+        roaring_bitmap_shrink_to_fit(rb[i]);
 #ifdef STORM_CROARING_MODIFIED
-            roaring_bitmap_storm_promote_arrays(rb[i], STORM_CTOR_BITSET_THRESHOLD);
+        roaring_bitmap_storm_promote_arrays(rb[i], STORM_CTOR_BITSET_THRESHOLD);
 #endif
-        }
-        const uint32_t n = (uint32_t)c.rows.size();
-        double best = 1e30;
-        for (int r = 0; r < 3; ++r) {
-            uint64_t acc = 0;
-            const uint64_t t0 = bench_ns();
-            for (uint32_t i = 0; i < n; ++i)
-                for (uint32_t j = i + 1; j < n; ++j)
-                    acc += roaring_bitmap_and_cardinality(rb[i], rb[j]);
-            const double dt = (double)(bench_ns() - t0);
-            if (dt < best) { best = dt; roar_sum = acc; }
-        }
-        roar_ns = best / (double)((uint64_t)n * (n - 1) / 2);
-        for (auto* b : rb) roaring_bitmap_free(b);
     }
+    const uint32_t nrows = (uint32_t)c.rows.size();
+    const uint64_t npairs = (uint64_t)nrows * (nrows - 1) / 2;
+
+    auto roaring_pass = [&]() {
+        uint64_t acc = 0;
+        for (uint32_t i = 0; i < nrows; ++i)
+            for (uint32_t j = i + 1; j < nrows; ++j)
+                acc += roaring_bitmap_and_cardinality(rb[i], rb[j]);
+        return acc;
+    };
+
+    // Warm-up: every contestant runs once, untimed, so none of them is the one
+    // that pays for the corpus being cold.
+    uint64_t roar_sum = roaring_pass();
+    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
+                     Policy::Oracle, Policy::Probe, Policy::Refine, Policy::Fixed})
+        (void)allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
+
+    double roar_ns = 0;
+    {
+        double best = 1e30, spent = 0;
+        for (int r = 0; r < MAX_REPS && spent < MIN_NS; ++r) {
+            const uint64_t t0 = bench_ns();
+            roar_sum = roaring_pass();
+            const double dt = (double)(bench_ns() - t0);
+            spent += dt;
+            if (dt < best) best = dt;
+        }
+        roar_ns = best / (double)npairs;
+    }
+    for (auto* b : rb) roaring_bitmap_free(b);
 
 
     std::printf("# host=%s %s/%s d=%g rows=%u universe=%u tile=%u  (%zu pairs)\n",
@@ -158,10 +220,25 @@ int main(int argc, char** argv) {
 #endif
                 roar_ns, "-", "-", "-", (unsigned long long)roar_sum, "");
 
-    AllPairsStats ref;
+    // Same protocol as the Roaring loop above: accumulate to MIN_NS, take the min.
+    auto timed = [&](Policy p) {
+        AllPairsStats best; best.ns_total = 1e30;
+        double spent = 0;
+        for (int r = 0; r < MAX_REPS && spent < MIN_NS; ++r) {
+            AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm, fixed_cell);
+            spent += s.ns_total;
+            if (s.ns_total < best.ns_total) best = s;
+        }
+        return best;
+    };
+
+    AllPairsStats ref, kept[(int)Policy::Refine + 1];  // Probe is the last enumerator
     double base = 0;
-    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm);
+    for (Policy p : {Policy::AllBitmap, Policy::PerPair, Policy::PerTile,
+                     Policy::Oracle, Policy::Probe, Policy::Refine, Policy::Fixed}) {
+        AllPairsStats s = timed(p);
+        kept[(int)p] = s;   // Gate 1 below reports on THESE runs rather than
+                            // re-timing everything a second time.
         const double nsp = s.ns_total / (double)s.pairs;
         const double sel = s.ns_selection / (double)s.pairs;
         if (p == Policy::AllBitmap) { ref = s; base = nsp; }
@@ -169,13 +246,22 @@ int main(int argc, char** argv) {
                     name_of(p), nsp, sel, 100.0 * sel / nsp,
                     (unsigned long long)s.decisions, (unsigned long long)s.sum,
                     s.sum == ref.sum ? "" : "  <-- WRONG");
-        if (p != Policy::AllBitmap)
+        if (p != Policy::AllBitmap) {
             std::printf("%-12s %12s %11s %9s %9s  %.2fx vs all-bitmap\n",
                         "", "", "", "", "", base / nsp);
+            // Where the pairs actually went. Only the non-zero cells, so the
+            // line stays readable when the selector is decisive.
+            std::printf("%-12s   ", "");
+            for (int k = 0; k < (int)Pairing::COUNT; ++k)
+                if (s.cell_pairs[k])
+                    std::printf("%s=%.1f%%  ", name_of((Pairing)k),
+                                100.0 * (double)s.cell_pairs[k] / (double)s.pairs);
+            std::printf("\n");
+        }
     }
     std::printf("\nGATE 1 (P2: selection <= 2%% of runtime)\n");
-    for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe}) {
-        AllPairsStats s = allpairs_sum(c.rows, m, p, tile, no_zm);
+    for (Policy p : {Policy::PerPair, Policy::PerTile, Policy::Probe, Policy::Refine}) {
+        const AllPairsStats& s = kept[(int)p];
         const double pct = 100.0 * s.ns_selection / s.ns_total;
         std::printf("  %-10s %6.2f%%  %s\n", name_of(p), pct, pct <= 2.0 ? "PASS" : "FAIL");
     }
