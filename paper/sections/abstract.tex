@@ -13,7 +13,7 @@ baseline on 22; selection remained below 1\% of runtime. In the sparse all-pairs
 within-tile column postings were $7\times$--$5{,}700\times$ faster than unfiltered bitmap--array
 evaluation. With a Jaccard threshold, element-keyed prefix postings accelerated 48 of 63
 corpus--threshold configurations by $1.67\times$--$1{,}089\times$, while the gate routed the
-remainder to exact scan. SIMD-throughput kernels won none of 25 asymmetric cell--shape comparisons.
+remainder to exact scan. Same-traversal vector kernels won none of 25 asymmetric cell--shape comparisons.
 All routing can begin on the first traversal from constant-size row metadata and bounded online
 probes; offline optimization is optional. Set intersection thus provides an exact demonstration of
 a broader sparse-systems rule: use metadata to certify absent work, amortise each decision across

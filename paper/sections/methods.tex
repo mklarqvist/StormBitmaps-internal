@@ -1,32 +1,27 @@
 \section*{Methods}
 
-\input{sections/theory_block}
-
 \subsection*{Representations and the per-cell cost model}
 
 Each row --- one set $X_i$ over a shared universe of $m$ bits --- is stored in one of several
 representations, each with a distinct asymptotic cost for computing an intersection
-\emph{cardinality}, $|X_i \cap X_j|$, rather than the intersection itself. We define each
-representation below, together with the cost of the cell it forms when paired with itself or with
-another representation; every cost-model symbol used elsewhere in this paper is defined here and only
-here.
+\emph{cardinality}, $|X_i \cap X_j|$, rather than the intersection itself. The representation
+definitions and their pairwise costs use a single set of symbols throughout the paper.
 
 Four representations form the symmetric pairing matrix. A dense bitmap (\rB) stores $m$ bits directly,
 one per universe position, and costs $\Theta(m)$ to intersect against another dense bitmap by AND and
 popcount, independent of either side's cardinality. A sorted array (\rS) stores the set's
 $|X|$ set positions as sorted integers and costs $\Theta(|X|)$ against a bitmap, since each element is
 resolved by a single random probe. A run container (\rR) stores the set as $r$ maximal runs
-$(a,b)$ of contiguous set bits and, against a bitmap fitted with a rank index (below), costs
-$\Theta(r)$ --- independent of run length. A fill-compressed word stream (\rW, an EWAH-style
+$(a,b)$ of contiguous set bits and, against a bitmap fitted with a prefix-popcount rank index that
+counts set bits before a position, costs
+$\Theta(r)$ --- independent of run length. A fill-compressed word stream (\rW, an Enhanced
+Word-Aligned Hybrid (EWAH)-style
 encoding of literal words interleaved with run-length-coded fill words) costs
 $\Theta(\ell + g)$ against a bitmap, where $\ell$ is the literal-word count and $g$ the fill-group
-count, and its fills are skipped in constant time using the same rank index used for \rR. A fifth
-view, the complement (\rC), does not add a representation to the symmetric matrix; it is a strategy,
-described in the next subsection, for reusing whichever of \rB, \rS, \rR or \rW is cheapest on a
-row's complement when that row sits above density one-half.
+count, and its fills are skipped in constant time using the same rank index used for \rR.
 
-The cost of each symmetric cell is, in the notation above: $\cell{\rB}{\rB}=\Theta(m)$ (naive; made
-sub-linear by the zone-map filter below); $\cell{\rB}{\rS}=\Theta(|S|)$; $\cell{\rB}{\rR}=\Theta(r)$
+The cost of each symmetric cell is, in the notation above: $\cell{\rB}{\rB}=\Theta(m)$;
+$\cell{\rB}{\rS}=\Theta(|S|)$; $\cell{\rB}{\rR}=\Theta(r)$
 with a rank index; $\cell{\rB}{\rW}=\Theta(\ell+g)$; $\cell{\rS}{\rS}=\Theta(|A|+|B|)$ by merge or
 $\Theta(|A|\log(|B|/|A|))$ by galloping search when $|A|\ll|B|$; $\cell{\rS}{\rR}=\Theta(|S|+r)$ by
 merge or $\Theta(|S|\log r)$ by binary search into runs; $\cell{\rS}{\rW}=\Theta(|S|+\ell+g)$;
@@ -34,8 +29,8 @@ $\cell{\rR}{\rR}=\Theta(r_A+r_B)$ by run merge; $\cell{\rR}{\rW}=\Theta(r_A+(\el
 $\cell{\rW}{\rW}=\Theta((\ell+g)_A+(\ell+g)_B)$. Every cell except $\cell{\rB}{\rB}$ is sub-linear in
 the universe size $m$ whenever their descriptor counts are $o(m)$. More generally, every non-bitmap
 cell follows one or more stored descriptors rather than paying a fixed universe scan. The formal
-statement of what these costs imply --- that the null model is a
-floor rather than a prediction, and the exact conditions under which no representation beats a bitmap
+statement of what these costs imply --- including the independently placed reference model and the
+exact conditions under which no representation beats a bitmap
 --- is given with full proofs in Supplementary Note~\ref{note:proofs-avoidance}.
 
 Prior work established adaptive merge, search and galloping algorithms for sorted sets and inverted
@@ -46,24 +41,24 @@ matrix schedules each row pair to the exact cell with the lowest predicted descr
 
 \subsection*{The pairing matrix and its cells}
 
-The paper reports the ten cells of the
-symmetric representation matrix formed from \{\rB, \rS, \rR, \rW\}: \cell{\rB}{\rB}, \cell{\rB}{\rS},
+The four representation families form ten distinct cells in a symmetric matrix:
+\cell{\rB}{\rB}, \cell{\rB}{\rS},
 \cell{\rB}{\rR}, \cell{\rB}{\rW}, \cell{\rS}{\rS}, \cell{\rS}{\rR}, \cell{\rS}{\rW}, \cell{\rR}{\rR},
 \cell{\rR}{\rW}, \cell{\rW}{\rW}. The complement strategy, \cell{\rC}{\rB}, is an eleventh, asymmetric
-strategy rather than a twelfth symmetric cell: when a row's density places it above one-half, its
-complement is computed and intersected using whichever of the ten cells above is cheapest for that
-complement, and the requested cardinality is recovered by inclusion--exclusion,
+strategy rather than a twelfth symmetric cell. A complement view (\rC) re-encodes a row's complement
+with whichever of \rB{}, \rS{}, \rR{} or \rW{} is cheapest when density exceeds one-half. The requested
+cardinality is recovered by inclusion--exclusion,
 $|A \cap B| = |B| - |A^{c} \cap B|$, where $A^{c}$ is $A$'s complement against the shared universe.
 This convention is used consistently throughout: any count of ``ten'' cells in this paper refers to
 the symmetric matrix over \{\rB, \rS, \rR, \rW\}, and \cell{\rC}{\rB} is reported separately as a
-strategy rather than folded into that count. Roaring is never constructed as a cell of this matrix; it
-is used throughout as an external baseline only (below).
+strategy rather than folded into that count. Roaring is never constructed as a cell of this matrix;
+it serves only as an external baseline.
 
 Each cell is implemented independently against a shared representation layer providing one view per
 format (bitmap, sorted list, run, EWAH-fill and complement). Several of the asymmetric cells have more
 than one implemented strategy --- for example \cell{\rB}{\rR} has a rank-indexed variant and a scalar
-per-run-scan variant --- and each variant was raced against the independent oracle described below
-before being admitted to any comparison. The variant reported for a given cell in Results is the one
+per-run-scan variant --- and each variant was raced against an independent scalar oracle that counts
+shared elements directly before being admitted to any comparison. The variant reported for a given cell in Results is the one
 selected for the corresponding density regime or corpus shape by the stated tournament. The complete
 variant and optimization record is retained with the benchmark results.
 
@@ -102,11 +97,11 @@ Neither mechanism is applied unconditionally. Within the row-wise pairing matrix
 zone map is consulted ahead of cells that may otherwise scan a dense representation in full
 (\cell{\rB}{\rB} and \cell{\rB}{\rW}). A separately gated, coarser occupancy map is also evaluated
 ahead of \cell{\rB}{\rS}: it cannot avoid traversing the sparse list, but it can reject a list element
-before the corresponding scattered bitmap probe. The same coarse map is the input to the
-column-posting algorithm below. No occupancy map is put unconditionally in front of
+before the corresponding scattered bitmap probe. The same coarse map can be transposed into column
+postings for tile-level candidate generation. No occupancy map is put unconditionally in front of
 \cell{\rB}{\rS} or \cell{\rB}{\rR}; when most bins are occupied, the summary removes no probes and
-its own lookup is pure overhead. The online and offline policies used to decide whether to construct
-and consult it are described below and in Supplementary Note~\ref{note:batch}.
+its own lookup is pure overhead. Construction and consultation are therefore gated from the row and
+tile metadata specified here and in Supplementary Note~\ref{note:batch}.
 
 \paragraph*{Relation to block-skipping indexes.} Summarising a block so that a query can skip it is
 long established, and the zone map used here is a re-parameterisation of that idea rather than a new
@@ -119,7 +114,7 @@ trie over the key domain \cite{alexiou2013arf}; and Hippo keeps a bitmap over hi
 dynamically sized page range \cite{yu2016hippo}. Closer to this setting, hierarchical bitmap indexes
 summarise groups of positions for set-valued attributes \cite{morzy2003hierarchical}, BitFunnel's
 higher-rank rows OR together fixed powers-of-two blocks of a signature
-\cite{goodwin2017bitfunnel}, WAH and EWAH fill words already encode that a region is uniformly empty
+\cite{goodwin2017bitfunnel}, word-aligned hybrid (WAH) and EWAH fill words already encode that a region is uniformly empty
 \cite{lemire2010ewah}, and Lucene's sparse-block bitset stores one occupancy bit per word within a
 block \cite{lucene-sparsefixedbitset}. Roaring itself summarises at container granularity: an absent
 key certifies an empty $2^{16}$-bit chunk, and intersection already skips keys present on only one
@@ -140,37 +135,71 @@ which we take as established.
 The cost model for the pairwise filter, the crossings that bound where it pays, and the derivation of
 its bin width are given in Supplementary Note~\ref{note:zonemap}.
 
-\subsection*{A reusable work-avoidance construction}
+\subsection*{Online row-cell selection and offline tournaments}
 
-The implementation separates work avoidance into four roles that do not depend on set-intersection
-syntax: a summary $\sigma$ cheaper than the payload it describes, a sound exclusion predicate $E$
-over summaries, an exact survivor kernel $K$, and a gate that chooses between the summarized and
-direct routes. For an operation $F$ with neutral contribution $e$, correctness requires
-\begin{equation}
-E\!\left(\sigma(x),\sigma(y)\right)=1
-\quad\Longrightarrow\quad F(x,y)=e .
-\label{eq:generic-certificate}
-\end{equation}
-The exclusion predicate may admit false-positive work --- those cases continue to $K$ --- but it
-cannot reject a non-neutral contribution. If $p$ is the surviving fraction, the summarized route is
-selected when its estimated work satisfies
-\begin{equation}
-C_{\mathrm{summary}}+pC_{K}<C_{\mathrm{direct}} .
-\label{eq:generic-gate}
-\end{equation}
-Construction or selection shared by $q$ consumers enters $C_{\mathrm{summary}}$ at its amortised cost
-per consumer. Equations~\eqref{eq:generic-certificate} and~\eqref{eq:generic-gate} are the
-application-independent contract: define what metadata can prove, preserve an exact path for
-survivors, and route online from the quantities that price both sides.
+Selection chooses which cell to run for a pair; the zone-map and rank-index mechanisms determine how
+many row items that chosen cell must visit. Four online row-cell policies were evaluated over the same
+eligible cells. Their runtime inputs are constant-size row metadata and, for the probe policies,
+timings collected during the active traversal. None requires a corpus-specific offline tournament
+before computation can begin.
 
-The mechanisms evaluated here are concrete instances of that contract. A zone-map AND certifies that
-a positional region contributes zero; the row kernel evaluates occupied regions. A rank index
-replaces traversal of every position spanned by a run with two prefix queries. Positional postings
-hoist the same occupancy certificate across a tile, while element postings hoist a threshold-dependent candidate decision
-across every row containing that element. In sparse joins, block-sparse algebra, graph traversal,
-inverted-index evaluation or telemetry filtering, $\sigma$, $E$ and $K$ change with the operator, but
-the construction and its scaling criterion do not. Supplementary Note~\ref{note:batch} gives the
-instantiation procedure and shows how the row and column mechanisms map onto it.
+Under \emph{per-pair} selection, precomputed $O(1)$ metadata for each row --- cardinality, run count,
+non-zero-word count, index-availability flags and exact extent --- is consulted for every pair
+$(i,j)$, and all calibrated cells are ranked by predicted cost. Under \emph{per-tile} selection, rows
+are stably ordered by cardinality and partitioned into 64-row panels. Cardinality, run count and
+non-zero-word count are averaged over each panel, while the panel extent is the union of its row
+extents and an index is marked available only if every row carries it. One model decision is then
+shared by all 4,096 pairs of an off-diagonal $64\times64$ block or all 2,016 pairs of a diagonal
+block. An exact two-comparison extent test remains per pair: hoisting the expensive cell ranking does
+not discard a constant-time disjointness proof.
+
+Under \emph{probe-and-commit}, the $\varepsilon\!\to\!0$ special case of Micro Adaptivity in
+Vectorwise \cite{raducanu2013microadaptivity}, the model ranks the cells once per block and nominates
+its two cheapest candidates. Both candidates are timed on up to three representative pairs from the
+block, and the faster measured candidate is committed for the remaining pairs. Restricting the race
+to the model's top two avoids timing a dense cell that the model places orders of magnitude behind on
+a large sparse universe. The companion \emph{refine} policy also ranks candidates once per block but
+retains the top two: when the maximum-to-mean cardinality ratio of either panel is at least 8 and the
+runner-up's predicted cost is within a factor of 3 of the winner, each live pair chooses between only
+those two predictions. Otherwise refine collapses exactly to per-tile selection. The reported dynamic
+CRoaring comparison used this heterogeneity-gated refine policy as one fixed online policy; per-tile,
+probe-and-commit and alternative refinement gates were retained as ablations rather than selected
+per corpus with hindsight.
+
+These online policies are distinct from the \emph{offline tournaments} used to characterize them.
+The fixed-cell tournament times every eligible cell over the same corpus and chooses one winner with
+full hindsight; the bucket oracle repeats that comparison within metadata buckets. Both are
+evaluation ceilings and are charged no selection cost, so neither is presented as a deployable
+selector. For a stable corpus that will be traversed repeatedly at large scale, an operator may
+optionally run the same tournament before service and reuse its verdict; this changes routing cost,
+not the exact result or the availability of the online path. Short-lived and inline workloads omit
+that step and execute the online policy immediately. An opt-in corpus calibration also timed every
+cell on a strided sample of real,
+span-overlapping pairs and fitted one time-per-work-unit slope per cell. It improved some rankings but
+was a net loss across the corpus sweep because a single slope absorbed corpus-size and memory-regime
+effects that the work function did not represent; it is therefore disabled by default. The analogous
+online gate and offline width tournament for coarse occupancy maps are specified in Supplementary
+Note~\ref{note:batch}. Every online policy is evaluated against the design budget of 2\% of total
+runtime; a policy exceeding that budget is reported as failing it.
+
+Selection cost was measured by instrumenting the decision path itself separately from the kernel calls
+it dispatches to, so that the reported cost of choosing is not conflated with the cost of computing.
+\emph{Regret} against a bucket oracle is reported alongside selection cost for every online policy: the
+oracle is the best cell for a given bucket of pairs chosen with full hindsight after every candidate
+cell has been timed on it, and a policy's regret is its runtime on that bucket expressed relative to
+the oracle's runtime on the same bucket. The same bucket oracle is used to report regret for an
+always-\rB{} baseline and for a closed-form per-pair cost model evaluated from the metadata above but
+without online timing, so that measured selection can be compared directly against both a
+no-selection baseline and a modelled-selection baseline on the same metric.
+
+Two offline references are never interchanged. The \emph{bucket oracle} operates at bucket
+granularity and is the denominator for the regret experiment. The \emph{best fixed cell} is coarser:
+for a whole corpus it takes the single cell whose measured end-to-end runtime is lowest. Because it
+may not vary within a corpus, it is not a lower bound on the bucket oracle's runtime. A third
+diagnostic in the implementation precomputes the model's per-pair choices before starting the clock;
+that measures free \emph{model} selection, not a perfect measured oracle. The optimisation problem
+these policies approximate, and the conditions under which metadata alone determines the optimum,
+are given in Supplementary Note~\ref{note:proofs-choice}.
 
 \subsection*{Column postings for tile-level candidate generation}
 
@@ -188,8 +217,7 @@ Transposition gives one
 \emph{column posting} per bucket,
 $P_b=\{i:A_{ib}=1\}$. With the evaluated tile width $T=64$, each $P_b$ is one 64-bit word whose set
 bits are tile-local row identifiers. This is a temporary column representation of the coarse
-occupancy relation, not another representation of the original set elements and not the prefix
-index used for thresholded queries.
+occupancy relation, not another representation of the original set elements.
 
 This column view is an outer-product evaluation of the Boolean pattern of $AA^{\mathsf T}$, a
 classical sparse-matrix multiplication organization \cite{gustavson1978spgemm,buluc2011combinatorialblas}.
@@ -236,7 +264,7 @@ entered the filtered path when survival was below 0.15 and touch below 0.25 and 
 only when it rejected at least 5\% of pairs in the first tile. The conditional-build cascade used a
 25\% range-survival threshold; the amortised multi-posting variant instead prebuilt the compact lists.
 These values are study-tuned settings; the touch statistic uses the target's measured 128-byte cache
-line. A gate rejection routes the tile to the row-wise tournament below.
+line. A gate rejection routes the tile to the row-wise tournament defined above.
 
 The postings benchmark measures the $T(T-1)/2=2{,}016$ within-tile pairs of each 64-row tile. The
 transpose and compact posting list are constructed once and reused by the timed candidate-resolution
@@ -263,12 +291,12 @@ only that every row use the same total order.
 
 Wang et al. selected prefix lengths adaptively per object \cite{wang2012adaptjoin}, Sandes et al.
 introduced a bitmap candidate filter \cite{sandes2020bitmapfilter}, and Mann et al. showed that filter
-cost can exceed direct verification \cite{mann2016empirical}. We couple the prefix index to the exact
-representation-pair verifiers used by the complete-matrix path and admit it only when
-Eq.~\eqref{eq:prefix-gate} prices construction, posting multiplicity and verification below an
-exhaustive traversal.
+cost can exceed direct verification \cite{mann2016empirical}. We couple a prefix index to the exact
+representation-pair verifiers used by the complete-matrix path and gate it by the combined cost of
+construction, posting multiplicity and verification.
 
-The prefix index is a compressed sparse row (CSR) representation keyed by dense element rank. A first
+Unlike the coarse positional postings, the prefix index is keyed by actual set elements. It uses a
+compressed sparse row (CSR) representation over dense element rank. A first
 pass counts the rows containing each element in their prefix, a prefix sum converts counts into
 offsets, and a second pass writes row identifiers into one contiguous posting array. Rows are visited
 in increasing cardinality order. For row $i$, the implementation traverses the postings of its first
@@ -307,72 +335,39 @@ accepted, the sorted set of qualifying pair identifiers from the posting path wa
 that of the exhaustive scan. Supplementary Note~\ref{note:threshold} gives the exactness argument,
 output-sensitive cost and relation to the positional tile postings.
 
-\subsection*{Online row-cell selection and offline tournaments}
+\subsection*{A reusable work-avoidance construction}
 
-Selection --- choosing which cell to run for a given pair --- is distinct from the zone-map and
-rank-index and posting mechanisms above, which decide how many pairs or row items an already-chosen
-cell must visit. Four online row-cell policies were evaluated over the same eligible cells. Their
-runtime inputs are the constant-size row metadata already carried by the representations and, for
-the probe policies, timings collected during the active traversal. None requires a corpus-specific
-offline tournament before computation can begin.
+The implementation separates work avoidance into four roles that do not depend on set-intersection
+syntax: a summary $\sigma$ cheaper than the payload it describes, a sound exclusion predicate $E$
+over summaries, an exact survivor kernel $K$, and a gate that chooses between the summarized and
+direct routes. For an operation $F$ with neutral contribution $e$, correctness requires
+\begin{equation}
+E\!\left(\sigma(x),\sigma(y)\right)=1
+\quad\Longrightarrow\quad F(x,y)=e .
+\label{eq:generic-certificate}
+\end{equation}
+The exclusion predicate may admit false-positive work --- those cases continue to $K$ --- but it
+cannot reject a non-neutral contribution. If $p$ is the surviving fraction, the summarized route is
+selected when its estimated work satisfies
+\begin{equation}
+C_{\mathrm{summary}}+pC_{K}<C_{\mathrm{direct}} .
+\label{eq:generic-gate}
+\end{equation}
+Construction or selection shared by $q$ consumers enters $C_{\mathrm{summary}}$ at its amortised cost
+per consumer. Equations~\eqref{eq:generic-certificate} and~\eqref{eq:generic-gate} are the
+application-independent contract: define what metadata can prove, preserve an exact path for
+survivors, and route online from the quantities that price both sides.
 
-Under \emph{per-pair} selection, precomputed $O(1)$ metadata for each row --- cardinality, run count,
-non-zero-word count, index-availability flags and exact extent --- is consulted for every pair
-$(i,j)$, and all calibrated cells are ranked by predicted cost. Under \emph{per-tile} selection, rows
-are stably ordered by cardinality and partitioned into 64-row panels. Cardinality, run count and
-non-zero-word count are averaged over each panel, while the panel extent is the union of its row
-extents and an index is marked available only if every row carries it. One model decision is then
-shared by all 4,096 pairs of an off-diagonal $64\times64$ block or all 2,016 pairs of a diagonal
-block. An exact two-comparison extent test remains per pair: hoisting the expensive cell ranking does
-not discard a constant-time disjointness proof.
+The mechanisms evaluated here are concrete instances of that contract. A zone-map AND certifies that
+a positional region contributes zero; the row kernel evaluates occupied regions. A rank index
+replaces traversal of every position spanned by a run with two prefix queries. Positional postings
+hoist the same occupancy certificate across a tile, while element postings hoist a threshold-dependent candidate decision
+across every row containing that element. In sparse joins, block-sparse algebra, graph traversal,
+inverted-index evaluation or telemetry filtering, $\sigma$, $E$ and $K$ change with the operator, but
+the construction and its scaling criterion do not. Supplementary Note~\ref{note:batch} gives the
+instantiation procedure and shows how the row and column mechanisms map onto it.
 
-Under \emph{probe-and-commit}, the $\varepsilon\!\to\!0$ special case of Micro Adaptivity in
-Vectorwise \cite{raducanu2013microadaptivity}, the model ranks the cells once per block and nominates
-its two cheapest candidates. Both candidates are timed on up to three representative pairs from the
-block, and the faster measured candidate is committed for the remaining pairs. Restricting the race
-to the model's top two avoids timing a dense cell that the model places orders of magnitude behind on
-a large sparse universe. The companion \emph{refine} policy also ranks candidates once per block but
-retains the top two: when the maximum-to-mean cardinality ratio of either panel is at least 8 and the
-runner-up's predicted cost is within a factor of 3 of the winner, each live pair chooses between only
-those two predictions. Otherwise refine collapses exactly to per-tile selection. The reported dynamic
-CRoaring comparison used this heterogeneity-gated refine policy as one fixed online policy; per-tile,
-probe-and-commit and alternative refinement gates were retained as ablations rather than selected
-per corpus with hindsight.
-
-These online policies are distinct from the \emph{offline tournaments} used to characterize them.
-The fixed-cell tournament times every eligible cell over the same corpus and chooses one winner with
-full hindsight; the bucket oracle repeats that comparison within metadata buckets. Both are
-evaluation ceilings and are charged no selection cost, so neither is presented as a deployable
-selector. For a stable corpus that will be traversed repeatedly at very large scale, an operator may
-optionally run the same tournament before service and reuse its verdict; this changes routing cost,
-not the exact result or the availability of the online path. Short-lived and inline workloads omit
-that step and execute the online policy immediately. An opt-in corpus calibration also timed every
-cell on a strided sample of real,
-span-overlapping pairs and fitted one time-per-work-unit slope per cell. It improved some rankings but
-was a net loss across the corpus sweep because a single slope absorbed corpus-size and memory-regime
-effects that the work function did not represent; it is therefore disabled by default. The analogous
-online gate and offline width tournament for coarse occupancy maps are specified in Supplementary
-Note~\ref{note:batch}. Every online policy is evaluated against the design budget of 2\% of total
-runtime; a policy exceeding that budget is reported as failing it.
-
-Selection cost was measured by instrumenting the decision path itself separately from the kernel calls
-it dispatches to, so that the reported cost of choosing is not conflated with the cost of computing.
-\emph{Regret} against a bucket oracle is reported alongside selection cost for every online policy: the
-oracle is the best cell for a given bucket of pairs chosen with full hindsight after every candidate
-cell has been timed on it, and a policy's regret is its runtime on that bucket expressed relative to
-the oracle's runtime on the same bucket. The same bucket oracle is used to report regret for an
-always-\rB baseline and for a closed-form per-pair cost model evaluated from the metadata above but
-without online timing, so that measured selection can be compared directly against both a
-no-selection baseline and a modelled-selection baseline on the same metric.
-
-Two offline references are never interchanged. The \emph{bucket oracle} operates at bucket
-granularity and is the denominator for the regret experiment. The \emph{best fixed cell} is coarser:
-for a whole corpus it takes the single cell whose measured end-to-end runtime is lowest. Because it
-may not vary within a corpus, it is not a lower bound on the bucket oracle's runtime. A third
-diagnostic in the implementation precomputes the model's per-pair choices before starting the clock;
-that measures free \emph{model} selection, not a perfect measured oracle. The optimisation problem
-these policies approximate, and the conditions under which metadata alone determines the optimum,
-are given in Supplementary Note~\ref{note:proofs-choice}.
+\input{sections/theory_block}
 
 \subsection*{Corpora, provenance and loaders}
 
@@ -390,7 +385,8 @@ Genomes Project phase 3 chromosome 20 (one row per haplotype, one bit per site) 
 demonstrate that storage layout, not the underlying data, determines whether a corpus lands in the
 sparse or the mid-density regime. Universe size and density are reported per corpus in
 Table~\ref{tab:corpora} and are not duplicated in prose here; every corpus is drawn against the same competitively tuned
-CRoaring baseline used throughout Results.
+CRoaring baseline used throughout Results. Complete source provenance, row counts, universe sizes and
+layout conventions are reported in Supplementary Note~\ref{note:corpora}.
 
 As a loader-correctness check, the \texttt{census1881} loader was validated by reproducing the
 published corpus statistics reported for it (universe size and mean row cardinality) against the
@@ -400,6 +396,7 @@ loader's own output uninspected.
 
 \subsection*{Container census}
 
+\begin{sloppypar}
 The container counts in Table~\ref{tab:census} are read from CRoaring's own introspection API,
 \texttt{roaring\_bitmap\_statistics()}, and not inferred from our measurements. The census is taken
 after \texttt{run\_optimize()} and \texttt{shrink\_to\_fit()}, so that it reports the containers the
@@ -412,7 +409,7 @@ exceeds the compile-time constant \texttt{DEFAULT\_MAX\_SIZE}, whose value is
 4096 (declared as
 \texttt{enum \{ DEFAULT\_MAX\_SIZE = 4096 \}} at \texttt{roaring.h:2486}, and applied at insertion by
 \texttt{array\_container\_try\_add(ac, val, DEFAULT\_MAX\_SIZE)} in \texttt{container\_add},
-\texttt{roaring.h:5690}, in the pinned version below). The constant is not a tuning knob: it is an
+\texttt{roaring.h:5690}, in the pinned CRoaring v4.7.2 source). The constant is not a tuning knob: it is an
 \texttt{enum} with no override, it is enforced as a structural invariant by
 \texttt{array\_container\_validate} and \texttt{bitset\_container\_validate}
 (\texttt{roaring.c:7133}, \texttt{roaring.c:8263}), and the portable serialization format writes no
@@ -420,6 +417,7 @@ array-versus-bitset type tag at all, reconstructing the type from cardinality ag
 constant on read (\texttt{roaring.c:14421}, \texttt{roaring.c:14553}). The same fixed commitment prices a run container against a bitset by iterating every run and
 charging for its length (\texttt{run\_bitset\_container\_intersection\_cardinality},
 \texttt{roaring.c:10901}).
+\end{sloppypar}
 
 \subsection*{A compute-priced CRoaring baseline, and why it must be a second pass}
 
@@ -437,7 +435,8 @@ its cardinality-inferred container types are untouched.
 
 The threshold is not \texttt{DEFAULT\_MAX\_SIZE}. The measured crossover at which an array--array
 scalar merge loses to a bitset--bitset popcount for a count-only AND lies between cardinalities 64
-and 128 on Apple M4. The query-tuned baseline uses 64, selected by the subsequent real-corpus sweep.
+and 128 on Apple M4. The query-tuned baseline uses 64, selected by the real-corpus sweep reported in
+Results.
 
 \textbf{The pass must run after \texttt{run\_optimize()}, not before, and lowering the insertion
 threshold instead is worse than doing nothing.} We first tried the obvious thing --- lowering the
@@ -456,6 +455,44 @@ array-versus-bitset compute call. This ordering dependence is a property of the 
 rules rather than of our pass, and it is the reason a compute-priced Roaring cannot be obtained by
 retuning a single constant.
 
+\subsection*{Correctness oracle and differential testing}
+
+Every cell variant is checked against an independent scalar oracle that computes intersection
+cardinality by direct bit-by-bit or element-by-element counting, sharing no code path with any of the
+variants under test, before that variant is admitted to any timed comparison; a variant that returns a
+wrong cardinality is not reported as fast regardless of its measured speed. Correctness is tracked at
+three levels: an application binary interface (ABI)-level regression suite with 1,279 oracle checks and zero failures, compiled and
+linked as C; a cell-level differential suite with 2,113,377 checks and zero failures across densities,
+structures and alignments; and cross-architecture runs with 2,668,209 checks on the Arm hosts and
+2,428,809 on x86, again with zero failures. The public C ABI surface was verified independently with
+\texttt{nm}: 42 unmangled \texttt{STORM\_} exports and zero defined mangled symbols.
+
+The cell-level suite is driven by a fuzz grid over \{row count, word count, density, within-row
+structure (uniform, clustered, run-based), alignment\}, following the same axes used for every kernel
+change in this project. The regression suite's own ability to fail was itself verified rather than
+assumed: each of a set of known defects fixed earlier in the project was reverted individually and the
+suite was confirmed to fail before being re-fixed, establishing that a red result from the suite is
+informative and not merely a suite that always passes.
+
+\subsection*{Hardware and toolchain}
+
+Measurements were taken on four microarchitectures spanning two independently hand-written SIMD kernel paths --- one using Arm
+Neon, the other using x86-64 AVX-512 with the \texttt{VPOPCNTDQ} extension --- plus a portable scalar
+fallback used where neither hand-written path applies. The hosts were a 10-core Apple M4, an Amazon
+Web Services (AWS) Graviton3-class Neoverse system, an AWS Graviton4-class Neoverse system and an Intel Xeon Platinum
+8488C (Sapphire Rapids). The two Neoverse hosts execute the shared Neon pairing kernels; their
+Scalable Vector Extension (SVE) and SVE2 labels identify the machines, not distinct kernel implementations. Sapphire Rapids executes
+the AVX-512 $\cell{\rB}{\rB}$ path gated on AVX512F and AVX512VPOPCNTDQ; the intrinsic-to-instruction
+mapping and feature gates follow the Intel Intrinsics Guide \cite{intel-intrinsics-guide}.
+
+The Apple host reports a 64-kB L1 data cache, a 4-MB performance-cluster L2 and a 16-MB system-level
+cache. Cache-residency labels on every host were assigned from the cache geometry recorded with its
+run. Apple measurements used Apple clang 21 with \texttt{-O3 -std=c++17 -mcpu=native}; the three
+Linux hosts used GCC 11.5 with \texttt{-O3 -std=c++17 -march=native}. The CRoaring baseline used
+throughout is pinned at version v4.7.2,
+vendored as a source amalgamation within the project repository, so that the exact baseline is
+reproducible rather than referred to generically as ``CRoaring.''
+
 \subsection*{Benchmark protocol and cache-residency statement}
 
 Every reported cell variant, including CRoaring, was compiled with the same compiler and flags,
@@ -468,8 +505,8 @@ construction.
 
 Per-cell density and strategy sweeps (Figs.~\ref{fig:density-sweep} and~\ref{fig:strategy-decay}) raced every candidate variant over an identical,
 pre-generated pair list in an identical order, so that the cache state each variant encountered at
-call time was comparable across variants; each variant's differential correctness against the oracle
-(below) was checked before any of its timings were accepted. One untimed pass over the complete pair
+call time was comparable across variants; each variant's differential correctness against the scalar
+oracle was checked before any of its timings were accepted. One untimed pass over the complete pair
 list preceded timed repeats. For the online real-corpus comparison, each contestant then repeated
 until it accumulated at least 100\,ms of wall time, and the minimum repeat was retained within the
 process. Wall-clock time was measured with a monotonic
@@ -483,7 +520,7 @@ single-threaded measurement.
 The working-set-size sweep behind the residency comparison (Fig.~\ref{fig:strategy-decay}b) varied
 bitmap-corpus footprint from 1\,MB to 48\,MB on Apple M4, Neoverse SVE2 and Sapphire Rapids,
 and cache-residency boundaries (L1, L2 and shared/last-level cache) were identified from each host's
-own reported cache geometry rather than assumed to be uniform across hosts (below). Every throughput
+reported cache geometry rather than assumed to be uniform across hosts. Every throughput
 number reported anywhere in this paper is qualified by the cache-residency regime it was measured in,
 named once here by regime (L1-resident, L2-resident, DRAM-resident) so that Results and Discussion can
 use the regime name as shorthand rather than restate cache sizes at each mention.
@@ -506,44 +543,6 @@ that range being available alongside it.
 
 All 23 completed corpus measurements are included in Table~\ref{tab:corpora}; the observed
 minimum--maximum interval across the three processes is retained beside every median.
-
-\subsection*{Correctness oracle and differential testing}
-
-Every cell variant is checked against an independent scalar oracle that computes intersection
-cardinality by direct bit-by-bit or element-by-element counting, sharing no code path with any of the
-variants under test, before that variant is admitted to any timed comparison; a variant that returns a
-wrong cardinality is not reported as fast regardless of its measured speed. Correctness is tracked at
-three levels: an ABI-level regression suite with 1,279 oracle checks and zero failures, compiled and
-linked as C; a cell-level differential suite with 2,113,377 checks and zero failures across densities,
-structures and alignments; and cross-architecture runs with 2,668,209 checks on the Arm hosts and
-2,428,809 on x86, again with zero failures. The public C ABI surface was verified independently with
-\texttt{nm}: 42 unmangled \texttt{STORM\_} exports and zero defined mangled symbols.
-
-The cell-level suite is driven by a fuzz grid over \{row count, word count, density, within-row
-structure (uniform, clustered, run-based), alignment\}, following the same axes used for every kernel
-change in this project. The regression suite's own ability to fail was itself verified rather than
-assumed: each of a set of known defects fixed earlier in the project was reverted individually and the
-suite was confirmed to fail before being re-fixed, establishing that a red result from the suite is
-informative and not merely a suite that always passes.
-
-\subsection*{Hardware and toolchain}
-
-Measurements were taken on four microarchitectures spanning two independently hand-written SIMD kernel paths --- one using Arm
-NEON, the other using x86-64 AVX-512 with the \texttt{VPOPCNTDQ} extension --- plus a portable scalar
-fallback used where neither hand-written path applies. The hosts were a 10-core Apple M4, an AWS
-Graviton3-class Neoverse system, an AWS Graviton4-class Neoverse system and an Intel Xeon Platinum
-8488C (Sapphire Rapids). The two Neoverse hosts execute the shared NEON pairing kernels; their SVE
-and SVE2 labels identify the machines, not distinct kernel implementations. Sapphire Rapids executes
-the AVX-512 $\cell{\rB}{\rB}$ path gated on AVX512F and AVX512VPOPCNTDQ; the intrinsic-to-instruction
-mapping and feature gates follow the Intel Intrinsics Guide \cite{intel-intrinsics-guide}.
-
-The Apple host reports a 64-kB L1 data cache, a 4-MB performance-cluster L2 and a 16-MB system-level
-cache. Cache-residency labels on every host were assigned from the cache geometry recorded with its
-run. Apple measurements used Apple clang 21 with \texttt{-O3 -std=c++17 -mcpu=native}; the three
-Linux hosts used GCC 11.5 with \texttt{-O3 -std=c++17 -march=native}. The CRoaring baseline used
-throughout is pinned at version v4.7.2,
-vendored as a source amalgamation within the project repository, so that the exact baseline is
-reproducible rather than referred to generically as ``CRoaring.''
 
 \subsection*{Data and code availability}
 

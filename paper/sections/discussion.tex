@@ -51,8 +51,8 @@ cost terms.
 
 The row-cell results explain why the gains persist across representation families. Bitmap--bitmap
 work is fixed by the universe length, whereas bitmap--array, bitmap--run, array--run and related
-asymmetric cells can scale with the smaller cardinality, the number of runs, occupied regions or WAH
-fill groups. Work-avoidance strategies won all 25 asymmetric cell--shape comparisons; a
+asymmetric cells can scale with the smaller cardinality, the number of runs, occupied regions or
+fill-compressed word groups. Work-avoidance strategies won all 25 asymmetric cell--shape comparisons; a
 same-traversal SIMD strategy won none. Dense bitmap--bitmap intersection gives the complementary
 case: when every word must be visited, vector popcount is the appropriate optimization and produced
 a tenfold improvement on Sapphire Rapids. The pairing matrix therefore identifies which resource
@@ -66,10 +66,9 @@ cost is smaller than the payload it summarizes. Next use that metadata either to
 contribution, to select a representation whose descriptors match the live work, or to generate only
 the consumers that can receive a contribution. Then hoist the decision to the largest safe scope and
 retain the ordinary exact kernel for survivors. Zone maps are one instance of the first step, not a
-set-intersection-specific trick; postings are the column-oriented, amortised form of the third.
-Equations~\eqref{eq:generic-certificate} and~\eqref{eq:generic-gate} state the transfer condition
-independently of intersection syntax: the summary must soundly certify a neutral contribution, and
-the gate must price summary plus survivor work below the direct path. Sparse joins, graph and
+set-intersection-specific trick; postings are the column-oriented, amortised form of the third. The
+transfer condition is independent of intersection syntax: the summary must soundly certify a neutral
+contribution, and the gate must price summary plus survivor work below the direct path. Sparse joins, graph and
 inverted-index traversal, block-sparse algebra and telemetry filtering all admit this construction
 wherever their metadata provides that certificate, even when intersection cardinality is not their
 final operation.

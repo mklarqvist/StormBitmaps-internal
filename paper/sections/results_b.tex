@@ -7,8 +7,10 @@
 
 The real-corpus mixtures establish that the selected cell changes with data shape. We next asked
 which implementation principle controls each cell: processing the same inputs at higher SIMD
-throughput, or arranging the computation so that fewer inputs are visited. We raced work-avoidance
-strategies against SIMD-throughput variants for the five asymmetric cells
+throughput, or arranging the computation so that fewer inputs are visited. Prior SIMD
+list-intersection methods increase the throughput of a selected sorted-array traversal
+\cite{inoue2014simdintersection,lemire2016simdintersection}. Building on these kernels, we raced
+work-avoidance strategies against same-traversal SIMD variants for the five asymmetric cells
 $\cell{\rB}{\rS}$, $\cell{\rB}{\rR}$, $\cell{\rB}{\rW}$, $\cell{\rS}{\rR}$ and
 $\cell{\rS}{\rW}$ across five corpus shapes. The shapes included uniform and $1/i$ cardinality
 spectra, clustered elements and long runs, with every variant evaluated on identical pairs.
@@ -20,16 +22,15 @@ variant won none. This result was obtained after 13 optimization rounds covering
 variants and 2,658,633 differential checks against an independent scalar oracle. All ten cells met
 the stopping rule of five consecutive non-improving iterations, so the strategy map records a
 converged search around each measured optimum rather than a comparison with one first implementation.
-Prior SIMD list-intersection methods increase the throughput of a selected sorted-array traversal
-\cite{inoue2014simdintersection,lemire2016simdintersection}. Building on these kernels, we compared
-throughput optimization with algorithms that change the number of descriptors visited. The latter
-was faster for every asymmetric cell and corpus shape tested.
+Algorithms that changed the number of descriptors visited were faster than throughput optimization
+for every asymmetric cell and corpus shape tested.
 
 Dense bitmap--bitmap intersection supplies the complementary result. Its generic path must read every
 word, so vector throughput remains the correct optimization target. On Sapphire Rapids, adding the
-AVX-512 \texttt{VPOPCNTQ} path \cite{intel-intrinsics-guide} reduced measured dense
+512-bit Advanced Vector Extensions (AVX-512) \texttt{VPOPCNTQ} path \cite{intel-intrinsics-guide} reduced measured dense
 $\cell{\rB}{\rB}$ time from 742.1 to 73.3\,ns per pair,
-a tenfold improvement. Across Apple M4, two Arm Neoverse systems and Sapphire Rapids, representation
+a tenfold improvement. Across Apple M4, two Arm Neoverse systems, including a host supporting Arm
+Scalable Vector Extension 2 (SVE2), and Sapphire Rapids, representation
 matching still beat query-tuned CRoaring at every tested synthetic density; the advantage reached
 $19.1\times$ on Sapphire Rapids after the dense kernel had been strengthened. Improving the
 irreducible cell therefore sharpened the division of labour rather than removing the benefit of the
@@ -70,7 +71,8 @@ Per-pair selection consumed 27.69--48.44\% of runtime across three hosts. Hoisti
 to tile granularity reduced that fraction to 0.10--0.29\%, and probe-and-commit used 0.30--0.48\%
 (Fig.~\ref{fig:selection-cost}a). The measurement-based tournament also corrected a model error on
 the Neoverse SVE2 host: model-only tile selection achieved $0.66\times$ the all-bitmap baseline,
-whereas probe-and-commit reached $1.09\times$ with 0.48\% decision cost. At all-pairs scale, timing a
+whereas probe-and-commit reached $1.09\times$ with
+0.48\% decision cost. At all-pairs scale, timing a
 few nominated kernels once is cheaper than evaluating a detailed model on every pair.
 
 The real-corpus policy adds a heterogeneity-gated refinement between the two nominated cells and uses
@@ -208,7 +210,8 @@ output and exposes a stronger column algorithm. Exact set-similarity joins use i
 generation, prefix and positional filtering, and exact verification
 \cite{sarawagi2004setjoins,arasu2006exact,bayardo2007allpairs,xiao2011ppjoin}. Building on this
 filter-and-verify structure, we globally ordered elements by document frequency,
-placed rare elements first, indexed the threshold-determined prefix of every row in CSR postings and
+placed rare elements first, indexed the threshold-determined prefix of every row in compressed sparse
+row (CSR) postings and
 generated candidates only from shared prefix elements. Every candidate was verified by an exact row
 cell, so all reported cardinalities remained exact and the candidate result matched the exact scan
 at every measured point.

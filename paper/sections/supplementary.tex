@@ -24,12 +24,8 @@
 \suppnote{The fixed-cost headroom argument}
 \label{note:headroom}
 
-Relocated from the Introduction, where it followed the statement that the $\Theta(m)$ bitmap
-kernel pays the same fixed cost regardless of skew, spending most of that cost combining zeros
-against zeros (main text).
-
-That waste is not an anecdote about one kind of data; it is a property of the fixed cost itself,
-and its size can be settled before any kernel is written. Every alternative encoding of the same
+A dense bitmap's density-independent $\Theta(m)$ scan creates headroom before any kernel is written.
+Every alternative encoding of the same
 set --- a sorted array of its elements, a list of its maximal runs, a fill-compressed word stream,
 or any of these applied to its complement --- is exact and interconvertible with the bitmap, and
 each is sized by the set rather than by the universe. The cheapest of them is smaller than the
@@ -47,24 +43,14 @@ comes from executing it as fast as the hardware allows --- which is what two dec
 it can be avoided, accelerate it where it cannot: this paper contributes the first axis, and a
 cheap way of knowing which of the two applies.
 
-\suppnote{Narrowing the query}
-\label{note:narrowing}
-
-All of that leaves the caller's question untouched, and a caller willing to narrow it can be given
-more. If only pairs above a similarity threshold are wanted, or only operands inside a band of set
-sizes, then the two cardinalities alone cap the similarity a pair can reach, so most pairs are
-discarded before either operand is read \cite{swamidass2007bounds,bayardo2007allpairs} --- knowing
-what is being looked for is itself a way of not doing work, and it is the cheapest one available.
-
 \suppnote{Thresholded-mode filtering --- the size bound and prefix
 filtering}
 \label{note:threshold}
 
-Full derivation for the opt-in thresholded mode named third in the mechanism ladder that opens
-Results, and stated with its hypotheses in Methods, ``What makes work avoidable''
-(Eq.~\eqref{eq:sizebound}--\eqref{eq:shortfall}): only pairs whose Jaccard similarity or intersection
-size clears a threshold are reported. Two mechanisms serve that mode, and the cheaper of them touches
-no data whatsoever. Because $|A \cap B| \le \min(a,b)$ while $|A \cup B| \ge \max(a,b)$, a pair's
+The thresholded mode narrows the output contract: only pairs whose Jaccard similarity or intersection
+size clears a caller-supplied threshold are reported. This narrowing exposes two exact filters. The
+first reads only the two row cardinalities; the second indexes threshold-determined row prefixes.
+Because $|A \cap B| \le \min(a,b)$ while $|A \cup B| \ge \max(a,b)$, a pair's
 similarity is capped by the ratio of its two sizes, $J(A,B) \le \min(a,b)/\max(a,b)$, so a pair whose
 sizes differ by more than a factor $1/t$ cannot reach the threshold and is discarded from two
 integers, before either operand is read. An absolute threshold behaves the same way: $|A \cap B| \ge
@@ -96,7 +82,7 @@ is exactly $1-t$ for every $K$. The spectrum therefore determines whether the be
 corpus breadth or stabilizes at a threshold-controlled fraction (Methods, ``What makes work
 avoidable'').
 
-It does not, however, multiply with the mechanisms below it, and the reason refines the composition
+It does not, however, multiply with the within-pair mechanisms, and the reason refines the composition
 rule this section has otherwise used. Deciding whether a pair exists at all is the coarsest
 granularity in the paper, so the rule as stated predicts a clean product with anything acting inside a
 pair. The product is not achieved. The survivors of the size test are the pairs with $a \approx b$, and
@@ -202,7 +188,7 @@ into speed.
 Two things a fixed design cannot do follow immediately, and they are the reason the selector is built
 the way it is. A representation committed to at ingest cannot exploit the deviation, because it
 commits before the deviation is knowable. A selector reading density alone cannot exploit it either,
-because density is the very statistic the null model is built from: at a fixed density $d$ with
+because density is the statistic the null model is built from: at a fixed density $d$ with
 $k = dm$ elements the expected number of maximal runs is $k(m-k+1)/m$, but the actual number ranges
 over every integer from one to $\min(k,\,m-k+1)$, so no single function of $d$ can track it. The
 deviation is also \emph{one-sided} --- a real row can be arbitrarily cheaper than a random row of the
@@ -248,7 +234,7 @@ Where the crossing falls depends on which representation is being displaced, and
 scale. A representation costing one word per element costs $w\,d$ of a bitmap, so it meets the
 summary's $1/W_z$ at $d = 1/(wW_z) = 3.1\times10^{-5}$ for $w = 64$ and $W_z = 512$ (Methods,
 Eq.~\eqref{eq:dlow}). At $d = 10^{-6}$ that representation costs $6.4\times10^{-5}$ of a bitmap while
-the summary alone costs $1.95\times10^{-3}$, so consulting it does $31\times$ the work of simply
+the summary alone costs $1.95\times10^{-3}$, so consulting it does $31\times$ the work of
 enumerating the operands. A run- or fill-based representation crosses at its own density, wherever its
 run or word count falls below $m/W_z$, but that a crossing exists at all is generic.
 
@@ -527,10 +513,10 @@ storage layout, exposing the representation change induced by transposing the sa
 \caption{\textbf{Corpora, provenance and statistics.} Every corpus referenced anywhere in this paper,
 in four provenance groups used to assemble the benchmark set: \textbf{G1}, the twelve
 \texttt{real-roaring-datasets} files CRoaring's own harness runs by default
-\cite{chambi2016roaring,lemire2018roaring}; \textbf{G2}, five SNAP social/web graphs (Stanford Large
-Network Dataset Collection) scored by neighbourhood-intersection density; \textbf{G3}, two genomic
+\cite{chambi2016roaring,lemire2018roaring}; \textbf{G2}, five social and web graphs from the Stanford
+Network Analysis Project (SNAP), scored by neighbourhood-intersection density; \textbf{G3}, two genomic
 corpora in paired row/column layouts used to expose incidence-orientation effects; \textbf{G4},
-KONECT graphs, UShER SARS-CoV-2, gnomAD and the
+Koblenz Network Collection (KONECT) graphs, UShER SARS-CoV-2, gnomAD and the
 \texttt{msprime} coalescent-simulation series, added after the original survey. Density and mean
 $|X_i|$ are corpus properties from the data loaders, not timing results. For the two G3 corpora,
 \emph{universe} and \emph{rows} swap roles between layouts: \texttt{chr20.bin} is variant-major
@@ -565,7 +551,7 @@ Corpus & Group & Rows/sets & Universe $m$ & Mean $|X_i|$ & Density & Origin / no
 \texttt{\seqsplit{dimension\_008}} & G1 & \prov{5{,}240} & \prov{3{,}866{,}845} & \prov{347} & \prov{9.0e-5} & Druid-derived dimension column \\
 \texttt{\seqsplit{dimension\_033}} & G1 & \prov{173} & \prov{3{,}866{,}847} & \prov{22{,}352} & \prov{5.8e-3} & Druid-derived dimension column \\
 \addlinespace
-\texttt{\seqsplit{as-skitter}} & G2 & \prov{1{,}696{,}415} & \prov{1{,}696{,}415} & \nm{n} & \prov{9.1e-6} & CAIDA skitter internet AS topology, 2005; undirected, symmetrized \\
+\texttt{\seqsplit{as-skitter}} & G2 & \prov{1{,}696{,}415} & \prov{1{,}696{,}415} & \nm{n} & \prov{9.1e-6} & Cooperative Association for Internet Data Analysis (CAIDA) skitter internet autonomous-system (AS) topology, 2005; undirected, symmetrized \\
 \texttt{\seqsplit{wiki-Talk}} & G2 & \prov{2{,}394{,}385} & \prov{2{,}394{,}385} & \nm{n} & \prov{2.2e-5} & Wikipedia talk-page edits; directed; only 67{,}492 vertices have out-degree $\geq 2$ \\
 \texttt{\seqsplit{soc-Pokec}} & G2 & \prov{1{,}632{,}803} & \prov{1{,}632{,}804} & \nm{n} & \prov{1.6e-5} & Pokec social network (Slovakia); directed; lowest skew of the graphs -- top 1\% of sets hold only 8.8\% of elements \\
 \texttt{\seqsplit{com-LiveJournal}} & G2 & \prov{3{,}997{,}962} & \prov{4{,}036{,}538} & \nm{n} & \prov{5.1e-6} & LiveJournal friendship, ground-truth communities; undirected, symmetrized \\
@@ -577,7 +563,7 @@ Corpus & Group & Rows/sets & Universe $m$ & Mean $|X_i|$ & Density & Origin / no
 \texttt{\seqsplit{dbpedia-link}} & G4 & \prov{4{,}384{,}102} & \prov{18{,}268{,}993} & \prov{29.8} & \prov{1.63e-6} & KONECT \\
 \texttt{\seqsplit{wikipedia\_link\_en}} & G4 & \prov{5{,}978{,}043} & \prov{11{,}206{,}012} & \prov{46.4} & \prov{4.15e-6} & KONECT \\
 \texttt{\seqsplit{livejournal-groupmemberships}} & G4 & \prov{2{,}197{,}915} & \prov{7{,}489{,}074} & \prov{48.7} & \prov{6.50e-6} & KONECT, bipartite; universe inflated $\sim$2.3$\times$ (single id space for both columns; true member domain is 3{,}201{,}203) \\
-\texttt{\seqsplit{usher\_sarscov2}} & G4 & \prov{29{,}411} & \prov{8{,}451{,}771} & \prov{15{,}769.3} & \prov{1.87e-3} & UCSC UShER SARS-CoV-2; mean dominated by near-universal variants (max 99.7\% carriers), median only 404 \\
+\texttt{\seqsplit{usher\_sarscov2}} & G4 & \prov{29{,}411} & \prov{8{,}451{,}771} & \prov{15{,}769.3} & \prov{1.87e-3} & University of California, Santa Cruz (UCSC) UShER SARS-CoV-2; mean dominated by near-universal variants (max 99.7\% carriers), median only 404 \\
 \texttt{\seqsplit{enwiki-categorylinks}} & G4 & \prov{2{,}165{,}205} & \prov{129{,}698{,}523} & \prov{102.3} & \prov{7.89e-7} & Wikimedia dumps; largest universe, lowest density in the full set \\
 \texttt{\seqsplit{gnomad\_chr21\_exomes\_af1e-3}} & G4 & \prov{625{,}656} & \prov{1{,}461{,}894} & \prov{28.2} & \prov{1.93e-5} & gnomAD v4.1 \\
 \texttt{\seqsplit{msprime\_10k}} & G4 (sim) & \prov{$\approx$42k} & \prov{2e4} & \prov{1{,}887} & \prov{9.4e-2} & msprime dense-spectrum control \\
@@ -692,8 +678,8 @@ Grouping the four terms in pairs, $\min\big(\min(a,m-a),\,\min(b,m-b)\big)=\min(
 The number of feasible answers is $m\,s+1$, so a cardinality-only view of a pair leaves
 $\log_2(m\,s+1)$ bits of the answer unresolved. The four terms $a,b,m-a,m-b$ are exactly the sizes of
 the four lists $A,B,A^c,B^c$ one could enumerate, so the residual uncertainty is the size of the
-smallest of them --- not a coincidence, since Eq.~\eqref{eq:headroom}'s proof below shows the
-smallest of those four lists is precisely what an exact algorithm enumerates to answer the query.
+smallest of them. Enumerating that smallest list and probing the other operand gives the exact
+algorithm used in the headroom argument.
 
 \emph{The pigeonhole floor.} The lower bound of Eq.~\eqref{eq:interval} lifts off zero exactly when
 $d_A+d_B>1$, giving $|A\cap B|\ge(d_A+d_B-1)m$; equivalently, by inclusion--exclusion on complements,
@@ -713,7 +699,7 @@ universe alone.
 
 Suppose each operand $X$ is available as a bitmap \emph{and} as a sorted array of whichever of $X$,
 $X^c$ is the smaller --- $\Theta(m\,s_X)$ of extra space, decided from $a,b,m$ in $O(1)$. No rank
-index is required for what follows; that enters separately, below. Without a stored complement array,
+index is required for this argument. Without a stored complement array,
 enumerating $X^c$ from the bitmap costs $\Theta(m/w+(m-a))$, whose first term is already $\kappa(\rB)$
 --- so the dense arm of the argument genuinely requires the complement to be materialised, not derived
 on the fly. Then $|A\cap B|$ is computed in $O(m\,s)$ constant-time membership probes, by four cases,
@@ -731,8 +717,7 @@ $97\%$; nothing downstream changes). The ratio exceeds one whenever $s<1/w$ and 
 $s\to0$. What this does and does not assert: it asserts that a specific, exact, correct
 algorithm exists whose cost is $m\,s$ items where $\cell{\rB}{\rB}$ spends $m/w$ items, and that the
 ratio between the two achieved costs diverges. It does \emph{not} assert that $m\,s$ is a lower bound
-on the work any algorithm must do (``Why the interval width is not a lower bound on work'', below);
-both quantities compared are achieved, neither is a floor.
+on the work any algorithm must do; both quantities compared are achieved, neither is a floor.
 
 \emph{The crossover heuristic.} Converting to time needs two measured constants: the cost of a random
 probe into a bitmap, $c_p$, and the cost of a vectorised AND-plus-popcount word, $c_w/V$. Equating the
@@ -795,8 +780,7 @@ is not complement-symmetric. Sparse limit.
 $(1/w)[1-(1-s)^{2w}-s^{2w}]\to2s$ as $s\to0$, so under the null model \rW\ costs about \emph{twice} \rS\
 in the sparse tail, not the same --- the reason \rW\ never appears on the cost envelope in either tail.
 
-\paragraph*{Complement symmetry (Proposition 9, supporting the paragraph ``the deviation, which is the
-contribution'').}
+\paragraph*{Complement symmetry.}
 $\kappa(\rS)(X^c)=m-\kappa(\rS)(X)$: \rS\ is \emph{not} complement-symmetric, which is why the \rC\
 strategy exists. $\kappa(\rB)(X^c)=\kappa(\rB)(X)$ trivially. \rR\ is complement-symmetric by
 construction, because runs of ones and runs of zeros alternate along $[0,m)$, so
@@ -854,7 +838,7 @@ that envelope sits at $w\,s\approx1$, i.e.\ $s^*\approx1/w$, about $1.6\%$ for $
 constants. The U-shape is a genuine theorem of the null model and of the bitmap's flatness. It
 is not a property of the method, and the method is not in the business of reproducing it --- on real
 data the representations deviate below the null without limit, and that deviation, not the U itself, is
-the contribution (next).
+the exploitable quantity.
 
 \paragraph*{Proof that density is not a sufficient statistic for cost (the deviation, supporting
 Eq.~\eqref{eq:expected} and the impossibility argument).}
@@ -882,7 +866,7 @@ and $r$ runs need at least $r-1$ separating gaps).
 \emph{The worked case.} $m=10^6$, $A=[0,5\times10^5)$, $B=[2.5\times10^5,7.5\times10^5)$. Both operands
 sit at density exactly $\tfrac12$ --- the worst point of Eq.~\eqref{eq:width}, where cardinality alone
 leaves $500{,}001$ feasible answers and the null model of Eq.~\eqref{eq:expected} predicts $m/4=250{,}000$
-runs apiece. Both in fact have one run. $\cell{\rB}{\rR}$ with a rank index (Eq.~\eqref{eq:rank})
+runs apiece. Both have one run. $\cell{\rB}{\rR}$ with a rank index (Eq.~\eqref{eq:rank})
 answers the pair in \emph{two rank lookups}; $\cell{\rB}{\rB}$ spends $15{,}625$ word operations to
 reach the same number. Nothing about the density says which situation a selector is in.
 
@@ -904,7 +888,7 @@ spurious $500\times$ worst case, where the true bound is $\sigma_\rR\ge0.999$. R
 real data can be arbitrarily cheaper than random data at the same density, and at most about
 twice as expensive.
 
-The impossibility (Corollary B), stated at the strength it is actually proved. Any selector
+The resulting impossibility is stated at its proved strength. Any selector
 whose input is $d$ (or $a$, $b$, or any function of them) evaluates one fixed function $f(d)$ on every
 row of that density; by the range above, $\kappa(\rR)$ takes every value in $[1,k]$ at $d=k/m$, so
 $f(d)$ mis-predicts $\kappa(\rR)$ by an unbounded factor on some rows at every density, and no such
@@ -942,7 +926,7 @@ structure to find; real data deviates from it only in the mechanism's favour; th
 deviation is not a function of density and so is invisible to any cost model whose inputs are
 cardinalities; and it is exactly the quantity the mechanism converts into avoided work.
 
-\paragraph*{Where the headroom vanishes (Proposition 12, full detail).}
+\paragraph*{Where the headroom vanishes.}
 At $s_A=s_B=\tfrac12$: the cardinality view excludes nothing ($U=m/2$, Eq.~\eqref{eq:width}); the best
 list-based cell costs $m/2$ probes (Eq.~\eqref{eq:headroom}'s proof) against $\cell{\rB}{\rB}$'s $m/w$
 word operations, so $\cell{\rB}{\rB}$ wins by $w/2$ --- a factor of $32$ at $w=64$, before
@@ -951,7 +935,7 @@ $\mathbb{E}\,\kappa(\rW)=(m/w)(1-2\cdot2^{-2w})\approx m/w$, so neither \rR\ nor
 either, and \rW\ has degenerated into \rB\ with header overhead. So the headroom ratio of
 Eq.~\eqref{eq:headroom} does not merely shrink at $s=\tfrac12$ --- it falls below one ($1/(w\,s)=1/32$
 at $w=64$), and the correct behaviour of a selector there is to choose $\cell{\rB}{\rB}$. (The ratio is
-of course positive; ``negative headroom'' is the wrong description for a quantity that has fallen
+positive; ``negative headroom'' is the wrong description for a quantity that has fallen
 below unity.) This is a statement about the generic case and is false for structured rows at
 mid density: $X_{\mathrm{block}}$ sits at $d=\tfrac12$ with $r=1$. The honest form is: given only
 cardinalities, and absent structure, the mid-band is where nothing can be avoided; a structural summary
@@ -1131,7 +1115,7 @@ and unconditional expectations of $\min(a,b)=e^{\min(X,Y)}$ in $\gamma=\ln(1/t)$
 the leading term is $\ln K/2$. Numerically, at $K=10^4,t=0.9$ the factor is $4.40$ against the limit
 $\ln K/2=4.61$. Simulating the composition directly reproduces the shortfall: the size bound leaves
 $2.76\%$ of pairs and representation choice costs $1.51\%$ of a bitmap, so a product would predict
-$0.042\%$ where the composition in fact costs $0.151\%$, a shortfall of $3.69\times$ once
+$0.042\%$ where the composition costs $0.151\%$, a shortfall of $3.69\times$ once
 cardinalities are integers; permuting which pairs pass the size test, so the two mechanisms read
 uncorrelated statistics at the same survival rate, restores the product to within $0.6\%$, isolating
 the shared statistic as the cause rather than the granularity. The composition is still strongly worth
@@ -1154,7 +1138,7 @@ $\mu_X=(k_X,r_X,\ell_X+g_X)$ is the operand's metadata, the $N_j$ are counts of 
 touched, and the $c_j>0$ are per-item constants entering only through the ratios
 $\theta_{pw}=c_p/c_w$, $\theta_{mw}=c_m/c_w$, $\theta_{\rho w}=c_\rho/c_w$ for a membership probe, a
 merge step and a rank lookup respectively, each measured, not derived. Given a corpus, a distribution
-$\pi$ over the chunk pairs actually evaluated, and an operation $\omega$, the decision problem is to
+$\pi$ over the chunk pairs evaluated, and an operation $\omega$, the decision problem is to
 choose an assignment $\rho:\text{chunks}\to\{\rS,\rB,\rR,\rW\}$ minimising
 $C(\rho)=\sum_{(x,y)\sim\pi}C_\omega(\rho(x),\mu_x;\rho(y),\mu_y)$ subject to a byte budget $F$.
 
@@ -1290,7 +1274,7 @@ the far endpoint, $\max_kC(\tau_{\mathrm{stor}};k)/C(\tau_\cap;k)=c_p\tau_{\math
 running at $\tau_\cap$ inflates the footprint of a $k=\tau_\cap$ container by the same ratio in both
 directions.
 
-\paragraph*{Proof of Proposition 18/19 (metadata settles the decision wherever the decision matters).}
+\paragraph*{Proof that metadata settles the decision wherever the decision matters.}
 Two identifiability questions must not be conflated. Eq.~\eqref{eq:width} says what cardinality
 determines about the \emph{answer}, pinned only at the density extremes. What it determines about the
 \emph{decision} is different and more favourable. If $\mu=(k,r,\ell+g)$, every cost above is a
@@ -1310,7 +1294,7 @@ choosing wrong is at most $\eta$, by the definition of $\Lambda$. So for every p
 the metadata settles the decision or the decision does not matter to within the precision of the
 constants, and the undetermined set is an $\eta$-neighbourhood of the boundaries derived above rather
 than a region of unbounded error. This is a different mid-band from the one in Eq.~\eqref{eq:width}:
-Proposition~2 (main text) says the \emph{answer} is pinned by cardinality only at the density extremes;
+Eq.~\eqref{eq:width} says the \emph{answer} is pinned by cardinality only at the density extremes;
 this result says the \emph{decision} is pinned everywhere except an $\eta$-neighbourhood of a
 boundary, and the two regions have different consequences and must not be merged --- at $d=\tfrac12$
 cardinality determines nothing about the answer while determining the decision completely
@@ -1325,7 +1309,7 @@ there.
 \paragraph*{Proof of Eq.~\eqref{eq:gmax} (why an advantage survives repairing the incumbent's kernel).}
 Write the total cost of a batch as $C(\rho)=C_{\mathrm{meta}}+\sum_{(A,B)\in\mathcal P_{\mathrm{surv}}}
 \sum_{z\in Z(A,B)}C_{\mathrm{cell}}(\rho(A|z),\rho(B|z))$, where $\mathcal P_{\mathrm{surv}}\subseteq
-\mathcal P$ are the pairs not discarded by metadata and $Z(A,B)$ the regions actually visited.
+\mathcal P$ are the pairs not discarded by metadata and $Z(A,B)$ the regions visited.
 $\mathcal P_{\mathrm{surv}}$ and $Z(A,B)$ are functions of the metadata and the data only: the size
 bound reads $(a,b)$, the zone-map test reads bin occupancy, the narrowed-contract mode reads $(a,b,t)$,
 and none reads a representation --- since every representation here is exact and interconvertible,
@@ -1368,5 +1352,6 @@ only fall below the null, so a measured advantage exceeding the ceiling is evide
 must be reported as such rather than as agreement with the model --- a measured range whose lower and
 middle values sit inside the ceiling and whose top exceeds it is the expected signature of real
 structure, not a discrepancy to explain away. And Eq.~\eqref{eq:gmax} excludes the narrowed contract
-entirely: Eq.~\eqref{eq:survive} supplies its own factor, and by Proposition~21's rule the two are not
+entirely: Eq.~\eqref{eq:survive} supplies its own factor, and by the shared-statistic composition rule
+derived above the two are not
 multiplied together.

@@ -7,7 +7,8 @@ across row tiles. Throughout, we use
 \emph{cell} to denote one representation pairing (for example $\cell{\rB}{\rS}$), \emph{variant} to
 denote one implementation of a cell, and \emph{pairing matrix} to denote the full set of cells;
 unless stated otherwise, every external ratio is reported against CRoaring v4.7.2 after
-\texttt{run\_optimize()} and the query-cost promotion defined in Methods. Figure~\ref{fig:pairing-matrix}
+\texttt{run\_optimize()} and an array-to-bitset promotion at the measured count-only crossover.
+Figure~\ref{fig:pairing-matrix}
 lays out the row matrix: the five representation families,
 the driving variable each pairing's cost is proportional to, and the path from precomputed row
 metadata through the selector to a chosen kernel.
@@ -16,14 +17,13 @@ All evaluated paths return the same exact cardinalities. Row cells reduce the wo
 selected pair; tile selection shares the decision across related pairs; and column postings invert
 coarse positional occupancy so that one column contributes to every row pair it can support. Results
 therefore progress from the row cost map, through online real-corpus dispatch, to the all-pairs tile
-algorithm. Detailed constructions and thresholds are given in Methods and Supplementary
-Note~\ref{note:batch}.
+algorithm. Methods gives every construction and routing rule; Supplementary
+Note~\ref{note:batch} gives the extended column-posting derivation.
 
 Total work separates into the number of surviving pairs $|C|$, their exact verification costs
 $K(i,j)$ and amortised planning. Positional postings control $|C|$, row representations control
-$K(i,j)$, and tile scheduling amortises selection and construction. We measured the complete online
-system, including selection, against all-bitmap execution (Table~\ref{tab:exact}) and query-tuned
-CRoaring (Table~\ref{tab:corpora}), then resolved the row and column contributions by ablation.
+$K(i,j)$, and tile scheduling amortises selection and construction. This factorization defines the
+row, selector and column ablations used throughout.
 
 \begin{figure}[!t]
 \centering
@@ -52,9 +52,9 @@ Schematic; no measured data.}
 We first asked whether bitmap--bitmap intersection retains its fixed cost across density and where
 descriptor-driven cells overtake it. We measured all ten cells at 20 matched-density points from one
 set bit to the full universe. Every point used 96 uniformly structured rows over a fixed 65,536-bit
-universe on Apple M4, keeping the operand set L2-resident while density changed. The $1/i$ and
-clustered shapes used in the strategy comparison below exercise the corresponding heterogeneous
-regime.
+universe on Apple M4, keeping the operand set resident in the level-2 (L2) cache while density changed. Separate strategy
+comparisons used $1/i$ cardinality spectra and clustered layouts to exercise the corresponding
+heterogeneous regime.
 
 The pure-SIMD $\cell{\rB}{\rB}$ path remained between 115 and 150\,ns per pair across five orders of
 magnitude of density. Against that fixed line, the fastest matched cell cost 1.6\,ns at one set bit,

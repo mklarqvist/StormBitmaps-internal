@@ -289,29 +289,6 @@
   International Conference on Management of Data}}, \bibinfo{pages}{85--96},
   \doiprefix\url{10.1145/2213836.2213847} (\bibinfo{year}{2012}).
 
-\bibitem{mood1940runs}
-\bibinfo{author}{Mood, A.~M.}
-\newblock \bibinfo{journal}{\bibinfo{title}{The distribution theory of runs}}.
-\newblock {\emph{\JournalTitle{The Annals of Mathematical Statistics}}}
-  \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{367--392},
-  \doiprefix\url{10.1214/aoms/1177731825} (\bibinfo{year}{1940}).
-
-\bibitem{lang2020teb}
-\bibinfo{author}{Lang, H.} \emph{et~al.}
-\newblock \bibinfo{title}{Tree-encoded bitmaps}.
-\newblock In \emph{\bibinfo{booktitle}{Proceedings of the ACM SIGMOD
-  International Conference on Management of Data}}, \bibinfo{pages}{937--967},
-  \doiprefix\url{10.1145/3318464.3380588} (\bibinfo{year}{2020}).
-
-\bibitem{anastasiu2016tapnn}
-\bibinfo{author}{Anastasiu, D.~C.} \& \bibinfo{author}{Karypis, G.}
-\newblock \bibinfo{title}{Efficient identification of {Tanimoto} nearest
-  neighbors}.
-\newblock In \emph{\bibinfo{booktitle}{Proceedings of the IEEE International
-  Conference on Data Science and Advanced Analytics (DSAA)}},
-  \bibinfo{pages}{156--165}, \doiprefix\url{10.1109/DSAA.2016.23}
-  (\bibinfo{year}{2016}).
-
 \bibitem{jacobson1989succinct}
 \bibinfo{author}{Jacobson, G.}
 \newblock \bibinfo{title}{Space-efficient static trees and graphs}.
@@ -412,6 +389,29 @@
   \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{1547--1569},
   \doiprefix\url{10.1002/spe.2402} (\bibinfo{year}{2016}).
 \newblock \bibinfo{note}{ArXiv:1603.06549}.
+
+\bibitem{mood1940runs}
+\bibinfo{author}{Mood, A.~M.}
+\newblock \bibinfo{journal}{\bibinfo{title}{The distribution theory of runs}}.
+\newblock {\emph{\JournalTitle{The Annals of Mathematical Statistics}}}
+  \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{367--392},
+  \doiprefix\url{10.1214/aoms/1177731825} (\bibinfo{year}{1940}).
+
+\bibitem{lang2020teb}
+\bibinfo{author}{Lang, H.} \emph{et~al.}
+\newblock \bibinfo{title}{Tree-encoded bitmaps}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{937--967},
+  \doiprefix\url{10.1145/3318464.3380588} (\bibinfo{year}{2020}).
+
+\bibitem{anastasiu2016tapnn}
+\bibinfo{author}{Anastasiu, D.~C.} \& \bibinfo{author}{Karypis, G.}
+\newblock \bibinfo{title}{Efficient identification of {Tanimoto} nearest
+  neighbors}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the IEEE International
+  Conference on Data Science and Advanced Analytics (DSAA)}},
+  \bibinfo{pages}{156--165}, \doiprefix\url{10.1109/DSAA.2016.23}
+  (\bibinfo{year}{2016}).
 
 \bibitem{chaudhuri2006primitive}
 \bibinfo{author}{Chaudhuri, S.}, \bibinfo{author}{Ganti, V.} \&

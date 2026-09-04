@@ -33,18 +33,10 @@ services, global observability systems and shared open-source data platforms int
 systems problem: both the number of possible pairs and the width of the shared universe are large,
 while the incidence matrix remains sparse and heterogeneous.
 
-This exact operation exposes a broader systems problem: deciding which work should be admitted to an
-expensive sparse kernel. Zone maps and related summaries can certify that a region contributes
-nothing; representation metadata can identify a cheaper traversal; and transposed postings can reuse
-one sparse fact across many consumers. Their reusable structure is a cheap summary, a sound rejection
-predicate, an exact survivor path and a gate that invokes the summary only when the work it removes
-exceeds its cost. Sparse joins, graph analytics, block-sparse algebra, inverted-index evaluation and
-telemetry processing expose the same opportunity whenever absence or irrelevance can be certified
-from metadata before payload data are visited.
-
 The conventional dense representation evaluates each entry as
 \texttt{popcount(A AND B)}. Its $\Theta(m)$ cost is independent of both operand cardinalities, so an
-all-pairs traversal pays $\Theta(N^2m)$ even when most rows contain only a few elements. Wider SIMD
+all-pairs traversal pays $\Theta(N^2m)$ even when most rows contain only a few elements. Wider
+single-instruction, multiple-data (SIMD)
 instructions reduce the constant on the AND--popcount loop \cite{mula2018popcount}, and established
 SIMD intersection kernels likewise accelerate selected sorted-list traversals
 \cite{inoue2014simdintersection,lemire2016simdintersection}; neither change removes the words or
@@ -53,6 +45,15 @@ and allele-count data \cite{fu1995}, most row pairs contain a sparse operand and
 intersection is often below one. The fixed bitmap scan then spends most of its work proving an empty
 answer. The representation-independent headroom created by that fixed cost is developed in
 Supplementary Note~\ref{note:headroom}.
+
+This fixed cost exposes a broader systems problem: deciding which work should be admitted to an
+expensive sparse kernel. Zone maps and related summaries can certify that a region contributes
+nothing; representation metadata can identify a cheaper traversal; and transposed postings can reuse
+one sparse fact across many consumers. Their reusable structure is a cheap summary, a sound rejection
+predicate, an exact survivor path and a gate that invokes the summary only when the work it removes
+exceeds its cost. Sparse joins, graph analytics, block-sparse algebra, inverted-index evaluation and
+telemetry processing expose the same opportunity whenever absence or irrelevance can be certified
+from metadata before payload data are visited.
 
 Exact alternative representations expose different work variables. A sorted array scales with the
 number of stored elements, a run representation with the number of intervals, and a fill-compressed
@@ -102,13 +103,10 @@ constant-size metadata and a bounded probe-and-commit step make the routing deci
 active traversal. Offline tournaments remain available as an optional specialization when a stable,
 extremely large workload will reuse their decision enough to amortise the one-time search.
 
-The architecture factorizes all-pairs work into candidate generation, exact verification and
-amortised planning. Positional postings determine the survivor set $C$, representation pairing
-determines $K(i,j)$ for each $(i,j)\in C$, and the online gate selects the lower-cost route. Including
-routing overhead, the online system outperforms all-bitmap execution on all 23 corpora
-(Table~\ref{tab:exact}) and query-tuned CRoaring on 22 (Table~\ref{tab:corpora}).
-
 The contribution is therefore a general work-avoidance architecture, rigorously instantiated for
-exact and thresholded sparse binary Gram matrices: representation-paired row kernels, near-free
-online routing and column-oriented candidate generation, with each layer scaling in the descriptors
-of useful work exposed at its own resolution.
+exact and thresholded sparse binary Gram matrices. It factorizes all-pairs work into candidate
+generation, exact verification and amortised planning: positional postings determine the survivor
+set $C$, representation pairing determines the exact verification cost $K(i,j)$ for each
+$(i,j)\in C$, and the online gate selects
+the lower-cost route. Each layer consequently scales in the descriptors of useful work exposed at
+its own resolution.
