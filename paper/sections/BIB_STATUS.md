@@ -2,10 +2,9 @@
 
 `references.bib` was rebuilt from scratch for this manuscript (`storm.tex`). The old
 `references.bib` belonged to an unrelated paper and is preserved as
-`references_scaffold.bib.bak`. Every entry below was checked against a publisher page, DBLP, or
-arXiv during this pass (not recalled from memory). Verified with `pdflatex` + `bibtex` +
-`naturemag-doi.bst`: all 15 keys currently cited by `sections/*.tex` resolve, and `bibtex` reports
-zero missing-field warnings across all 26 entries.
+`references_scaffold.bib.bak`. This file retains the initial audit as a historical snapshot and
+records later literature passes as dated addenda. Current key resolution and BibTeX diagnostics are
+checked by rebuilding `storm.tex`; counts in the initial snapshot below are not current totals.
 
 **Key-mismatch check:** at the time this file was written, every `\cite{...}` key across
 `sections/introduction.tex`, `sections/results_a.tex`, `sections/results_b.tex`,
@@ -19,7 +18,7 @@ changes again after this file is written.)
 grep -oE '\\cite\{[^}]+\}' sections/*.tex | sed -E 's/.*\\cite\{([^}]+)\}/\1/' | tr ',' '\n' | sort -u
 ```
 
-## Cited by at least one section file (15 keys)
+## Initial audit: cited by at least one section file (historical snapshot)
 
 | Key | Verified | Source(s) used | Notes |
 |---|---|---|---|
@@ -40,7 +39,7 @@ grep -oE '\\cite\{[^}]+\}' sections/*.tex | sed -E 's/.*\\cite\{([^}]+)\}/\1/' |
 | `fu1995` | Yes | Semantic Scholar / PubMed cross-check | Theor. Popul. Biol. 48(2):172–197, 1995, DOI 10.1006/tpbi.1995.1025. Exact title "Statistical Properties of Segregating Sites" confirmed (not "...of the Site-Frequency Spectrum", a different, later paper that came up in search noise). |
 | `tomahawk_github` | Yes (as software, not a paper) | github.com/mklarqvist/Tomahawk (repository itself; not independently re-fetched this pass, per dm_refs.txt's prior note that no paper/preprint exists) | `@misc`, software repository, created 2017-07-17. Correctly has no DOI/venue — matches NARRATIVE.md/dm_refs.txt guidance not to invent one. |
 
-## Verified but not yet cited by key in any `sections/*.tex` file (11 keys)
+## Initial audit: verified but not yet cited by key (historical snapshot)
 
 These are named explicitly in the task's "works to verify and include" list (drawn from
 NARRATIVE.md §8's "Selection and adaptivity," "Rank/select," and "Compressed bitmap lineage" /
@@ -66,7 +65,7 @@ census1881 loader-correctness check, which per `SECTION_SPEC.md` line ~684 shoul
 | `purcell2007plink` | Yes | Cell/AJHG PDF (via search snippet); PubMed | AJHG 81(3):559–575, 2007, DOI 10.1086/519795. Full 11-author list included. |
 | `chang2015plink2` | Yes | Oxford Academic (GigaScience) PDF page (via search snippet); GigaScience article page | GigaScience 4:7, 2015, DOI 10.1186/s13742-015-0047-8. |
 
-## Summary
+## Initial-pass summary (historical)
 
 - **26 entries** in `references.bib`.
 - **25 of 26 fully verified** (author list, title, venue, volume/issue, pages, year, DOI all
@@ -94,3 +93,30 @@ census1881 loader-correctness check, which per `SECTION_SPEC.md` line ~684 shoul
   - `colantonio2010concise`'s venue (Information Processing Letters, not Information Systems).
   - `niu2019iaspgemm`'s actual author list (Xie, Tan, Liu, Sun — not "Niu" as the NARRATIVE.md
     shorthand implied).
+
+## 2026-09-04 competitor and prior-art audit
+
+A three-way literature audit covered row-oriented set intersection, bitmap and hybrid
+representations, and column-oriented all-pairs candidate generation. The following additions were
+checked against author-hosted papers, institutional publication records, DBLP, PVLDB, or publisher
+DOI metadata before being added and cited in the manuscript.
+
+| Key | Verified source | Role in the manuscript |
+|---|---|---|
+| `karp1995bitvector` | Microsoft Research record; DOI 10.1109/SFCS.1995.492663 | Historical thresholded all-pairs sparse bit-vector problem. |
+| `demaine2000adaptive` | Authors' Waterloo publication record and paper | Instance-adaptive sorted-set operations and certificate-based analysis. |
+| `ding2011intersection` | PVLDB 4(4):255–266; DOI 10.14778/1938545.1938550 | Preprocessed word-parallel, output-sensitive in-memory intersection. |
+| `culpepper2010intersection` | Author-hosted TOIS paper; DOI 10.1145/1877766.1877767 | Hybrid compressed-list and bitmap intersection for inverted indexes. |
+| `inoue2014simdintersection` | PVLDB 8(3):293–304; DOI 10.14778/2735508.2735518 | SIMD sorted-array intersection via branch reduction. |
+| `lemire2016simdintersection` | Wiley metadata and arXiv:1401.6399; DOI 10.1002/spe.2326 | SIMD and galloping intersection of sorted postings. |
+| `gustavson1978spgemm` | IBM Research and ACM metadata; DOI 10.1145/355791.355796 | Canonical sparse multiplication and transposition lineage. |
+| `buluc2011combinatorialblas` | GraphBLAS/CombBLAS record; DOI 10.1177/1094342011403516 | Sparse matrix and graph-algebra execution family. |
+| `an2019skipintersection` | Author paper, DBLP and IEEE DOI 10.1109/HPEC.2019.8916307 | Exact column/wedge all-pairs common-neighbour counting. |
+| `sarawagi2004setjoins` | Author-hosted SIGMOD paper; DOI 10.1145/1007568.1007652 | Early exact inverted-index joins for intersection, Jaccard and cosine predicates. |
+| `xiao2011ppjoin` | HKUST publication record; DOI 10.1145/2000824.2000825 | Full PPJoin positional and suffix-filtering treatment. |
+| `wang2012adaptjoin` | SIGMOD metadata; DOI 10.1145/2213836.2213847 | Adaptive per-object prefix selection for threshold joins. |
+
+The audit changed claim placement rather than merely enlarging the bibliography: the Introduction
+now identifies the closest prior execution families, Methods states the exact specialization of
+each mechanism, Results scopes the SIMD and posting comparisons, and Discussion states the paper's
+two-resolution systems contribution compositionally.

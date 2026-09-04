@@ -139,7 +139,7 @@ ones of the same length. In each case the null is what the mechanism is worth on
 structure to find, real data deviates from it only in the mechanism's favour, and that deviation is
 exactly the quantity the mechanism converts into avoided work.
 
-\paragraph*{Where the headroom vanishes.}
+\paragraph*{The mid-density regime selects bitmap throughput.}
 At $s=\tfrac12$ the interval has width $m/2$ and excludes nothing, the cheapest list-based cell spends
 $m/2$ probes against $\lceil m/w\rceil$ words, and Eq.~\eqref{eq:expected} offers neither \rR\ nor \rW\
 an advantage: Eq.~\eqref{eq:headroom} falls below one. In the generic case the mid-density band belongs
@@ -202,6 +202,8 @@ as metadata, no element of either set read. This is the Swamidass--Baldi pruning
 \cite{arasu2006exact}, in the two-sided form standardised by \cite{mann2016empirical} and applied
 jointly with prefix filtering to Tanimoto over binary vectors by \cite{anastasiu2016tapnn}, restated here to place it against the mechanisms above
 rather than as a result of this paper.
+The operational narrowing and the complete thresholded construction are given in Supplementary
+Notes~\ref{note:narrowing} and~\ref{note:threshold}.
 
 \paragraph*{What that removes, and why a wider corpus helps it.}
 Modelling a corpus by drawing cardinalities independently with $\log a$ uniform on $[0,\ln K]$ --- the
@@ -364,7 +366,7 @@ exceeding it is evidence of structure and must be reported as such rather than a
 Eq.~\eqref{eq:gmax} excludes the narrowed contract entirely: Eq.~\eqref{eq:survive} supplies its own
 factor, and by the rule above the two are not multiplied.
 
-\paragraph*{Where avoidance is unavailable, throughput is what remains.}
+\paragraph*{The irreducible regime selects throughput.}
 The mid-band above is not only where these results stop applying; it is where a different optimization
 applies, and the two are complementary rather than competing. Where Eq.~\eqref{eq:headroom} falls below
 one and $p_Ap_B\to1$, the work $\cell{\rB}{\rB}$ performs is, in the generic case, work that is going to

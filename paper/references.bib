@@ -49,6 +49,48 @@
   note    = {arXiv:1709.07821}
 }
 
+@article{zobel2006inverted,
+  author  = {Zobel, Justin and Moffat, Alistair},
+  title   = {Inverted Files for Text Search Engines},
+  journal = {ACM Computing Surveys},
+  volume  = {38},
+  number  = {2},
+  pages   = {6:1--6:56},
+  year    = {2006},
+  doi     = {10.1145/1132956.1132959}
+}
+
+@article{culpepper2010intersection,
+  author  = {Culpepper, J. Shane and Moffat, Alistair},
+  title   = {Efficient Set Intersection for Inverted Indexing},
+  journal = {ACM Transactions on Information Systems},
+  volume  = {29},
+  number  = {1},
+  pages   = {1:1--1:25},
+  year    = {2010},
+  doi     = {10.1145/1877766.1877767}
+}
+
+@inproceedings{broder1997resemblance,
+  author    = {Broder, Andrei Z.},
+  title     = {On the Resemblance and Containment of Documents},
+  booktitle = {Proceedings of Compression and Complexity of Sequences},
+  pages     = {21--29},
+  year      = {1997},
+  doi       = {10.1109/SEQUEN.1997.666900}
+}
+
+@inproceedings{yang2014druid,
+  author    = {Yang, Fangjin and Tschetter, Eric and L{\'e}aut{\'e}, Xavier
+               and Ray, Nelson and Merlino, Gian and Ganguli, Deep},
+  title     = {{Druid}: A Real-Time Analytical Data Store},
+  booktitle = {Proceedings of the 2014 ACM SIGMOD International Conference on
+               Management of Data},
+  pages     = {157--168},
+  year      = {2014},
+  doi       = {10.1145/2588555.2595631}
+}
+
 % ---------------------------------------------------------------------------
 % Popcount / AND+popcount -- credited as solved, not re-claimed.
 % ---------------------------------------------------------------------------
@@ -63,6 +105,13 @@
   year    = {2018},
   doi     = {10.1093/comjnl/bxx046},
   note    = {arXiv:1611.07612}
+}
+
+@manual{intel-intrinsics-guide,
+  author = {{Intel Corporation}},
+  title  = {{Intel Intrinsics Guide}},
+  year   = {2024},
+  note   = {Version 3.6.9, 12 July 2024}
 }
 
 % ---------------------------------------------------------------------------
@@ -139,6 +188,50 @@
   doi     = {10.1088/1742-6596/16/1/071}
 }
 
+@inproceedings{demaine2000adaptive,
+  author    = {Demaine, Erik D. and L{\'o}pez-Ortiz, Alejandro and Munro, J. Ian},
+  title     = {Adaptive Set Intersections, Unions, and Differences},
+  booktitle = {Proceedings of the 11th Annual ACM-SIAM Symposium on Discrete
+               Algorithms (SODA)},
+  pages     = {743--752},
+  year      = {2000}
+}
+
+@article{ding2011intersection,
+  author  = {Ding, Bolin and K{\"o}nig, Arnd Christian},
+  title   = {Fast Set Intersection in Memory},
+  journal = {Proceedings of the VLDB Endowment},
+  volume  = {4},
+  number  = {4},
+  pages   = {255--266},
+  year    = {2011},
+  doi     = {10.14778/1938545.1938550}
+}
+
+@article{lemire2016simdintersection,
+  author  = {Lemire, Daniel and Boytsov, Leonid and Kurz, Nathan},
+  title   = {{SIMD} Compression and the Intersection of Sorted Integers},
+  journal = {Software: Practice and Experience},
+  volume  = {46},
+  number  = {6},
+  pages   = {723--749},
+  year    = {2016},
+  doi     = {10.1002/spe.2326},
+  note    = {arXiv:1401.6399}
+}
+
+@article{inoue2014simdintersection,
+  author  = {Inoue, Hiroshi and Ohara, Moriyoshi and Taura, Kenjiro},
+  title   = {Faster Set Intersection with {SIMD} Instructions by Reducing
+             Branch Mispredictions},
+  journal = {Proceedings of the VLDB Endowment},
+  volume  = {8},
+  number  = {3},
+  pages   = {293--304},
+  year    = {2014},
+  doi     = {10.14778/2735508.2735518}
+}
+
 % ---------------------------------------------------------------------------
 % Rank/select lineage.
 % ---------------------------------------------------------------------------
@@ -198,6 +291,26 @@
   doi       = {10.1145/1242572.1242591}
 }
 
+@inproceedings{karp1995bitvector,
+  author    = {Karp, Richard M. and Waarts, Orli and Zweig, Geoffrey},
+  title     = {The Bit Vector Intersection Problem},
+  booktitle = {Proceedings of the 36th Annual Symposium on Foundations of
+               Computer Science (FOCS)},
+  pages     = {621--630},
+  year      = {1995},
+  doi       = {10.1109/SFCS.1995.492663}
+}
+
+@inproceedings{sarawagi2004setjoins,
+  author    = {Sarawagi, Sunita and Kirpal, Alok},
+  title     = {Efficient Set Joins on Similarity Predicates},
+  booktitle = {Proceedings of the 2004 ACM SIGMOD International Conference on
+               Management of Data},
+  pages     = {743--754},
+  year      = {2004},
+  doi       = {10.1145/1007568.1007652}
+}
+
 @inproceedings{xiao2008ppjoin,
   author    = {Xiao, Chuan and Wang, Wei and Lin, Xuemin and Yu, Jeffrey Xu},
   title     = {Efficient Similarity Joins for Near Duplicate Detection},
@@ -206,6 +319,64 @@
   pages     = {131--140},
   year      = {2008},
   doi       = {10.1145/1367497.1367516}
+}
+
+@article{xiao2011ppjoin,
+  author  = {Xiao, Chuan and Wang, Wei and Lin, Xuemin and Yu, Jeffrey Xu and
+             Wang, Guoren},
+  title   = {Efficient Similarity Joins for Near-Duplicate Detection},
+  journal = {ACM Transactions on Database Systems},
+  volume  = {36},
+  number  = {3},
+  pages   = {15:1--15:41},
+  year    = {2011},
+  doi     = {10.1145/2000824.2000825}
+}
+
+@inproceedings{wang2012adaptjoin,
+  author    = {Wang, Jiannan and Li, Guoliang and Feng, Jianhua},
+  title     = {Can We Beat the Prefix Filtering? An Adaptive Framework for
+               Similarity Join and Search},
+  booktitle = {Proceedings of the 2012 ACM SIGMOD International Conference on
+               Management of Data},
+  pages     = {85--96},
+  year      = {2012},
+  doi       = {10.1145/2213836.2213847}
+}
+
+@article{gustavson1978spgemm,
+  author  = {Gustavson, Fred G.},
+  title   = {Two Fast Algorithms for Sparse Matrices: Multiplication and
+             Permuted Transposition},
+  journal = {ACM Transactions on Mathematical Software},
+  volume  = {4},
+  number  = {3},
+  pages   = {250--269},
+  year    = {1978},
+  doi     = {10.1145/355791.355796}
+}
+
+@article{buluc2011combinatorialblas,
+  author  = {Bulu\c{c}, Ayd\i{}n and Gilbert, John R.},
+  title   = {The Combinatorial {BLAS}: Design, Implementation, and Applications},
+  journal = {International Journal of High Performance Computing Applications},
+  volume  = {25},
+  number  = {4},
+  pages   = {496--509},
+  year    = {2011},
+  doi     = {10.1177/1094342011403516}
+}
+
+@inproceedings{an2019skipintersection,
+  author    = {An, Xiaojing and Gabert, Kasimir and Fox, James and Green, Oded
+               and Bader, David A.},
+  title     = {Skip the Intersection: Quickly Counting Common Neighbors on
+               Shared-Memory Systems},
+  booktitle = {Proceedings of the IEEE High Performance Extreme Computing
+               Conference (HPEC)},
+  pages     = {1--7},
+  year      = {2019},
+  doi       = {10.1109/HPEC.2019.8916307}
 }
 
 @article{haque2011tanimoto,
@@ -464,10 +635,10 @@
   doi       = {10.1145/3076113.3076120}
 }
 
-@inproceedings{alexiou2013arf,
+@article{alexiou2013arf,
   author    = {Alexiou, Karolina and Kossmann, Donald and Larson, Per-{\AA}ke},
   title     = {Adaptive Range Filters for Cold Data: Avoiding Trips to Siberia},
-  booktitle = {Proceedings of the VLDB Endowment},
+  journal   = {Proceedings of the VLDB Endowment},
   volume    = {6},
   number    = {14},
   pages     = {1714--1725},

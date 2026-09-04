@@ -1,4 +1,4 @@
-\documentclass[fleqn,10pt]{wlscirep}
+  \documentclass[fleqn,10pt]{wlscirep}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 
@@ -87,22 +87,13 @@
   \refstepcounter{suppnote}%
   \subsection*{Supplementary Note \thesuppnote: #1}}
 
-% Placeholder for a figure whose data the final campaign has not yet produced.
-% #1 = width fraction, #2 = what the figure will show (one line).
-\newcommand{\figplaceholder}[2]{%
-  \begin{center}%
-  \fboxsep=10pt\fboxrule=0.6pt%
-  \textcolor{red}{\fbox{\parbox{#1\linewidth}{\centering\small
-  \textbf{FIGURE PLACEHOLDER}\\[3pt]#2}}}%
-  \end{center}}
-
-\title{Work avoidance for efficient sparse set algebra}
+\title{Work avoidance in sparse set algebra}
 
 \author[1]{Marcus D. R. Klarqvist}
 \affil[1]{\nm{affiliation}}
 
-\keywords{set algebra; compressed bitmaps; adaptive representation; work
-avoidance; set intersection; SIMD}
+\keywords{set algebra; sparse computation; pairwise computation; all-pairs set intersection;
+column postings; zone maps; adaptive representation; online optimization; work avoidance}
 
 \begin{abstract}
 \input{sections/abstract}

@@ -1,66 +1,114 @@
-Computing the cardinality of a set intersection, $|A \cap B|$, over a shared universe of possible
-elements is a core primitive in similarity search and near-duplicate detection
-\cite{bayardo2007allpairs,xiao2008ppjoin}, in chemical fingerprint screening
-\cite{swamidass2007bounds,haque2011tanimoto,dalke2019chemfp}, in graph co-occurrence analysis, and
-in the boolean query evaluation underneath inverted and bitmap indexes. It is a single-operation
-primitive: whatever the surrounding workload, what a system pays is the cost of one operation
-between two sets, and that cost is fixed by how each of the two is represented before the operation
-is ever issued.
+Set algebra is a basic computational interface for binary data. For a universe of $m$ possible
+elements, a set is represented exactly by an incidence vector in $\{0,1\}^{m}$: membership maps to
+one machine bit, while union, intersection, difference and complement map to bitwise OR, AND,
+AND-NOT and NOT. Population count then converts the resulting membership vector to a cardinality.
+This direct correspondence between set semantics and machine operations underlies compressed bitmap
+libraries \cite{wu2006wah,chambi2016roaring,lemire2018roaring}, inverted indexes and Boolean search
+engines \cite{zobel2006inverted,goodwin2017bitfunnel,lucene-sparsefixedbitset}, relational graph
+processing \cite{aberger2016emptyheaded}, and bitmap-indexed real-time analytics over event streams
+\cite{yang2014druid}. Set algebra is therefore shared systems infrastructure rather than a primitive
+belonging to one application domain.
 
-The default way to compute $|A \cap B|$ represents each set as a dense bitmap over a shared
-universe of $m$ possible elements and evaluates \texttt{popcount(A AND B)} with the widest
-available vector instruction. This costs $\Theta(m)$ irrespective of the cardinality of either set
-or of their intersection --- every one of the $m$ bits is read and combined regardless of how many
-are set --- and the underlying AND-then-popcount kernel is itself a solved problem, engineered
-close to the throughput limit of the hardware \cite{mula2018popcount}. For a single pair, or for
-sets that occupy a substantial fraction of the universe, this is exactly the right way to compute
-the answer.
+Among these operations, we focus on exact intersection cardinality, $|A\cap B|$. Intersection is both
+a direct filter and the common overlap term in binary similarity: Jaccard similarity divides it by
+$|A\cup B|$, cosine similarity divides it by $\sqrt{|A||B|}$, and containment divides it by the size
+of one operand. These scores drive document resemblance and near-duplicate detection
+\cite{broder1997resemblance,bayardo2007allpairs,xiao2008ppjoin}, ranked retrieval over binary
+features, chemical fingerprint screening
+\cite{swamidass2007bounds,haque2011tanimoto,dalke2019chemfp}, graph-neighbourhood comparison and
+co-occurrence analysis. Intersection thus supplies a representative, exact set-algebra operation on
+which work avoidance can be proved and measured end to end.
 
-Real degree and frequency distributions are rarely uniform: a small number of categories carry
-most of the mass while a long tail is rare. The canonical form of this skew --- the $i$-th most
-common category scaling as $\theta/i$ --- was derived for population-genetic allele-frequency
-spectra \cite{fu1995} and recurs, in shape if not in constant, in item popularity, node degree, and
-category-membership counts across many other kinds of data. Under such skew, row density spans
-orders of magnitude within a single corpus, so most rows are sparse and most pairs have at least
-one near-empty side --- yet the $\Theta(m)$ bitmap kernel pays the same fixed cost regardless,
-spending most of that cost combining zeros against zeros. That waste is not incidental to one kind
-of data: every alternative encoding of the same set --- a sorted array, a list of runs, a
-fill-compressed word stream, or any of these applied to the complement --- is exact and
-interconvertible with the bitmap, sized by the set rather than by the universe, and smaller than
-the bitmap by a factor that grows without bound as either operand moves away from density one half;
-only near density one half does no such encoding help (Supplementary Note~\ref{note:headroom}).
+For a collection of sets, computing every pairwise intersection cardinality produces the symmetric
+binary Gram matrix $Y=XX^{\mathsf T}$, with $Y_{ij}=|X_i\cap X_j|$, connecting the problem directly
+to sparse matrix multiplication and graph algebra \cite{gustavson1978spgemm,buluc2011combinatorialblas}.
+Karp, Waarts and Zweig posed the all-pairs problem of finding sparse bit-vector pairs with at least
+$t$ common bits \cite{karp1995bitvector}. We study exact cardinalities for the complete pair
+collection, with thresholded reporting as a separate optional contract. At hyperscale, rows may denote
+documents, users, items, graph neighbourhoods, telemetry streams, access-control cohorts,
+categorical attributes or software artefacts; columns denote the terms, identifiers, events,
+principals, features or symbols they contain. The same matrix then constructs co-occurrence graphs,
+finds related objects, correlates signatures and materialises exact overlap statistics. Internet-scale
+services, global observability systems and shared open-source data platforms intensify the same
+systems problem: both the number of possible pairs and the width of the shared universe are large,
+while the incidence matrix remains sparse and heterogeneous.
 
-Roaring is the state of the art for exactly this problem, and it already dispatches, per
-fixed-width chunk, among an array, a bitset, and a run container \cite{chambi2016roaring,lemire2018roaring}
---- the same coarse-grained skip toward a cheaper structure that inverted-index systems such as
-BitFunnel apply to disjointness testing \cite{goodwin2017bitfunnel}. It is excellent, it is
-deployed at scale, and this paper does not attempt to out-engineer it at its own data structure.
-Its adaptivity is nonetheless fixed in granularity and static in time: which container a chunk
-receives is decided by a compile-time cardinality threshold applied to that chunk alone, chosen
-once at ingest for a workload built around a single pairwise operation (Methods, ``Container
-census''). That same fixed
-commitment prices a run container against a bitset by iterating every run and charging for its
-length --- a cost a length-independent index would remove. A caller willing to narrow the question
-further, to results above a similarity threshold or to operands within a size band, can be given
-even more (Supplementary Note~\ref{note:narrowing}).
+This exact operation exposes a broader systems problem: deciding which work should be admitted to an
+expensive sparse kernel. Zone maps and related summaries can certify that a region contributes
+nothing; representation metadata can identify a cheaper traversal; and transposed postings can reuse
+one sparse fact across many consumers. Their reusable structure is a cheap summary, a sound rejection
+predicate, an exact survivor path and a gate that invokes the summary only when the work it removes
+exceeds its cost. Sparse joins, graph analytics, block-sparse algebra, inverted-index evaluation and
+telemetry processing expose the same opportunity whenever absence or irrelevance can be certified
+from metadata before payload data are visited.
 
-Two questions follow directly. Given that popcount is a solved problem and Roaring already
-dispatches on container type per chunk, is there anything left for representation choice to buy?
-And if a wider representation matrix does buy something, can the choice itself be made cheaply
-enough --- for one operation between two large sets, and for a batch of many small ones --- that
-the saving survives the deciding?
+The conventional dense representation evaluates each entry as
+\texttt{popcount(A AND B)}. Its $\Theta(m)$ cost is independent of both operand cardinalities, so an
+all-pairs traversal pays $\Theta(N^2m)$ even when most rows contain only a few elements. Wider SIMD
+instructions reduce the constant on the AND--popcount loop \cite{mula2018popcount}, and established
+SIMD intersection kernels likewise accelerate selected sorted-list traversals
+\cite{inoue2014simdintersection,lemire2016simdintersection}; neither change removes the words or
+descriptors that the selected traversal visits. Under the $1/i$ cardinality spectra found in frequency, degree
+and allele-count data \cite{fu1995}, most row pairs contain a sparse operand and the expected
+intersection is often below one. The fixed bitmap scan then spends most of its work proving an empty
+answer. The representation-independent headroom created by that fixed cost is developed in
+Supplementary Note~\ref{note:headroom}.
 
-Here we treat the representation pairing itself as the object of choice. We define a pairing
-matrix of \nm{count of representation-pairing cells evaluated} cells over dense-bitmap,
-sorted-array, run, and fill-compressed representations and their complements, and we measure, per
-cell, which pairing is fastest across the full density range, on \nm{count of microarchitectures
-tested} microarchitectures, and on \nm{count of real corpora tested} real corpora drawn from graph,
-text, and tabular sources. Cost across that range is U-shaped rather than monotonic, so the operative
-variable is distance from density one half, and the winning pairing migrates with density across
-every real corpus tested. The reference implementation's container statistics show why: its rule is
-the exact optimum of a serialized-size objective, and a query-cost objective places the crossover
-elsewhere. A throughput-optimized kernel wins none of \nm{count of asymmetric measurement points
-tested} asymmetric points tested, so the advantage is work avoided rather than work accelerated, and
-the decision itself stays within a budgeted fraction of runtime once hoisted above the innermost
-loop. We also report where the approach does not pay: a mid-density band in which the plain bitmap
-kernel is, and remains, the right choice.
+Exact alternative representations expose different work variables. A sorted array scales with the
+number of stored elements, a run representation with the number of intervals, and a fill-compressed
+stream with its literals and fills. Pairing two representations therefore defines a matrix of
+algorithms rather than one universal intersection kernel. Prior work made sorted-set intersection
+adaptive by changing the comparison sequence within sorted lists
+\cite{demaine2000adaptive}, and developed preprocessed word-parallel structures for one- and
+multi-set intersections \cite{ding2011intersection}. Culpepper and Moffat combined compressed lists
+with bitmap membership tests for conjunctive inverted-index queries
+\cite{culpepper2010intersection}. Roaring instead selects array, bitset and run storage per
+fixed-width container at ingest \cite{chambi2016roaring,lemire2018roaring}, while EmptyHeaded selects
+dense or sparse set layouts and intersection code inside compiled graph joins
+\cite{aberger2016emptyheaded,aberger2017emptyheaded}. We investigate a distinct decision target:
+pricing the representations of both operands for count-only execution at query time and hoisting
+that choice across an all-pairs row tile. The resulting executor selects online among ten
+representation cells.
+
+Pairwise selection recovers work within a chosen row pair, but it leaves a second source of repeated
+work untouched. A row-oriented traversal rediscovers the same occupied positional bucket for every
+pair that shares it. Transposing the coarse row--bucket incidence relation produces a column posting
+of row identifiers for each positional bucket. Each posting contributes all candidate pairs sharing
+that bucket, and buckets occupied by fewer than two rows contribute none. Outer-product sparse
+matrix multiplication generates product entries from element-level columns
+\cite{gustavson1978spgemm,buluc2011combinatorialblas}; wedge expansion similarly increments exact
+common-neighbour counts for the endpoint pairs induced by each graph vertex
+\cite{an2019skipintersection}. We instead transpose coarse occupancy buckets, accepting bucket
+collisions as candidates and resolving them through the row matrix. A tile-sized machine-word
+posting deduplicates candidate masks, while the online gate sends every survivor to the selected
+exact representation-pair verifier. Candidate
+generation and verification therefore follow occupied-column multiplicity rather than requiring a
+payload traversal for every row pair.
+
+Here we combine these two scales into one exact all-pairs strategy. We evaluate ten row-oriented
+representation pairings, select among them online at tile granularity, and use column postings to
+reject empty pairs collectively before invoking a row kernel. Across 23 real corpora, the online
+row-cell selector is $1.48\times$--$52{,}448\times$ faster than all-bitmap execution, beats a
+query-tuned CRoaring baseline on 22 and consumes less than 1\% of runtime.
+Across 25 asymmetric cell--shape comparisons, every winner removes work rather than increasing SIMD
+throughput. In the sparse all-pairs regime, where 95--100\% of sampled intersections are empty, the
+amortised within-tile postings path is $7\times$--$5{,}700\times$ faster than unfiltered
+bitmap--array evaluation. For thresholded similarity queries, a second, element-keyed posting path
+generates only pairs that can clear the requested cutoff and reaches $1{,}089\times$ speedup over an
+exact scan. The resulting method matches computation to heterogeneity along both axes of the binary
+matrix: representation choice controls the cost of surviving row pairs, and column postings control
+how many pairs reach a kernel at all. The online path requires no corpus-specific optimization pass:
+constant-size metadata and a bounded probe-and-commit step make the routing decision during the
+active traversal. Offline tournaments remain available as an optional specialization when a stable,
+extremely large workload will reuse their decision enough to amortise the one-time search.
+
+The architecture factorizes all-pairs work into candidate generation, exact verification and
+amortised planning. Positional postings determine the survivor set $C$, representation pairing
+determines $K(i,j)$ for each $(i,j)\in C$, and the online gate selects the lower-cost route. Including
+routing overhead, the online system outperforms all-bitmap execution on all 23 corpora
+(Table~\ref{tab:exact}) and query-tuned CRoaring on 22 (Table~\ref{tab:corpora}).
+
+The contribution is therefore a general work-avoidance architecture, rigorously instantiated for
+exact and thresholded sparse binary Gram matrices: representation-paired row kernels, near-free
+online routing and column-oriented candidate generation, with each layer scaling in the descriptors
+of useful work exposed at its own resolution.

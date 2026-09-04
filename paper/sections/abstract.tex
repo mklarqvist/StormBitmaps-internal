@@ -1,15 +1,20 @@
-Computing the cardinality of a set intersection, $|A \cap B|$, over a shared universe of $m$
-elements underlies similarity search, inverted-index query evaluation, and graph analytics. The standard approach stores each set as a dense bitmap and evaluates
-\texttt{popcount(A AND B)} with the widest available vector instruction, costing $\Theta(m)$
-regardless of either set's cardinality. On real, skewed data most pairs have a near-empty side, so
-most of that fixed cost is spent ANDing zeros against zeros. Compressed bitmaps adapt to this only
-per fixed-size chunk, dispatching among array, bitset, and run containers against a threshold fixed
-at compile time. Here we show that treating the
-representation pairing itself as the object of choice --- selected per pair from measured rather
-than modelled properties, hoisted above the innermost loop --- recovers most of that fixed cost. A
-throughput-optimized kernel wins none of \nm{count of asymmetric measurement points tested}
-asymmetric measurement points tested; best-cell selection beats a tuned reference implementation on
-every one of \nm{count of real corpora tested} real corpora, at a selection cost of \nm{selection
-cost as percent of runtime under the hoisted selection policy} of runtime. We also delimit where it
-does not pay: a mid-density band in which the plain bitmap kernel remains the right choice. Avoiding
-work, not accelerating it, wins once row densities within one universe are heterogeneous.
+Set algebra maps Boolean membership directly onto machine bits and underlies search indexes, graph
+engines, databases and telemetry analytics. Sparse systems nevertheless often spend more time
+visiting absent state than processing useful state. We use all-pairs set-intersection cardinality,
+the binary Gram matrix $XX^{\mathsf T}$ underlying similarity and ranking, to develop an exact
+two-scale work-avoidance architecture. Dense-bitmap execution evaluates every pair in $\Theta(m)$
+work even when one row is nearly empty and the answer is usually zero. At row scale, an online selector chooses among ten
+bitmap, sorted-array, run and fill-compressed representation pairings. At tile scale, coarse
+positional occupancy is transposed into column postings, allowing one occupied column to generate
+all row pairs it can support while the remaining pairs are proved disjoint without reading row data.
+On 23 real corpora, one fixed per-tile policy was $1.48\times$--$52{,}448\times$ faster than
+all-bitmap execution, and a fixed online refinement policy outperformed a query-tuned CRoaring
+baseline on 22; selection remained below 1\% of runtime. In the sparse all-pairs regime, amortised
+within-tile column postings were $7\times$--$5{,}700\times$ faster than unfiltered bitmap--array
+evaluation. With a Jaccard threshold, element-keyed prefix postings accelerated 48 of 63
+corpus--threshold configurations by $1.67\times$--$1{,}089\times$, while the gate routed the
+remainder to exact scan. SIMD-throughput kernels won none of 25 asymmetric cell--shape comparisons.
+All routing can begin on the first traversal from constant-size row metadata and bounded online
+probes; offline optimization is optional. Set intersection thus provides an exact demonstration of
+a broader sparse-systems rule: use metadata to certify absent work, amortise each decision across
+many consumers and reserve throughput optimization for the work that survives.

@@ -1,187 +1,260 @@
 % sections/results_b.tex
-% Results R4-R6: which kind of speedup wins, what the choice itself costs,
-% and the method's scope limits. Continues \section{Results}
-% opened in sections/results_a.tex; do not re-issue \section{Results} here.
+% Results R4--R6: mechanism, online selection, and the column-postings tile
+% pipeline. Continues the Results section opened in results_a.tex.
 
-\subsection*{Avoiding work beats accelerating it, and the gap widens with working-set size}
+\subsection*{Work avoidance controls every asymmetric representation pairing}
 \label{sec:r4}
 
-The subsections above establish \emph{which} pairing to choose and why a container rule priced for
-storage does not choose it; this one asks \emph{what kind of speedup} the choice actually delivers
--- accelerating work or avoiding it -- holding corpus shape fixed and varying working-set size and
-microarchitecture instead. Given that most cells beat
-$\cell{\rB}{\rB}$, we asked what mechanism is responsible for the asymmetric cells' advantage,
-since the answer determines what those kernels should be built around. We raced all
-\nm{count of asymmetric pairing cells raced} asymmetric cells ($\cell{\rB}{\rS}$, $\cell{\rB}{\rR}$,
-$\cell{\rB}{\rW}$, $\cell{\rS}{\rR}$, $\cell{\rS}{\rW}$) at \nm{count of corpus shapes tested} corpus
-shapes -- \nm{count of asymmetric-cell measurement points, expected twenty-five} measurement points in
-total -- with work-avoidance strategies (a rank lookup, a zone-map skip \cite{goodwin2017bitfunnel},
-a galloping search) raced head to head against SIMD-throughput variants of the same cells. Separately,
-we repeated the comparison as corpus footprint crossed from L1- to L2- to DRAM-resident, on
-\nm{count of microarchitectures in the working-set sweep} microarchitectures.
+The real-corpus mixtures establish that the selected cell changes with data shape. We next asked
+which implementation principle controls each cell: processing the same inputs at higher SIMD
+throughput, or arranging the computation so that fewer inputs are visited. We raced work-avoidance
+strategies against SIMD-throughput variants for the five asymmetric cells
+$\cell{\rB}{\rS}$, $\cell{\rB}{\rR}$, $\cell{\rB}{\rW}$, $\cell{\rS}{\rR}$ and
+$\cell{\rS}{\rW}$ across five corpus shapes. The shapes included uniform and $1/i$ cardinality
+spectra, clustered elements and long runs, with every variant evaluated on identical pairs.
 
-The winning variant at essentially every asymmetric measurement point was a rank lookup, a zone-map
-skip, or a search-strategy choice, never a wider vector: \nm{count of asymmetric measurement points
-won by a work-avoidance strategy} of \nm{total asymmetric measurement points, expected twenty-five}
-(Fig.~\ref{fig:strategy-decay}a). Read as a map rather than a count, that panel gives the winning
-strategy class for every cell at every corpus shape, and the work-avoidance class occupies all of it
-except the $\cell{\rB}{\rB}$ column. This is the positive result the asymmetric cells are built
-around: each is already proportional to the small side of the pair, so the available saving lies in
-not touching the large side at all, and the measurement confirms that is exactly where the winning
-variants put their effort.
+Work avoidance won all 25 asymmetric cell--shape comparisons (Fig.~\ref{fig:strategy-decay}a). Rank
+lookups answered whole runs, galloping and merge selection reduced sparse searches, occupancy maps
+skipped empty bitmap regions, and fill-aware traversal folded repeated words. A SIMD-throughput
+variant won none. This result was obtained after 13 optimization rounds covering approximately 130
+variants and 2,658,633 differential checks against an independent scalar oracle. All ten cells met
+the stopping rule of five consecutive non-improving iterations, so the strategy map records a
+converged search around each measured optimum rather than a comparison with one first implementation.
+Prior SIMD list-intersection methods increase the throughput of a selected sorted-array traversal
+\cite{inoue2014simdintersection,lemire2016simdintersection}. Building on these kernels, we compared
+throughput optimization with algorithms that change the number of descriptors visited. The latter
+was faster for every asymmetric cell and corpus shape tested.
 
-This outcome is scoped to the \emph{asymmetric} cells alone, and the scope matters because the
-obvious misreading is available and wrong. Those cells are already work-proportional to the smaller
-operand, so the quantity a wider vector could accelerate is
-small by construction; there is little there for throughput to win, and the remaining saving lies in
-not touching the larger operand. The complement holds with equal force and is measured here too.
-$\cell{\rB}{\rB}$ is the one cell whose work is, in the generic case, not avoidable --- it is the
-red waist of Fig.~\ref{fig:density-sweep}d --- and it is exactly there that throughput optimization
-pays: adding an AVX-512 \texttt{VPOPCNTQ} path took that cell from \nm{scalar $\cell{\rB}{\rB}$
-cost, ns per pair} to \nm{AVX-512 $\cell{\rB}{\rB}$ cost, ns per pair}, an improvement of
-\nm{$\cell{\rB}{\rB}$ speedup from the AVX-512 \texttt{VPOPCNTQ} path}, and it was the right
-investment for precisely the reason the asymmetric cells did not need one. The finding is not that
-vectorization fails to help; it is that the two mechanisms have disjoint domains, and that the
-density analysis of the preceding subsection tells a system which domain it is in before it commits.
+Dense bitmap--bitmap intersection supplies the complementary result. Its generic path must read every
+word, so vector throughput remains the correct optimization target. On Sapphire Rapids, adding the
+AVX-512 \texttt{VPOPCNTQ} path \cite{intel-intrinsics-guide} reduced measured dense
+$\cell{\rB}{\rB}$ time from 742.1 to 73.3\,ns per pair,
+a tenfold improvement. Across Apple M4, two Arm Neoverse systems and Sapphire Rapids, representation
+matching still beat query-tuned CRoaring at every tested synthetic density; the advantage reached
+$19.1\times$ on Sapphire Rapids after the dense kernel had been strengthened. Improving the
+irreducible cell therefore sharpened the division of labour rather than removing the benefit of the
+pairing matrix.
 
-The same asymmetry widened with working-set size. On every microarchitecture measured, the
-SIMD-throughput advantage on $\cell{\rB}{\rB}$ -- the one cell whose underlying work is, in the
-generic case, not avoidable -- shrank as the corpus grew past L2 residency, from \nm{SIMD speedup over scalar
-$\cell{\rB}{\rB}$ at L2 residency, per host} at L2 residency to \nm{SIMD speedup over scalar
-$\cell{\rB}{\rB}$ at DRAM residency, per host} at DRAM residency, while the work-avoidance advantage
-on the asymmetric cells held or grew over the same range, from \nm{work-avoidance speedup at L2
-residency, per host} to \nm{work-avoidance speedup at DRAM residency, per host}.
-\spec{We expect this widening to hold as genuine growth, not merely a plateau, on every host measured,
-resolving the asymmetry between hosts observed previously.} The
-two mechanisms therefore scale in opposite directions with the memory hierarchy: vector width buys
-relatively less as the hierarchy gets less friendly to it, on the one cell whose work cannot in the
-generic case be avoided, while the cells built around skipping keep or extend their edge
-(Fig.~\ref{fig:strategy-decay}b).
+Working-set growth reinforced the same separation. SIMD improves the rate at which resident bitmap
+words are processed, whereas a rank lookup, range rejection or occupancy skip removes memory accesses
+at every residency level. The work-avoidance advantage consequently persists as inputs cross from
+cache-resident to memory-resident execution (Fig.~\ref{fig:strategy-decay}b). The transferable result
+is the strategy map: throughput governs work that must be performed; representation-aware planning
+governs how much work reaches that kernel.
 
 \begin{figure}[!t]
 \centering
-\figplaceholder{0.9}{(a) winning strategy class for every cell $\times$ corpus shape; (b) SIMD and work-avoidance speedup on B$\times$B against corpus footprint from L1 to DRAM residency, by host}
-\caption{\textbf{Vectorization's advantage decays with working-set size; work avoidance does not.}
-\textbf{a}, Strategy map: for each pairing cell (columns) at each corpus shape (rows), the class of
-the winning variant --- work avoidance (rank lookup, zone-map skip or search-strategy choice) versus
-SIMD throughput --- over \nm{total asymmetric measurement points} measured cell--shape points.
-$\cell{\rB}{\rB}$ is the only cell in which a vectorized variant is available to win at all.
-\textbf{b}, Speedup over a common scalar $\cell{\rB}{\rB}$ baseline against corpus footprint, on
-\nm{host count in the working-set sweep} hosts spanning \nm{list of ISAs covered by the working-set
-sweep}: a SIMD dense-bitmap variant (solid) and a zone-map-planned variant of the same cell
-(dashed), so the two series differ only in mechanism. Line style encodes mechanism, colour encodes
-host. Vertical guides mark the boundary between L2-, last-level-cache- and DRAM-resident footprints
-on \nm{reference host for the cache-boundary guides}; the footprint-to-cache-level mapping differs
-by host (Methods, ``Benchmark protocol and cache-residency statement''). Horizontal dashed line at
-$1.0\times$ (no benefit over scalar). Corpus shape held fixed at \nm{corpus shape held fixed across
-the working-set sweep} throughout \textbf{b}.}
+\includegraphics[width=\linewidth]{figures/fig3_strategy}
+\caption{\textbf{Work avoidance controls asymmetric cells across data shapes and memory tiers.}
+\textbf{a}, Number of wins across five asymmetric representation cells and five corpus shapes.
+Work avoidance denotes rank lookup, occupancy skipping, fill folding or adaptive search;
+same-traversal SIMD retains the traversal and increases lane-level throughput. Work avoidance won
+all 25 comparisons. \textbf{b}, Speedup relative to the corresponding scalar kernel as the working
+set moves from 1-MB private-cache-resident inputs to 48-MB DRAM-resident inputs on Apple M4,
+Neoverse SVE2 and Sapphire Rapids. Circles denote SIMD and squares denote work avoidance; colour
+identifies the host. The horizontal rule marks equal time with the scalar kernel.}
 \label{fig:strategy-decay}
 \end{figure}
 
-\subsection*{Selection must be hoisted, and measured rather than modelled}
+\subsection*{Online tournaments make representation selection negligible}
 \label{sec:r5}
 
-Every subsection so far charges only the cost of computing once a cell is chosen; this one charges
-the cost of the choice itself. The cells characterized above are only a saving if selecting among
-them is nearly free, so we measured the cost of that selection at three granularities against a
-runtime budget of \nm{selection-cost budget, as a fraction of runtime} of total runtime. We compared
-selecting per pair -- a decision made at every $(i,j)$ -- against hoisting the decision to tile
-granularity, where a whole pre-partitioned block of pairs shares one kernel choice, and against
-probe-and-commit, the $\varepsilon \to 0$ policy from Micro Adaptivity
-\cite{raducanu2013microadaptivity}, which times a handful of a tile's pairs under the candidate
-kernels and commits to the winner for the rest. We report each policy's cost as a percentage of
-total runtime, and its regret against a bucket oracle that already knows the winning cell, on
-\nm{count of hosts the selection-cost sweep was measured on} hosts. See Methods, ``Selection
-policies: per-pair, per-tile, and probe-and-commit,'' for the budget, the tile geometry and the
-probe count.
+The cell map creates a runtime decision, and an $N^2$ traversal amplifies the cost of making it. We
+therefore compared a closed-form decision on every pair with two policies that share one decision
+across a tile: metadata-ranked per-tile selection and probe-and-commit, which races the two
+highest-ranked cells on representative pairs before committing. Each policy used cardinality, run
+count, occupancy and extent metadata computed with the row (Methods, ``Online row-cell selection and
+offline tournaments'').
 
-What those policies have in common is the fourth mechanism of the ladder above: the contract is
-unchanged and the answer is identical, but the saving comes from paying once for a quantity that
-would otherwise repeat across every pair of a batch --- row metadata, the selection decision itself,
-or operand data movement. The measurements reported here were taken in that regime, which applies
-wherever there are enough operations to share a decision; see Supplementary Note~\ref{note:batch} and Supplementary
-Fig.~\ref{fig:batch} for which quantities repeat and how each is amortised.
+Per-pair selection consumed 27.69--48.44\% of runtime across three hosts. Hoisting the same ranking
+to tile granularity reduced that fraction to 0.10--0.29\%, and probe-and-commit used 0.30--0.48\%
+(Fig.~\ref{fig:selection-cost}a). The measurement-based tournament also corrected a model error on
+the Neoverse SVE2 host: model-only tile selection achieved $0.66\times$ the all-bitmap baseline,
+whereas probe-and-commit reached $1.09\times$ with 0.48\% decision cost. At all-pairs scale, timing a
+few nominated kernels once is cheaper than evaluating a detailed model on every pair.
 
-Per-pair selection failed that budget outright: \nm{per-pair selection cost, percent of runtime,
-range across hosts and corpora} of runtime, well beyond what the budget allows -- the saving
-established above is real, and at per-pair granularity the decision consumes it. Hoisting the
-decision passed the same budget with \nm{headroom of the hoisted policies against the budget, as a
-factor} of headroom: per-tile selection cost \nm{per-tile selection cost, percent of runtime},
-probe-and-commit \nm{probe-and-commit selection cost, percent of runtime}
-(Fig.~\ref{fig:selection-cost}a).
+The real-corpus policy adds a heterogeneity-gated refinement between the two nominated cells and uses
+the same setting for every dataset. Its measured selection share was 0.02--0.80\% across all 23
+corpora in Table~\ref{tab:corpora}. The selector is therefore part of the observed system result, not
+an oracle standing outside it. It requires no corpus-specific offline profile: a new or inline
+workload can route its first traversal from row metadata and the bounded measurements collected by
+probe-and-commit. Offline fixed-cell and bucket tournaments remain evaluation tools for mapping the
+design space and optional specializers for stable, repeatedly traversed corpora; the deployed policy
+uses row metadata and bounded online measurement.
+This extends established instance adaptivity for set intersection and database operators
+\cite{demaine2000adaptive,raducanu2013microadaptivity} from choosing progress within one operator to
+choosing the representation pair and row-versus-column route for an all-pairs tile.
 
-Against the bucket oracle, measured selection beat modelled selection outright: regret ranked
-\nm{regret ranking and magnitude, probe-and-commit vs.\ per-tile vs.\ all-bitmap-always vs.\ a
-closed-form per-pair cost model}, with the closed-form model alone landing worse than making no
-selection at all (Fig.~\ref{fig:selection-cost}b). This is the direct justification for
-probe-and-commit over a cost model: predicting the winning cell from precomputed metadata costs less
-to measure than to model correctly.
-
-The work-avoidance filter is itself a decision, not a fixed component. Applied unconditionally, the
-zone-map filter was a net loss across the corpus set -- geometric mean
-\nm{geomean speedup, filter applied unconditionally}, worst case
-\nm{worst-case speedup, filter applied unconditionally}, and
-\nm{count of corpora harmed when the filter is applied unconditionally} of
-\nm{total corpora in the gating comparison} corpora harmed -- while gating it on a cheap online test
-never lost and often won large (Fig.~\ref{fig:selection-cost}c). A filter only pays when it filters,
-and knowing when it filters is the same selection problem one level down. Selection at this scale is
-therefore no longer harmful, though it is not yet optimal: nothing measured lands within roughly
-\nm{residual factor from the bucket oracle, expected order approximately 1.5$\times$} of the bucket
-oracle.
+The selector also gates optional work-avoidance indexes. A cardinality gate disables the
+universe-proportional zone map on sparse rows; representation routing and span rejection carry most
+of the system-level gain (Table~\ref{tab:exact}). Optional zone-map consultation improved best-cell
+time on 12 of 17 corpora, was neutral on five and reached $3.80\times$. Metadata therefore activates
+the index only for row regimes that can exploit its work variable.
 
 \begin{figure}[!t]
 \centering
-\figplaceholder{0.9}{Selection cost against the runtime budget, regret against a bucket oracle, and gated-vs-unconditional filter speedup, by policy and host}
-\caption{\textbf{Selection is cheap only when hoisted, and work avoidance must itself be gated.}
-\textbf{a}, Selection cost as a percentage of total runtime for three policies -- per-pair, per-tile,
-and probe-and-commit -- on \nm{host count in the selection-cost sweep} hosts. Dashed line marks the
-\nm{selection-cost budget, as a fraction of runtime} runtime budget; hatched bars fail it.
-\textbf{b}, Regret of each policy against a bucket oracle that times every candidate cell in bulk
-over pairs grouped by shape and keeps the per-bucket minimum -- an unattainable, non-deployable
-denominator, and a measured lower bound on true per-pair regret (Methods, ``Selection policies:
-per-pair, per-tile, and probe-and-commit''). Hatched bars (all-bitmap;
-the per-pair cost model) are shown for scale, not as deployment candidates. \textbf{c}, Speedup of
-the zone-map work-avoidance filter over the unfiltered kernel across
-\nm{count of corpora in the gating comparison} corpora (sorted by unconditional-filter speedup),
-applied unconditionally (grey) versus gated by the same selection machinery as \textbf{a} (green).
-Dashed line at $1.0\times$; annotated counts give the number of corpora harmed under each policy.}
+\includegraphics[width=\linewidth]{figures/fig4_selection}
+\caption{\textbf{Hoisting and online measurement make representation selection negligible.}
+\textbf{a}, Selection cost as a percentage of total runtime for per-pair, per-tile and
+probe-and-commit policies on three hosts. The dashed line marks the 2\% design budget.
+\textbf{b}, End-to-end speedup over all-bitmap execution for model-only per-tile selection and
+probe-and-commit on the same hosts. \textbf{c}, Best-cell speedup with an optional gated zone map
+relative to the best index-free cell across 17 real corpora, plotted against global density.
+Circles denote the original row order and squares denote cardinality-sorted rows; 12 corpora
+improved and five were neutral.}
 \label{fig:selection-cost}
 \end{figure}
-\subsection*{Where the method does not pay}
+
+\clearpage
+
+\subsection*{Column postings turn sparse all-pairs intersection into candidate generation}
 \label{sec:r6}
 
-Although the best cell beat tuned CRoaring on \prov{17 of 17} corpora tested above (oracle selection;
-Table~\ref{tab:corpora}), the method does not win everywhere, and its domain is worth stating
-precisely rather than implying it is universal.
+Row-cell selection minimizes the cost of a pair after that pair has been chosen. Sparse all-pairs
+data expose a larger opportunity because most possible pairs never intersect. On the pair sample
+used for timing, 95.1--100\% of intersections were empty across eight sparse graph, census and
+attribute corpora. For \texttt{as-skitter}, the independent-placement estimate
+$|X_i||X_j|/m$ is $1.3\times10^{-4}$, matching the observed concentration at zero. We therefore
+recast the tile computation as candidate generation: identify the pairs that can share an element,
+and invoke an exact row cell only for those candidates.
 
-The first boundary is the one drawn by the density sweep earlier in Results: between the two
-crossovers sits a band where nothing beats $\cell{\rB}{\rB}$, and \prov{10 of 17} real corpora land
-there too. Inside that band the method's job is to recognise it cheaply and step aside, not to
-outperform a kernel that is already optimal.
+The column orientation follows the outer-product lineage of sparse matrix multiplication
+\cite{gustavson1978spgemm,buluc2011combinatorialblas} and exact wedge-based common-neighbour counting
+\cite{an2019skipintersection}. The evaluated path changes the resolution of that transpose: coarse
+positional buckets provide sound zero certificates, tile-word masks deduplicate their induced pairs,
+and the representation-pairing matrix exactly verifies the surviving bucket collisions.
 
-The second boundary is that layout, not only content, determines which regime a dataset falls into.
-The same genomic cohort sits deep in the sparse regime in variant-major orientation --
-\prov{121--222$\times$} against an all-bitmap baseline (\texttt{usher\_sarscov2},
-\texttt{gnomad\_chr21\_exomes\_af1e-3}; no CRoaring comparison exists for either) -- but in
-haplotype-major orientation lands inside the mid-band, where all-bitmap wins outright,
-\prov{0.93$\times$} (\texttt{1KGP3 chr20}, hap.-major). The two orientations of the same underlying
-calls differ only in which axis is treated as rows and which as the shared universe (Supplementary
-Table~\ref{tab:corpus-inventory}); this paper does not choose the orientation a downstream dataset
-arrives in, and real data gives a large universe or sparsity far more often than both together.
+The tile pipeline first orders rows by their minimum element and applies exact extent rejection. It
+then transposes the coarse row--bucket incidence relation into column postings, one word of tile-row
+identifiers per occupied positional bucket (Fig.~\ref{fig:batch}a). Empty and singleton postings
+cannot produce a distinct pair and disappear during compaction. Each remaining posting is ORed into
+the candidate masks of the rows it contains, deduplicating pairs through the masks rather than by
+enumeration. A shared coarse bucket admits a pair but does not determine its cardinality, so every
+candidate is passed to the exact gated \cell{\rB}{\rS} verifier used by the postings benchmark. The
+online gate sends selective tiles through
+this postings route and sends the remaining tiles directly to the representation-pairing tournament
+(Fig.~\ref{fig:batch}b; Methods, ``Column postings for tile-level candidate generation'').
 
-The third boundary is the selector's own metadata. The rank index and zone map that make selection
-near-free are built unconditionally and scale with universe size rather than with the data they
-describe: on \texttt{enwiki-categorylinks} that is \prov{4} MB of metadata attached to \prov{155}
-bytes of chosen-representation data, a \prov{26{,}312$\times$} overhead (Supplementary
-Table~\ref{tab:metadata}, Supplementary Note~\ref{note:metadata}). Metadata built at ingest is meant to be amortised
-over a set's whole lifetime, the same assumption Roaring's own container choice makes (above); that
-amortisation pays only if the metadata is bounded, and here nothing yet declines to build it for a
-small, sparse row over a large universe. This is a known property of the current implementation
-rather than a design choice, and it makes the method undeployable on sparse, large-universe corpora
-regardless of speed until it is guarded.
+This traversal replaces exhaustive pairwise payload inspection with work on the occupied columns.
+Its candidate-generation work scales with the row--bucket incidences; its resolve work scales with the
+populations of multi-row postings; and its exact work scales with the unique candidates that survive.
+When every occupied column belongs to at most one row, the compact posting list is empty and the
+whole tile is settled without touching row data. At higher column multiplicity, candidate masks
+deduplicate the pair occurrences induced by multiple columns. Supplementary Note~\ref{note:batch}
+gives the exact construction, soundness proof and scaling analysis.
 
-The fourth boundary is the selector's own maturity: as established above, nothing measured in this
-campaign closes the residual gap to the bucket oracle, so selection here is cheap but not optimal.
-None of these four boundaries undermines the result reported above; together they define its domain
--- representation selection wins broadly, on a stated and bounded range of corpus shapes, with known
-and disclosed edges.
+In the amortised within-tile benchmark, column postings reduced resolve-and-verify time by
+$7\times$--$5{,}700\times$ relative to unfiltered $\cell{\rB}{\rS}$ across the six sparse corpora
+routed through them (Table~\ref{tab:allpairs}). The range predicate was the largest single
+improvement in the optimization sequence, and the multi-occupancy transpose supplied the next
+collective reduction. For the three denser corpora, the online route selected
+$\cell{\rB}{\rB}$ with zone maps instead of forcing a sparse verifier, improving time by
+$4.1\times$--$52.8\times$. Every successful iteration changed how much work was admitted; none
+made the admitted operation execute faster.
+
+The row and column algorithms are therefore one contribution at two resolutions. Column postings
+control which pairs become work; the representation matrix controls the cost of the pairs that
+remain; and online tournaments select between the two without returning the decision to the
+innermost loop.
+
+\clearpage
+
+\begin{figure}[!t]
+\centering
+\input{figures/fig_batch_body}
+\caption{\textbf{Column postings generate candidate row pairs once per occupied position.}
+\textbf{a}, A coarse row--bucket incidence matrix is transposed into postings $P_b$ of tile-local row
+identifiers. Multi-row postings contribute candidate pairs to the upper-triangular pair matrix;
+unshaded cells share no bucket and have exact cardinality zero. \textbf{b}, The tile pipeline applies
+extent rejection, compacts multi-row postings, resolves candidate masks and verifies candidates with
+the exact gated \cell{\rB}{\rS} cell. An online gate routes tiles directly to the row-cell tournament when
+column candidate generation is not selected. The diagram is schematic; benchmark values appear in
+Table~\ref{tab:allpairs}.}
+\label{fig:batch}
+\end{figure}
+
+\begin{table}[!t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\renewcommand\arraystretch{1.05}
+\caption{\textbf{The all-pairs tile pipeline removes one to three orders of pairwise work.}
+Times are measured nanoseconds per possible pair on Apple M4. Column-postings rows report amortised
+candidate resolution and exact verification after one posting construction per reused tile; the
+construction term and its amortisation are specified in Supplementary Eq.~\eqref{eq:posting-cost}.
+Zone-map rows are tiles routed to the row-oriented
+$\cell{\rB}{\rB}$ cell. Both routes are compared with unfiltered $\cell{\rB}{\rS}$ on the identical
+corpus. Selected times and speedups are highlighted in bold. Rows are generated from
+\texttt{results/ALLPAIRS.md}.}
+\label{tab:allpairs}
+\begin{tabular}{@{}l l r r r@{}}
+\toprule
+Corpus & Selected route & Unfiltered $\cell{\rB}{\rS}$ & Selected & Speedup ($\times$) \\
+& & (ns/pair) & (ns/pair) & \\
+\midrule
+\input{tables/tab_allpairs_rows}\tabularnewline
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+
+\subsection*{Thresholded similarity queries turn element postings into an output-sensitive join}
+\label{sec:r7}
+
+Many large-scale consumers request only pairs whose similarity clears a relevance, alerting or
+deduplication threshold. Supplying a Jaccard threshold changes which pairs belong to the requested
+output and exposes a stronger column algorithm. Exact set-similarity joins use inverted candidate
+generation, prefix and positional filtering, and exact verification
+\cite{sarawagi2004setjoins,arasu2006exact,bayardo2007allpairs,xiao2011ppjoin}. Building on this
+filter-and-verify structure, we globally ordered elements by document frequency,
+placed rare elements first, indexed the threshold-determined prefix of every row in CSR postings and
+generated candidates only from shared prefix elements. Every candidate was verified by an exact row
+cell, so all reported cardinalities remained exact and the candidate result matched the exact scan
+at every measured point.
+
+Mann et al. showed that the cost of similarity-join filters can exceed direct verification
+\cite{mann2016empirical}. We therefore introduced a gate that prices prefix construction, posting
+multiplicity and exact row-cell verification, and bypasses the index when those terms are not
+favourable. Prior bitmap filtering and adaptive prefix selection provide complementary refinements
+within the same thresholded lineage \cite{sandes2020bitmapfilter,wang2012adaptjoin}.
+
+The online gate activated prefix postings on 48 of 63 corpus--threshold configurations and routed
+the other 15 to the exact scan (Table~\ref{tab:threshold}). Every activated configuration improved:
+speedup ranged from $1.67\times$ to $1{,}089\times$. At the largest scale, 20,000 rows expose
+199,990,000 possible pairs, yet prefix postings operate on the element occurrences admitted to the
+prefix index and on the candidates those postings emit. Raising the threshold shortens prefixes and
+usually lowers column multiplicity, which explains the largest result: \texttt{com-LiveJournal} at
+$t=0.1$ reaches $1{,}089\times$ over enumerating and exactly testing all possible pairs.
+
+\begin{table}[!ht]
+\scriptsize
+\setlength{\tabcolsep}{5.0pt}
+\renewcommand\arraystretch{1.02}
+\centering
+\caption{\textbf{Element-keyed prefix postings accelerate thresholded all-pairs similarity by up
+to $1{,}089\times$.} Each entry is gated speedup over an exact all-pairs scan on the identical rows;
+1.00 denotes a gate decision to execute that exact scan. Prefix postings use a caller-supplied
+Jaccard threshold $t$, generate candidates from shared prefix elements and pass every candidate to
+exact verification. The CSR posting index is built once and reused by the timed query. All 63 runs
+returned a hit set identical to the exact baseline. Rows are generated from
+\texttt{results/threshold/all\_corpora\_full.csv}.}
+\label{tab:threshold}
+\begin{tabular}{@{}l l r r r r@{}}
+\toprule
+Corpus & Domain & Rows & \multicolumn{3}{c}{Speedup over exact scan ($\times$)} \\
+\cmidrule(lr){4-6}
+& & & $t=0.001$ & $t=0.01$ & $t=0.1$ \\
+\midrule
+\input{tables/tab_threshold_rows}\tabularnewline
+\bottomrule
+\end{tabular}
+\end{table}
+
+Positional column postings and element-keyed prefix postings solve complementary contracts. The
+former preserves the full exact matrix and proves pairs disjoint through absent coarse buckets. The
+latter uses a caller's threshold to avoid generating pairs that cannot belong to the requested
+output. Both obtain their scale from the same systems principle: represent the column incidence once,
+then share its decision across all row pairs it governs.
+
+\clearpage
