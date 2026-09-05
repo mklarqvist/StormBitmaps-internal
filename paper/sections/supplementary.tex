@@ -12,6 +12,7 @@
 \setcounter{figure}{0}\renewcommand{\thefigure}{S\arabic{figure}}
 \setcounter{table}{0}\renewcommand{\thetable}{S\arabic{table}}
 \setcounter{equation}{0}\renewcommand{\theequation}{S\arabic{equation}}
+\renewcommand{\theHequation}{S\arabic{equation}}
 \setcounter{section}{0}
 
 \section*{Supplementary Information}
@@ -23,12 +24,8 @@
 \suppnote{The fixed-cost headroom argument}
 \label{note:headroom}
 
-Relocated from the Introduction, where it followed the statement that the $\Theta(m)$ bitmap
-kernel pays the same fixed cost regardless of skew, spending most of that cost combining zeros
-against zeros (main text).
-
-That waste is not an anecdote about one kind of data; it is a property of the fixed cost itself,
-and its size can be settled before any kernel is written. Every alternative encoding of the same
+A dense bitmap's density-independent $\Theta(m)$ scan creates headroom before any kernel is written.
+Every alternative encoding of the same
 set --- a sorted array of its elements, a list of its maximal runs, a fill-compressed word stream,
 or any of these applied to its complement --- is exact and interconvertible with the bitmap, and
 each is sized by the set rather than by the universe. The cheapest of them is smaller than the
@@ -46,27 +43,14 @@ comes from executing it as fast as the hardware allows --- which is what two dec
 it can be avoided, accelerate it where it cannot: this paper contributes the first axis, and a
 cheap way of knowing which of the two applies.
 
-\suppnote{Narrowing the query}
-\label{note:narrowing}
-
-Relocated from the Introduction, where it followed the statement of Roaring's fixed, per-chunk
-granularity (main text).
-
-All of that leaves the caller's question untouched, and a caller willing to narrow it can be given
-more. If only pairs above a similarity threshold are wanted, or only operands inside a band of set
-sizes, then the two cardinalities alone cap the similarity a pair can reach, so most pairs are
-discarded before either operand is read \cite{swamidass2007bounds,bayardo2007allpairs} --- knowing
-what is being looked for is itself a way of not doing work, and it is the cheapest one available.
-
 \suppnote{Thresholded-mode filtering --- the size bound and prefix
 filtering}
 \label{note:threshold}
 
-Full derivation for the opt-in thresholded mode named third in the mechanism ladder that opens
-Results, and stated with its hypotheses in Methods, ``What makes work avoidable''
-(Eq.~\eqref{eq:sizebound}--\eqref{eq:shortfall}): only pairs whose Jaccard similarity or intersection
-size clears a threshold are reported. Two mechanisms serve that mode, and the cheaper of them touches
-no data whatsoever. Because $|A \cap B| \le \min(a,b)$ while $|A \cup B| \ge \max(a,b)$, a pair's
+The thresholded mode narrows the output contract: only pairs whose Jaccard similarity or intersection
+size clears a caller-supplied threshold are reported. This narrowing exposes two exact filters. The
+first reads only the two row cardinalities; the second indexes threshold-determined row prefixes.
+Because $|A \cap B| \le \min(a,b)$ while $|A \cup B| \ge \max(a,b)$, a pair's
 similarity is capped by the ratio of its two sizes, $J(A,B) \le \min(a,b)/\max(a,b)$, so a pair whose
 sizes differ by more than a factor $1/t$ cannot reach the threshold and is discarded from two
 integers, before either operand is read. An absolute threshold behaves the same way: $|A \cap B| \ge
@@ -93,12 +77,12 @@ Fig.~\ref{fig:density-sweep} are all stated at a \emph{fixed} density and bound 
 worth against within-row arrangement; the size bound is the only one whose value is a function of the
 \emph{dispersion of cardinalities across the corpus}, and it strengthens monotonically as that
 dispersion widens --- $2.3\%$ surviving at $K = 10^{4}$ against $1.1\%$ at $K = 10^{8}$, both at $t =
-0.9$. The two axes are different and not in competition. One limit is worth stating with it: the
-favourable scaling belongs to this spectrum rather than to skew in general, and under a heavier tail in
-which \emph{ranked} sizes scale as $1/i$ the surviving fraction is exactly $1 - t$ whatever $K$ is
-(Methods, ``What makes work avoidable'').
+0.9$. Under the alternative model in which \emph{ranked} sizes scale as $1/i$, the surviving fraction
+is exactly $1-t$ for every $K$. The spectrum therefore determines whether the benefit grows with
+corpus breadth or stabilizes at a threshold-controlled fraction (Methods, ``What makes work
+avoidable'').
 
-It does not, however, multiply with the mechanisms below it, and the reason refines the composition
+It does not, however, multiply with the within-pair mechanisms, and the reason refines the composition
 rule this section has otherwise used. Deciding whether a pair exists at all is the coarsest
 granularity in the paper, so the rule as stated predicts a clean product with anything acting inside a
 pair. The product is not achieved. The survivors of the size test are the pairs with $a \approx b$, and
@@ -120,14 +104,27 @@ like the rest of this note they count work rather than time.
 The thresholded mode changes the contract rather than the kernel: only pairs above a similarity
 threshold are reported, and the second mechanism that exploits that is prefix filtering rather than any
 representation choice. It admits the same analysis, and it reduces further than the others do. Because
-a qualifying pair must share an element between its prefixes, the entire behaviour of the filter is
+a qualifying pair must share an element between its prefixes, the method belongs to the established
+filter-and-verify lineage for exact set-similarity joins
+\cite{sarawagi2004setjoins,arasu2006exact,bayardo2007allpairs,xiao2011ppjoin,mann2016empirical}.
+The entire behaviour of the filter is
 governed by one dimensionless quantity --- the expected number of shared prefix elements per pair, $y =
 p^{2}/m$ --- and the fraction of pairs surviving is $1 - e^{-y}$ regardless of density, threshold or
-universe size separately (Supplementary Fig.~\ref{fig:prefix}). Below $y = 1$ pruning improves quadratically
-as
-prefixes shorten; above it prefixes collide by default and the index earns nothing. \spec{That single
-variable is what a gate for this mode should test, and it is cheap to compute from the metadata already
-held.}
+universe size separately (Supplementary Fig.~\ref{fig:prefix}). Below $y = 1$ pruning improves
+quadratically as prefixes shorten; above it prefixes collide by default. The implemented gate
+directly prices prefix traffic and posting multiplicity through Eq.~\eqref{eq:prefix-gate}, retaining
+the same output-sensitive dependence without assuming independent placement.
+
+\paragraph*{Measured realization and scaling.}
+Let $E$ be the number of globally ranked elements, $P=\sum_i p_i$ the number of indexed prefix
+occurrences and $L_e$ the length of element $e$'s posting. The two-pass CSR build costs
+$\Theta(E+P)$ time and storage. During a query, traversing every row prefix and its postings costs
+$\Theta(P+\sum_e L_e^2)$ before deduplication; if $C_t$ is the set of unique candidates, exact
+verification adds $\sum_{(i,j)\in C_t}K(i,j)$. Rare-first ordering reduces both $L_e^2$ and
+$|C_t|$, while raising $t$ shortens every $p_i$. This is why the algorithm scales with prefix
+occurrences and posting multiplicity rather than with $\binom{N}{2}$. In the 63-point real-corpus
+sweep, the online gate activated the CSR path 48 times and every activation improved over exhaustive
+exact scan, from $1.67\times$ to $1{,}089\times$ (Table~\ref{tab:threshold}).
 
 \begin{figure}[!t]
 \centering
@@ -140,7 +137,7 @@ held.}
 \caption{\textbf{Prefix filtering, analysed on the same terms --- and reducible to a single
 variable.} Prefix filtering serves the opt-in thresholded mode, in which only pairs of Jaccard
 similarity at least $t$ are reported. With elements in a global order and prefix length
-$p(X) = |X| - \lceil t|X| \rceil + 1$ \cite{xiao2008ppjoin}, following the prefix-filtering
+$p(X) = |X| - \lceil t|X| \rceil + 1$ \cite{xiao2008ppjoin,xiao2011ppjoin}, following the prefix-filtering
 principle of \cite{chaudhuri2006primitive}, any qualifying pair must share an element between its
 prefixes, so indexing prefixes alone answers the thresholded question exactly --- and unlike the
 mechanisms of Fig.~\ref{fig:density-sweep}c--d it is candidate \emph{generation}: the quadratic pair
@@ -157,31 +154,23 @@ removes almost nothing at a low one, and denser operands need a higher threshold
 the expected number of shared prefix elements per pair is $y = p^{2}/m$, and the surviving fraction
 is exactly $1 - e^{-y}$ for scattered operands; markers are $(d,t,m)$ combinations drawn at random,
 and lie on the curve by construction rather than by fit. For $y \ll 1$ the surviving fraction is $y$
-itself; for $y > 1$ prefixes collide by default and the index is pure overhead. So $y$ --- not $t$,
-and not density --- is what a selector should test.
+itself; for $y > 1$ prefixes collide by default and the selector routes to exact scan. So $y$ ---
+not $t$, and not density --- is the governing variable.
 \textbf{d}, The same as a division of labour: pairs never examined against pairs surviving to exact
 verification. The two are equal at $y = \ln 2$.
-\textbf{e}, Prefix filtering composed with a zone map. Unlike the two mechanisms of
-Fig.~\ref{fig:density-sweep}c these \emph{do} compose --- their savings multiply, to within \nm{a
-factor of 1.25 at the sparsest end, exactly elsewhere; analytic} --- because they act on different
-waste and read different statistics. At $d = 10^{-3}$, $t = 0.9$ and $W_z = 512$ the composition
-costs \nm{$\approx 0.17\%$, analytic} of an exhaustive bitmap scan, against $1.0\%$ for prefix
-filtering alone and $16\%$ for a zone map alone.
-Analytic throughout; no measured data, and like Fig.~\ref{fig:density-sweep} it models work rather
-than time. \spec{Real corpora deviate in the same direction as elsewhere: frequency-ordered prefixes
-concentrate rare elements, so real prefixes collide less than scattered ones of the same length and
-the true curve lies below this one.}}
+\textbf{e}, Prefix filtering composed with a zone map. The mechanisms act at different resolutions:
+prefix postings control which pairs are generated and the zone map controls which regions an exact
+verification visits. The panel reports their analytic combined work against exhaustive bitmap scan.
+Analytic throughout; like Fig.~\ref{fig:density-sweep}, it models work rather than time.}
 \label{fig:prefix}
 \end{figure}
 
 \suppnote{Derivation of the zone-map cost model and its crossings}
 \label{note:zonemap}
 
-Relocated from Results, ``The cost of intersection is U-shaped in density,'' which points here for
-the full derivation behind Fig.~\ref{fig:density-sweep}b--d: the null-model floor, the four counting
-properties of a zone map (why it has a floor, why the leverage is large, why the advantage is flat
-then erodes quadratically, and why it can be a liability), the crossing densities, and the
-work-versus-time distinction.
+This note gives the full derivation behind Fig.~\ref{fig:density-sweep}b--d: the null-model floor,
+the four counting properties of a zone map, the crossing densities and the work-versus-time
+distinction that determines the selector's route.
 
 Every panel of Fig.~\ref{fig:density-sweep} is the same argument applied to a different mechanism,
 and it is worth stating that argument once. Each mechanism --- choosing a representation, consulting
@@ -199,7 +188,7 @@ into speed.
 Two things a fixed design cannot do follow immediately, and they are the reason the selector is built
 the way it is. A representation committed to at ingest cannot exploit the deviation, because it
 commits before the deviation is knowable. A selector reading density alone cannot exploit it either,
-because density is the very statistic the null model is built from: at a fixed density $d$ with
+because density is the statistic the null model is built from: at a fixed density $d$ with
 $k = dm$ elements the expected number of maximal runs is $k(m-k+1)/m$, but the actual number ranges
 over every integer from one to $\min(k,\,m-k+1)$, so no single function of $d$ can track it. The
 deviation is also \emph{one-sided} --- a real row can be arbitrarily cheaper than a random row of the
@@ -245,7 +234,7 @@ Where the crossing falls depends on which representation is being displaced, and
 scale. A representation costing one word per element costs $w\,d$ of a bitmap, so it meets the
 summary's $1/W_z$ at $d = 1/(wW_z) = 3.1\times10^{-5}$ for $w = 64$ and $W_z = 512$ (Methods,
 Eq.~\eqref{eq:dlow}). At $d = 10^{-6}$ that representation costs $6.4\times10^{-5}$ of a bitmap while
-the summary alone costs $1.95\times10^{-3}$, so consulting it does $31\times$ the work of simply
+the summary alone costs $1.95\times10^{-3}$, so consulting it does $31\times$ the work of
 enumerating the operands. A run- or fill-based representation crosses at its own density, wherever its
 run or word count falls below $m/W_z$, but that a crossing exists at all is generic.
 
@@ -270,65 +259,230 @@ a filtered scan gives up sequential access and hardware prefetch and pays an ind
 per bin, and the measured penalty for consulting a summary on operands it cannot help is far larger
 than these panels charge --- \nm{worst-case speedup, filter applied unconditionally, which the work
 model does not predict} against the $1.002\times$ overhead the work model allows, matching the
-always-on-versus-gated contrast reported directly in Results, ``Selection must be hoisted, and
-measured rather than modelled'' (Fig.~\ref{fig:selection-cost}c). That divergence is not a defect in
+always-on-versus-gated contrast reported directly in Results, ``Online tournaments make
+representation selection negligible'' (Fig.~\ref{fig:selection-cost}c). That divergence is not a failure of
 the derivation; it is the reason the gate is decided by measurement rather than by the model, and the
 per-bin and per-word constants needed to convert these curves into time are given in Methods.
 
-\suppnote{What repeats across a batch, and how each mechanism amortises it}
+\suppnote{Column postings over row tiles: construction, exactness and scaling}
 \label{note:batch}
 
-Relocated from Results, ``Selection must be hoisted, and measured rather than modelled,'' which points
-here for the four quantities that repeat when a batch of pairs is run naively and how each is
-amortised instead.
+\paragraph*{The column view is a different algorithmic family.}
+The ten pairing-matrix cells are row-oriented: choose $(i,j)$, then traverse representations of
+$X_i$ and $X_j$. Column postings invert a coarse row--bucket incidence relation within a tile. For
+the incidence matrix $A$ of Eq.~\eqref{eq:posting-incidence}, the row view stores
+$O_i=\{b:A_{ib}=1\}$ while the column view stores $P_b=\{i:A_{ib}=1\}$. Walking $O_i$ is useful when
+one pair has already been chosen. Walking $P_b$ is useful when the task is to discover, among many
+rows, which pairs could possibly intersect. Writing $p_b$ for the indicator vector of $P_b$, the
+candidate pattern is the Boolean lower triangle of $AA^{\mathsf T}$ and each bucket contributes the
+outer product $p_bp_b^{\mathsf T}$. This transposition is the source of the batch saving: a bucket is
+read once for all row pairs that share it, instead of rediscovered by pairwise ANDs of row summaries.
+Outer-product sparse multiplication and transposed accumulation are classical
+\cite{gustavson1978spgemm,buluc2011combinatorialblas}; element-level wedge expansion applies the same
+column-induced-pair view to exact all-pairs common-neighbour counts
+\cite{an2019skipintersection}. The positional posting path specializes that lineage at a coarser
+resolution and composes it with the row matrix: bucket postings certify zeros, one-word tile masks
+deduplicate candidate occurrences, and a representation-pair cell computes every surviving exact
+cardinality.
 
-The contract is unchanged and the answer is identical, but batch amortisation requires many
-operations rather than one, because what it removes is not work but \emph{repetition}. Four things
-repeat when a batch is run naively, and each can be paid for once instead. Row metadata ---
-cardinality, run count, occupancy summary --- is part of the representation, built at ingest and
-amortised over every operation the set ever participates in rather than over any particular batch;
-this is the same assumption Roaring's per-chunk container choice already makes, and it is stated here
-once for the whole paper. A selection decision can be hoisted to a tile, so one decision serves a
-block of pairs instead of one pair. Probe-and-commit pays to time a handful of operations and reuses
-the verdict for the rest. And operand data loaded once can be paired against many, so its memory
-traffic is amortised rather than repeated. In each case the same thing happens: the decision and the
-metadata are amortised, and only the kernel work stays per operation (Supplementary
-Fig.~\ref{fig:batch}b).
-This is a regime rather than the setting. It applies wherever there are enough operations to share a
-decision --- which is a property of a workload of any size, not an argument that anything must be
-computed exhaustively --- and it is the regime in which the selection-cost measurements of the main
-text were taken. The single-operation regime is reasoned instead from the cost of a decision read from
-$O(1)$ metadata against the size of the operation it governs, and the asymmetry in evidence between
-the two is stated here rather than left to be inferred.
+These postings must not be confused with the element-keyed prefix index of Supplementary
+Fig.~\ref{fig:prefix}. Prefix filtering changes a thresholded similarity join by indexing selected
+elements and generating only pairs that can still clear the threshold. The column postings here are
+keyed by \emph{coarse positional buckets}; they serve the unchanged exact-all-pairs contract and can
+discard a pair only after proving that the rows share no bucket. A shared bucket is merely a
+candidate, because its rows may contain different elements within that bucket.
 
-Two mechanisms of that regime are drawn together in Supplementary Fig.~\ref{fig:batch}: an overlap
-pre-filter that settles most of a pair set from summaries alone, and the way a decision's cost is
-governed by the size of the operation it is made about.
+\paragraph*{Construction and resolve.}
+For each tile, the evaluated $T=64$ implementation performed the following steps.
+\begin{enumerate}
+\item It sorted the tile's rows by $\min X_i$ and stored each exact extent
+$[\min X_i,\max X_i]$. In the range-first cascade, the ordering permits the scan for $i$ to stop at
+the first $j$ with $\min X_j>\max X_i$. In the later amortised-posting variant, the same extent test
+is applied only to pairs already present in the sparse candidate masks.
+\item It traversed every set bit $b$ of every row occupancy map $O_i$ and executed
+$P_b\leftarrow P_b\cup\{i\}$. Because $T=64$, the posting was a single machine word and the update was
+one shift and OR.
+\item It defined the multi-occupancy bucket set $H=\{b:|P_b|\ge2\}$ and compacted the corresponding
+posting words into a dense list. Empty postings encode no row; singleton postings encode no distinct
+pair. After compaction, the bucket identifier is unnecessary for candidate generation and only the
+row word is retained. Identical row words from different buckets remain separate list entries.
+\item It formed a touched-row word $D=\bigcup_{b\in H}P_b$. Candidate masks were cleared only for
+$i\in D$. For each $b\in H$, it iterated over the set row bits $i\in P_b$ and executed
+$C_i\leftarrow C_i\cup P_b$. Repeating the same pair through several buckets is harmless because OR is
+idempotent; a pair reaches an exact row-wise cell at most once.
+\item It applied the extent-overlap condition to $C_i$, removed $i$ and all $j\le i$, and evaluated
+each remaining pair with the exact gated \cell{\rB}{\rS} verifier used by the postings benchmark.
+The row-cell tournament supplies the direct route selected by the tile gate.
+\end{enumerate}
 
-\begin{figure}[!t]
-\centering
-\input{figures/fig_batch_body}
-\caption{\textbf{The batch regime: rejecting pairs wholesale, and paying for a decision once.}
-Both mechanisms here need many operations rather than one, and what they remove is repetition.
-\textbf{a}, An overlap pre-filter across a set of operands. The same occupancy idea as a zone map
-(Fig.~\ref{fig:density-sweep}a) but at a coarser, chosen width and computed once per set, then
-ANDed pairwise: shaded pair cells may overlap and are passed to a kernel, dashed cells are provably
-disjoint and are answered without touching data. One pass over the summaries settles most of the
-pair matrix. Note the distinction from prefix filtering (Supplementary Fig.~\ref{fig:prefix}), which
-is candidate \emph{generation} and never enumerates the pair set at all.
-\textbf{b}, Why the cost of a decision depends on what it governs. Each bar spends left-to-right
-through one unit of useful work; the dashed rule marks that work with neither a decision nor a
-filter. \emph{Deciding}: a single operation absorbs the decision easily, since it is read from
-$O(1)$ metadata and the operation it governs is large; the same decision repeated for every
-operation of a batch is a large fraction of the total, because each operation there is small; and
-hoisting it to a tile --- deciding once, then committing --- restores the single-operation picture.
-\emph{Filtering}: where bins are mostly empty a summary converts most of the work into skipped work;
-where every bin is occupied it finds nothing to skip and its cost carries the bar past the rule.
-The cost of deciding therefore scales inversely with how large the operation being decided about is,
-which is why the two regimes need different policies and why every mechanism is gated rather than
-always on. Schematic; no measured data.}
-\label{fig:batch}
-\end{figure}
+The amortised variant constructs the postings once, retains only $H$ and reuses that compact
+transpose during candidate resolution. Table~\ref{tab:allpairs} reports candidate resolution and
+exact verification over diagonal within-tile blocks under this reuse schedule. The construction term
+is reported separately in Eq.~\eqref{eq:posting-cost}, which also gives its amortisation under a
+blocked traversal that reuses a built posting panel.
+
+\paragraph*{Exactness.}
+Range rejection is exact because disjoint closed extents imply disjoint sets. Posting rejection is
+also exact in the one direction used. If $X_i\cap X_j$ contains $x$, then
+$b=\lfloor x/\Delta\rfloor$ belongs to both $O_i$ and $O_j$; hence $i,j\in P_b$, the update for $P_b$
+sets $j$ in $C_i$, and the pair survives before triangular masking. Therefore
+\begin{equation}
+X_i\cap X_j\ne\varnothing\quad\Longrightarrow\quad
+j\in C_i,
+\label{eq:posting-soundness}
+\end{equation}
+Equation~\eqref{eq:posting-soundness} means that a pair absent from the candidate masks has
+cardinality zero. The converse fails whenever two
+different elements collide in one bucket. This is why postings can settle rejected pairs but only a
+row-wise cell can compute the cardinality of an accepted pair.
+
+\paragraph*{Work and storage.}
+Let $w$ be the machine-word width, $W=\lceil T/w\rceil$, $q_b=|P_b|$,
+$z=\sum_b q_b=\sum_i|O_i|$, $h=|H|$, and let $C$ be the set of unique candidate pairs
+after applying the extent-overlap condition. The current dense builder zeros $fW$ posting words,
+inserts $z$ row--bucket
+incidences, and scans the $f$ postings during compaction. Its construction cost is therefore
+$\Theta(fW+z)$ and its peak temporary storage is $\Theta(fW)$. The retained multi-occupancy list costs
+$\Theta(hW)$ words; at $T=64$, this is one word per retained posting. Candidate masks require
+$\Theta(TW)$ words.
+
+The logical number of bucket-induced pair occurrences is
+\begin{equation}
+G=\sum_{b:q_b\ge2}\binom{q_b}{2},
+\qquad |C|\le \min\!\left\{\binom{T}{2},G\right\}.
+\label{eq:posting-output}
+\end{equation}
+Equation~\eqref{eq:posting-output} counts repeated pair occurrences before bit-mask deduplication.
+A scalar inverted-list expansion would pay $\Theta(G)$. The bit-mask resolve instead ORs $W$ words
+for each row present in each retained posting, for
+$\Theta\!\left(W\sum_{b:q_b\ge2}q_b\right)$ word operations, and deduplicates the $G$ logical
+occurrences implicitly. Exact verification then costs
+$\sum_{(i,j)\in C}K(i,j)$, where $K(i,j)$ is the cost of the selected row cell for that pair. The
+complete cost is consequently
+\begin{equation}
+\underbrace{\Theta(fW+z)}_{\text{construction}}+
+\underbrace{\Theta\!\left(W\sum_{b:q_b\ge2}q_b+TW\right)}_{\text{resolve}}+
+\sum_{(i,j)\in C}K(i,j),
+\label{eq:posting-cost}
+\end{equation}
+In Eq.~\eqref{eq:posting-cost}, the construction term is divided by the number of block visits only
+when the block traversal reuses
+the same built postings. By comparison, direct row-wise execution pays
+$\sum_{i<j}K(i,j)$ and has no posting build.
+
+\paragraph*{When postings win.}
+The favourable limit is not merely low row density; it is low \emph{column multiplicity}. If every
+occupied bucket belongs to at most one row, then $h=0$, $C=\varnothing$, and the whole tile is proved
+disjoint after construction without touching any original row data. More generally, postings win
+when most $q_b$ are one or two, so the compact list and resolve are small and
+$|C|\ll\binom{T}{2}$.
+This occurs when rows occupy few buckets relative to $f$, and it is strengthened when their positional
+extents are separated: the cheaper range pass then eliminates pairs before a posting resolve is
+needed. Long runs or high per-row density do not by themselves help the posting path; they raise
+$q_b$, increase collisions, and ultimately make the candidate matrix dense.
+
+The dense-column route applies when even one coarse bucket contains most rows. If $q_b=T$, that posting
+alone makes $C$ the complete pair set. The method then pays construction and resolve before running
+the same row kernels as the direct path. This is the column analogue of applying a zone map whose
+every bin is occupied, and it is why the postings path must be gated. Between the limits, bucket
+width trades memory for precision. Increasing $f$ reduces unrelated rows colliding in one bucket and
+therefore reduces $G$ and $|C|$, but grows the per-row occupancy maps and the transient $fW$ table
+linearly. The best width can consequently move when the posting table crosses a cache boundary.
+
+Tile width makes a second trade. At fixed per-row occupancy, direct pair work grows as $T^2$ while
+the incidence count $z$ grows initially as $T$, so amortised planning work per possible pair can fall
+as $T$ grows. Once $T>w$, however, every posting and candidate row occupies $W>1$ words, multiplying
+the resolve and its working set. The measured implementation retained $T=64$ because it makes a
+posting one word; a $T=256$ variant reduced the arithmetic cost per potential pair but regressed on
+two of five corpora while increasing the posting table from the measured L1-capacity scale into L2.
+The association does not isolate cache residency from scheduling or other host effects, so $T=64$ is
+an empirical choice for this implementation, not a universal optimum.
+
+\paragraph*{Online gate and offline configuration tournaments.}
+The online postings gate is intended for data whose best path is not known in advance. On a strided
+sample it estimates
+\begin{equation}
+s=\frac{\text{element probes whose bucket is occupied on the other row}}
+        {\text{sampled sparse-side elements}},
+\qquad
+t=\frac{\text{sampled sparse-side elements}}
+        {\text{128-byte cache lines in the sampled dense rows}}.
+\label{eq:posting-gate}
+\end{equation}
+For the two statistics in Eq.~\eqref{eq:posting-gate}, the tile harness sampled every seventh partner
+in up to the first four tiles and entered the filter
+path at $s<0.15$ and $t<0.25$. It separately disabled range when the first tile rejected less than
+5\% of pairs. An early cascade variant built postings only when range left more than 25\% of a tile;
+the later amortised variant prebuilt compact postings once and used them whenever the corpus-level
+gate accepted the filter path. The thresholds are plateau-centre settings from the research harness
+rather than constants derived from the model, and the touch statistic uses the target's measured
+128-byte cache-line size.
+
+No offline width search is required for correctness or for use of the postings path. Every legal
+power-of-two bucket width $\Delta$ preserves Eq.~\eqref{eq:posting-soundness}: width changes the
+number of collisions and the size of the summary, but never removes a true intersection from the
+candidate set. An online-only execution therefore starts with a configured width, measures the two
+gate statistics during the active traversal and either commits to postings or routes directly to the
+row tournament. This is the appropriate path for one-shot, short-lived and inline computations. When
+a stable corpus will drive billions or trillions of comparisons, the same exact algorithm can
+instead pay a one-time width tournament and reuse its choice; only the performance specialization is
+offline.
+
+Two offline tournaments answer different questions and are not substitutes for that gate. The
+coarse-filter corpus optimizer is analogous to a build-time \texttt{run\_optimize()}: with the full
+corpus available, it times bypass and filter widths of 4,096, 8,192, 16,384, 32,768, 65,536, 131,072
+and 262,144 bits, then selects the measured winner. It estimates the ceiling available to a system
+allowed an offline build pass. The tile-postings width sweep extended the search through 1,048,576
+and 4,194,304 buckets. The reported tile-pipeline measurements use the winner of this per-corpus
+tournament. The universe-only rule evaluated in the same sweep separated fewer configurations than
+the tournament, showing that cardinality and clustering are required alongside universe size for
+automatic width selection.
+Timing candidate filters on a small sample and committing the fastest was also tested. It
+over-selected wide filters because the
+sample kept them resident while the full traversal evicted them, so the measured sample was biased
+with respect to the workload it was supposed to predict. That probe-and-commit variant was rejected
+for filter-width selection even though probe-and-commit remains useful for the row-cell tournament.
+
+\paragraph*{Rejected structural variants.}
+Ordering the stages matters. Building the transpose before applying range was slower when range had
+already emptied most of the tile; the cheap exact test must precede the expensive structure. A second
+hierarchy over positional buckets was also rejected: after compaction has removed every empty and
+singleton posting, the coarse level has no such entries left to prune and adds a dense scan. It was
+\prov{2.4 to 100 times slower than the flat multi-occupancy list across six corpora}. Deduplicating
+identical posting words, unrolling the resolve, sorting postings by population and specializing
+two-row postings changed time only within the run-to-run noise band. Prefetching candidate rows was
+counterproductive because it requested the row data before the filter had decided whether that data
+was needed. These failures all have the same boundary: once candidate generation is output-sensitive,
+optimizing the mechanism is less valuable than keeping non-candidates out of it.
+
+\paragraph*{What is amortised.}
+The exact-answer contract is unchanged, but the batch regime exposes quantities that can be paid for
+once. Cardinality, run count, extent and occupancy maps are built with the row and reused across its
+operations. A cell decision is shared by a tile or panel. A probe tournament times a handful of pairs
+and reuses its verdict. Column postings invert a tile once and reuse each bucket across the row pairs
+it induces. In a complete blocked traversal, loaded operand panels can likewise be reused before
+eviction. Only the exact verification of the surviving pairs necessarily remains per operation. This
+is a property of any workload with enough related operations to share preparation; it does not require
+that a caller materialize an $N^2$ output. The complete dataflow is shown in Fig.~\ref{fig:batch}.
+
+\paragraph*{Transfer conditions beyond set intersection.}
+The row and column algorithms instantiate a general work-admission procedure. First partition the
+payload into regions whose contribution can be summarized more cheaply than it can be evaluated.
+Second define an exclusion implication of the form in Eq.~\eqref{eq:generic-certificate}; the neutral
+result may be zero, no emitted tuple, no graph edge, no accumulator update or a predicate known to be
+false. Third retain the ordinary exact kernel for every survivor. Fourth estimate both summary cost
+and survivor fraction and apply Eq.~\eqref{eq:generic-gate}, using online samples when no workload
+profile exists. Finally hoist the summary or decision to the largest collection of operations that
+can reuse it without changing its meaning.
+
+This procedure explains the three different forms of leverage measured here. A row representation
+makes one operation scale with cardinality, run count or fill count. A zone map exchanges one summary
+bit for a decision over an entire region. A posting transpose reuses one occupied column across all
+rows it contains and changes scaling from the complete consumer space to incidences, posting
+multiplicities and survivors. The operator-specific proof establishes which contribution is neutral;
+the systems pattern --- summarize, certify, gate, hoist and verify --- is unchanged. It can therefore
+be applied to sparse joins, block-sparse matrix operations, graph and inverted-index traversal, and
+telemetry predicates whenever their metadata supplies the required sound certificate.
 
 \suppnote{Corpus provenance and inventory}
 \label{note:corpora}
@@ -337,8 +491,7 @@ Supplementary Table~\ref{tab:corpus-inventory} gives full provenance and per-cor
 every corpus referenced anywhere in this paper, including the corpora scored only against an
 all-bitmap baseline and never against CRoaring, which Table~\ref{tab:corpora} summarises in a single
 row. It also records, for the two genomic corpora, which axis is treated as the universe under each
-storage layout --- the distinction the main text draws in Results, ``Where the method does not
-pay.''
+storage layout, exposing the representation change induced by transposing the same incidence data.
 
 % longtable is NOT a float and creates no group, so a bare \scriptsize here
 % leaks into every following section. Keep it inside an explicit group.
@@ -360,16 +513,16 @@ pay.''
 \caption{\textbf{Corpora, provenance and statistics.} Every corpus referenced anywhere in this paper,
 in four provenance groups used to assemble the benchmark set: \textbf{G1}, the twelve
 \texttt{real-roaring-datasets} files CRoaring's own harness runs by default
-\cite{chambi2016roaring,lemire2018roaring}; \textbf{G2}, five SNAP social/web graphs (Stanford Large
-Network Dataset Collection) scored by neighbourhood-intersection density; \textbf{G3}, two genomic
-corpora present for scoping rather than for the headline, included so a reader can judge whether the
-benchmark set was chosen favourably; \textbf{G4}, KONECT graphs, UShER SARS-CoV-2, gnomAD and the
+\cite{chambi2016roaring,lemire2018roaring}; \textbf{G2}, five social and web graphs from the Stanford
+Network Analysis Project (SNAP), scored by neighbourhood-intersection density; \textbf{G3}, two genomic
+corpora in paired row/column layouts used to expose incidence-orientation effects; \textbf{G4},
+Koblenz Network Collection (KONECT) graphs, UShER SARS-CoV-2, gnomAD and the
 \texttt{msprime} coalescent-simulation series, added after the original survey. Density and mean
 $|X_i|$ are corpus properties from the data loaders, not timing results. For the two G3 corpora,
 \emph{universe} and \emph{rows} swap roles between layouts: \texttt{chr20.bin} is variant-major
 (universe = 5{,}008 haplotypes, one row per variant site); \texttt{chr20\_hap.bin} is haplotype-major
 (universe $\approx$ 1{,}048{,}576 sites, one row per haplotype) --- the layout dependence discussed in
-the main text (Results, ``Where the method does not pay''). ---, not reported by the source.
+the main text. ---, not reported by the source.
 \draftnote{All values provisional, pending the final measurement campaign.}}
 \label{tab:corpus-inventory}\\
 \toprule
@@ -398,24 +551,24 @@ Corpus & Group & Rows/sets & Universe $m$ & Mean $|X_i|$ & Density & Origin / no
 \texttt{\seqsplit{dimension\_008}} & G1 & \prov{5{,}240} & \prov{3{,}866{,}845} & \prov{347} & \prov{9.0e-5} & Druid-derived dimension column \\
 \texttt{\seqsplit{dimension\_033}} & G1 & \prov{173} & \prov{3{,}866{,}847} & \prov{22{,}352} & \prov{5.8e-3} & Druid-derived dimension column \\
 \addlinespace
-\texttt{\seqsplit{as-skitter}} & G2 & \prov{1{,}696{,}415} & \prov{1{,}696{,}415} & \nm{n} & \prov{9.1e-6} & CAIDA skitter internet AS topology, 2005; undirected, symmetrized \\
+\texttt{\seqsplit{as-skitter}} & G2 & \prov{1{,}696{,}415} & \prov{1{,}696{,}415} & \nm{n} & \prov{9.1e-6} & Cooperative Association for Internet Data Analysis (CAIDA) skitter internet autonomous-system (AS) topology, 2005; undirected, symmetrized \\
 \texttt{\seqsplit{wiki-Talk}} & G2 & \prov{2{,}394{,}385} & \prov{2{,}394{,}385} & \nm{n} & \prov{2.2e-5} & Wikipedia talk-page edits; directed; only 67{,}492 vertices have out-degree $\geq 2$ \\
 \texttt{\seqsplit{soc-Pokec}} & G2 & \prov{1{,}632{,}803} & \prov{1{,}632{,}804} & \nm{n} & \prov{1.6e-5} & Pokec social network (Slovakia); directed; lowest skew of the graphs -- top 1\% of sets hold only 8.8\% of elements \\
 \texttt{\seqsplit{com-LiveJournal}} & G2 & \prov{3{,}997{,}962} & \prov{4{,}036{,}538} & \nm{n} & \prov{5.1e-6} & LiveJournal friendship, ground-truth communities; undirected, symmetrized \\
 \texttt{\seqsplit{com-Orkut}} & G2 & \prov{3{,}072{,}441} & \prov{3{,}072{,}627} & \nm{n} & \prov{2.7e-5} & Orkut social network; undirected, symmetrized; largest input in this set \\
 \addlinespace
-\texttt{\seqsplit{chr20.bin}} & G3 (scoping) & \nm{n} & \prov{5{,}008} & \nm{n} & \prov{3.5e-2} & 1/i site-frequency spectrum, 43.6\% singletons; variant-major, universe 626 bytes, L1-resident \\
-\texttt{\seqsplit{chr20\_hap.bin}} & G3 (scoping) & \nm{n} & \prov{$\approx$1{,}048{,}576} & \nm{n} & \prov{3.1e-2} & haplotype-major; large universe but 3.1\% dense -- nothing beats all-bitmap (0.93$\times$) at this density and layout \\
+\texttt{\seqsplit{chr20.bin}} & G3 (layout) & \nm{n} & \prov{5{,}008} & \nm{n} & \prov{3.5e-2} & 1/i site-frequency spectrum, 43.6\% singletons; variant-major, universe 626 bytes, L1-resident \\
+\texttt{\seqsplit{chr20\_hap.bin}} & G3 (layout) & \nm{n} & \prov{$\approx$1{,}048{,}576} & \nm{n} & \prov{3.1e-2} & haplotype-major; large-universe orientation selects the all-bitmap route (0.93$\times$ relative comparison) \\
 \addlinespace
 \texttt{\seqsplit{dbpedia-link}} & G4 & \prov{4{,}384{,}102} & \prov{18{,}268{,}993} & \prov{29.8} & \prov{1.63e-6} & KONECT \\
 \texttt{\seqsplit{wikipedia\_link\_en}} & G4 & \prov{5{,}978{,}043} & \prov{11{,}206{,}012} & \prov{46.4} & \prov{4.15e-6} & KONECT \\
 \texttt{\seqsplit{livejournal-groupmemberships}} & G4 & \prov{2{,}197{,}915} & \prov{7{,}489{,}074} & \prov{48.7} & \prov{6.50e-6} & KONECT, bipartite; universe inflated $\sim$2.3$\times$ (single id space for both columns; true member domain is 3{,}201{,}203) \\
-\texttt{\seqsplit{usher\_sarscov2}} & G4 & \prov{29{,}411} & \prov{8{,}451{,}771} & \prov{15{,}769.3} & \prov{1.87e-3} & UCSC UShER SARS-CoV-2; mean dominated by near-universal variants (max 99.7\% carriers), median only 404 \\
+\texttt{\seqsplit{usher\_sarscov2}} & G4 & \prov{29{,}411} & \prov{8{,}451{,}771} & \prov{15{,}769.3} & \prov{1.87e-3} & University of California, Santa Cruz (UCSC) UShER SARS-CoV-2; mean dominated by near-universal variants (max 99.7\% carriers), median only 404 \\
 \texttt{\seqsplit{enwiki-categorylinks}} & G4 & \prov{2{,}165{,}205} & \prov{129{,}698{,}523} & \prov{102.3} & \prov{7.89e-7} & Wikimedia dumps; largest universe, lowest density in the full set \\
 \texttt{\seqsplit{gnomad\_chr21\_exomes\_af1e-3}} & G4 & \prov{625{,}656} & \prov{1{,}461{,}894} & \prov{28.2} & \prov{1.93e-5} & gnomAD v4.1 \\
-\texttt{\seqsplit{msprime\_10k}} & G4 (sim) & \prov{$\approx$42k} & \prov{2e4} & \prov{1{,}887} & \prov{9.4e-2} & msprime coalescent simulation; out of target regime \\
-\texttt{\seqsplit{msprime\_100k}} & G4 (sim) & \prov{$\approx$51k} & \prov{2e5} & \prov{15{,}720} & \prov{7.9e-2} & as above; out of target regime \\
-\texttt{\seqsplit{msprime\_1M}} & G4 (sim) & \prov{$\approx$15.6k} & \prov{2e6} & \prov{136{,}288} & \prov{6.8e-2} & as above; out of target regime \\
+\texttt{\seqsplit{msprime\_10k}} & G4 (sim) & \prov{$\approx$42k} & \prov{2e4} & \prov{1{,}887} & \prov{9.4e-2} & msprime dense-spectrum control \\
+\texttt{\seqsplit{msprime\_100k}} & G4 (sim) & \prov{$\approx$51k} & \prov{2e5} & \prov{15{,}720} & \prov{7.9e-2} & as above \\
+\texttt{\seqsplit{msprime\_1M}} & G4 (sim) & \prov{$\approx$15.6k} & \prov{2e6} & \prov{136{,}288} & \prov{6.8e-2} & as above \\
 \end{longtable}
 \endgroup
 
@@ -424,9 +577,9 @@ Corpus & Group & Rows/sets & Universe $m$ & Mean $|X_i|$ & Density & Origin / no
 
 Storage is a reported trade-off rather than an objective this paper optimizes for. The two tables
 below separate the two costs that the main text keeps apart. Supplementary Table~\ref{tab:metadata}
-gives the metadata the selector itself needs, per row and against the data it describes; it is the
-evidence behind the third boundary named in Results, ``Where the method does not pay,'' and it shows
-that the rank index and zone map are sized by the universe rather than by the row.
+gives the ungated reference footprint of selector metadata per row and against the data it describes.
+It quantifies why the implementation constructs universe-proportional rank and occupancy structures
+only when row cardinality and run structure can amortise them.
 Supplementary Table~\ref{tab:storage} gives the cost of the chosen data representation alone, with
 that metadata excluded, so the two are never conflated.
 
@@ -435,16 +588,16 @@ that metadata excluded, so the two are never conflated.
 \setlength{\tabcolsep}{6pt}
 \renewcommand\arraystretch{1.05}
 \centering
-\caption{\textbf{Selector metadata is universe-proportional, and that is a defect.} The rank index
-and zone map are constructed unconditionally, and both scale with universe, not
-cardinality. Meta B/row and data B/row are bytes of selector metadata and bytes of
+\caption{\textbf{Cardinality-gated construction bounds universe-proportional selector metadata.}
+The table reports the ungated reference footprint of the rank index and occupancy map, both of which
+scale with universe rather than cardinality. Meta B/row and data B/row are bytes of selector metadata and bytes of
 the chosen data representation, per row; ratio is meta:data. On
 \texttt{enwiki-categorylinks} that is \prov{4} MB of selector metadata attached to \prov{155} bytes
 of data -- a \prov{26{,}312$\times$} overhead. The complement representation already carries a guard,
-built only when $2n > \text{universe}$; rank and occupancy carry none. Rows on which metadata exceeds data by more than $10^{3}\times$ are bold. This is a known, unfixed
-property of the current implementation rather than a design choice, and it is why bitmap-bearing
-measurements elsewhere in this paper are restricted to small row counts on the large-universe
-corpora. \draftnote{All values provisional, pending the final measurement campaign.}}
+built only when $2n > \text{universe}$; the implementation constructs occupancy only when
+$512n>\text{universe}$ and gates rank construction on mean run length. Rows for which the ungated
+reference footprint exceeds data by more than $10^{3}\times$ are bold.
+\draftnote{All values provisional, pending the final measurement campaign.}}
 \label{tab:metadata}
 \begin{tabular}{@{}l r r r r@{}}
 \toprule
@@ -525,8 +678,8 @@ Grouping the four terms in pairs, $\min\big(\min(a,m-a),\,\min(b,m-b)\big)=\min(
 The number of feasible answers is $m\,s+1$, so a cardinality-only view of a pair leaves
 $\log_2(m\,s+1)$ bits of the answer unresolved. The four terms $a,b,m-a,m-b$ are exactly the sizes of
 the four lists $A,B,A^c,B^c$ one could enumerate, so the residual uncertainty is the size of the
-smallest of them --- not a coincidence, since Eq.~\eqref{eq:headroom}'s proof below shows the
-smallest of those four lists is precisely what an exact algorithm enumerates to answer the query.
+smallest of them. Enumerating that smallest list and probing the other operand gives the exact
+algorithm used in the headroom argument.
 
 \emph{The pigeonhole floor.} The lower bound of Eq.~\eqref{eq:interval} lifts off zero exactly when
 $d_A+d_B>1$, giving $|A\cap B|\ge(d_A+d_B-1)m$; equivalently, by inclusion--exclusion on complements,
@@ -546,7 +699,7 @@ universe alone.
 
 Suppose each operand $X$ is available as a bitmap \emph{and} as a sorted array of whichever of $X$,
 $X^c$ is the smaller --- $\Theta(m\,s_X)$ of extra space, decided from $a,b,m$ in $O(1)$. No rank
-index is required for what follows; that enters separately, below. Without a stored complement array,
+index is required for this argument. Without a stored complement array,
 enumerating $X^c$ from the bitmap costs $\Theta(m/w+(m-a))$, whose first term is already $\kappa(\rB)$
 --- so the dense arm of the argument genuinely requires the complement to be materialised, not derived
 on the fly. Then $|A\cap B|$ is computed in $O(m\,s)$ constant-time membership probes, by four cases,
@@ -564,8 +717,7 @@ $97\%$; nothing downstream changes). The ratio exceeds one whenever $s<1/w$ and 
 $s\to0$. What this does and does not assert: it asserts that a specific, exact, correct
 algorithm exists whose cost is $m\,s$ items where $\cell{\rB}{\rB}$ spends $m/w$ items, and that the
 ratio between the two achieved costs diverges. It does \emph{not} assert that $m\,s$ is a lower bound
-on the work any algorithm must do (``Why the interval width is not a lower bound on work'', below);
-both quantities compared are achieved, neither is a floor.
+on the work any algorithm must do; both quantities compared are achieved, neither is a floor.
 
 \emph{The crossover heuristic.} Converting to time needs two measured constants: the cost of a random
 probe into a bitmap, $c_p$, and the cost of a vectorised AND-plus-popcount word, $c_w/V$. Equating the
@@ -628,8 +780,7 @@ is not complement-symmetric. Sparse limit.
 $(1/w)[1-(1-s)^{2w}-s^{2w}]\to2s$ as $s\to0$, so under the null model \rW\ costs about \emph{twice} \rS\
 in the sparse tail, not the same --- the reason \rW\ never appears on the cost envelope in either tail.
 
-\paragraph*{Complement symmetry (Proposition 9, supporting the paragraph ``the deviation, which is the
-contribution'').}
+\paragraph*{Complement symmetry.}
 $\kappa(\rS)(X^c)=m-\kappa(\rS)(X)$: \rS\ is \emph{not} complement-symmetric, which is why the \rC\
 strategy exists. $\kappa(\rB)(X^c)=\kappa(\rB)(X)$ trivially. \rR\ is complement-symmetric by
 construction, because runs of ones and runs of zeros alternate along $[0,m)$, so
@@ -687,7 +838,7 @@ that envelope sits at $w\,s\approx1$, i.e.\ $s^*\approx1/w$, about $1.6\%$ for $
 constants. The U-shape is a genuine theorem of the null model and of the bitmap's flatness. It
 is not a property of the method, and the method is not in the business of reproducing it --- on real
 data the representations deviate below the null without limit, and that deviation, not the U itself, is
-the contribution (next).
+the exploitable quantity.
 
 \paragraph*{Proof that density is not a sufficient statistic for cost (the deviation, supporting
 Eq.~\eqref{eq:expected} and the impossibility argument).}
@@ -715,7 +866,7 @@ and $r$ runs need at least $r-1$ separating gaps).
 \emph{The worked case.} $m=10^6$, $A=[0,5\times10^5)$, $B=[2.5\times10^5,7.5\times10^5)$. Both operands
 sit at density exactly $\tfrac12$ --- the worst point of Eq.~\eqref{eq:width}, where cardinality alone
 leaves $500{,}001$ feasible answers and the null model of Eq.~\eqref{eq:expected} predicts $m/4=250{,}000$
-runs apiece. Both in fact have one run. $\cell{\rB}{\rR}$ with a rank index (Eq.~\eqref{eq:rank})
+runs apiece. Both have one run. $\cell{\rB}{\rR}$ with a rank index (Eq.~\eqref{eq:rank})
 answers the pair in \emph{two rank lookups}; $\cell{\rB}{\rB}$ spends $15{,}625$ word operations to
 reach the same number. Nothing about the density says which situation a selector is in.
 
@@ -737,7 +888,7 @@ spurious $500\times$ worst case, where the true bound is $\sigma_\rR\ge0.999$. R
 real data can be arbitrarily cheaper than random data at the same density, and at most about
 twice as expensive.
 
-The impossibility (Corollary B), stated at the strength it is actually proved. Any selector
+The resulting impossibility is stated at its proved strength. Any selector
 whose input is $d$ (or $a$, $b$, or any function of them) evaluates one fixed function $f(d)$ on every
 row of that density; by the range above, $\kappa(\rR)$ takes every value in $[1,k]$ at $d=k/m$, so
 $f(d)$ mis-predicts $\kappa(\rR)$ by an unbounded factor on some rows at every density, and no such
@@ -748,7 +899,7 @@ model} cannot exploit $\sigma$ either, since it is a function of $d$ and the imp
 verbatim --- but it does \emph{not} follow that such a model is worse than making no selection at all:
 whether a mis-prediction costs more than a fixed default depends on which cell the wrong prediction
 picks and that cell's actual cost, neither of which is modelled here. The regret comparison in
-Results, ``Selection must be hoisted, and measured rather than modelled''
+Results, ``Online tournaments make representation selection negligible''
 (Fig.~\ref{fig:selection-cost}b), is a measurement of that question, not a derivation of it.
 What \emph{is} licensed is narrower and still strong: the
 proved statement rules out one class of selector --- those reading only cardinality --- and does not
@@ -775,7 +926,7 @@ structure to find; real data deviates from it only in the mechanism's favour; th
 deviation is not a function of density and so is invisible to any cost model whose inputs are
 cardinalities; and it is exactly the quantity the mechanism converts into avoided work.
 
-\paragraph*{Where the headroom vanishes (Proposition 12, full detail).}
+\paragraph*{Where the headroom vanishes.}
 At $s_A=s_B=\tfrac12$: the cardinality view excludes nothing ($U=m/2$, Eq.~\eqref{eq:width}); the best
 list-based cell costs $m/2$ probes (Eq.~\eqref{eq:headroom}'s proof) against $\cell{\rB}{\rB}$'s $m/w$
 word operations, so $\cell{\rB}{\rB}$ wins by $w/2$ --- a factor of $32$ at $w=64$, before
@@ -784,7 +935,7 @@ $\mathbb{E}\,\kappa(\rW)=(m/w)(1-2\cdot2^{-2w})\approx m/w$, so neither \rR\ nor
 either, and \rW\ has degenerated into \rB\ with header overhead. So the headroom ratio of
 Eq.~\eqref{eq:headroom} does not merely shrink at $s=\tfrac12$ --- it falls below one ($1/(w\,s)=1/32$
 at $w=64$), and the correct behaviour of a selector there is to choose $\cell{\rB}{\rB}$. (The ratio is
-of course positive; ``negative headroom'' is the wrong description for a quantity that has fallen
+positive; ``negative headroom'' is the wrong description for a quantity that has fallen
 below unity.) This is a statement about the generic case and is false for structured rows at
 mid density: $X_{\mathrm{block}}$ sits at $d=\tfrac12$ with $r=1$. The honest form is: given only
 cardinalities, and absent structure, the mid-band is where nothing can be avoided; a structural summary
@@ -964,7 +1115,7 @@ and unconditional expectations of $\min(a,b)=e^{\min(X,Y)}$ in $\gamma=\ln(1/t)$
 the leading term is $\ln K/2$. Numerically, at $K=10^4,t=0.9$ the factor is $4.40$ against the limit
 $\ln K/2=4.61$. Simulating the composition directly reproduces the shortfall: the size bound leaves
 $2.76\%$ of pairs and representation choice costs $1.51\%$ of a bitmap, so a product would predict
-$0.042\%$ where the composition in fact costs $0.151\%$, a shortfall of $3.69\times$ once
+$0.042\%$ where the composition costs $0.151\%$, a shortfall of $3.69\times$ once
 cardinalities are integers; permuting which pairs pass the size test, so the two mechanisms read
 uncorrelated statistics at the same survival rate, restores the product to within $0.6\%$, isolating
 the shared statistic as the cause rather than the granularity. The composition is still strongly worth
@@ -987,7 +1138,7 @@ $\mu_X=(k_X,r_X,\ell_X+g_X)$ is the operand's metadata, the $N_j$ are counts of 
 touched, and the $c_j>0$ are per-item constants entering only through the ratios
 $\theta_{pw}=c_p/c_w$, $\theta_{mw}=c_m/c_w$, $\theta_{\rho w}=c_\rho/c_w$ for a membership probe, a
 merge step and a rank lookup respectively, each measured, not derived. Given a corpus, a distribution
-$\pi$ over the chunk pairs actually evaluated, and an operation $\omega$, the decision problem is to
+$\pi$ over the chunk pairs evaluated, and an operation $\omega$, the decision problem is to
 choose an assignment $\rho:\text{chunks}\to\{\rS,\rB,\rR,\rW\}$ minimising
 $C(\rho)=\sum_{(x,y)\sim\pi}C_\omega(\rho(x),\mu_x;\rho(y),\mu_y)$ subject to a byte budget $F$.
 
@@ -1123,7 +1274,7 @@ the far endpoint, $\max_kC(\tau_{\mathrm{stor}};k)/C(\tau_\cap;k)=c_p\tau_{\math
 running at $\tau_\cap$ inflates the footprint of a $k=\tau_\cap$ container by the same ratio in both
 directions.
 
-\paragraph*{Proof of Proposition 18/19 (metadata settles the decision wherever the decision matters).}
+\paragraph*{Proof that metadata settles the decision wherever the decision matters.}
 Two identifiability questions must not be conflated. Eq.~\eqref{eq:width} says what cardinality
 determines about the \emph{answer}, pinned only at the density extremes. What it determines about the
 \emph{decision} is different and more favourable. If $\mu=(k,r,\ell+g)$, every cost above is a
@@ -1143,7 +1294,7 @@ choosing wrong is at most $\eta$, by the definition of $\Lambda$. So for every p
 the metadata settles the decision or the decision does not matter to within the precision of the
 constants, and the undetermined set is an $\eta$-neighbourhood of the boundaries derived above rather
 than a region of unbounded error. This is a different mid-band from the one in Eq.~\eqref{eq:width}:
-Proposition~2 (main text) says the \emph{answer} is pinned by cardinality only at the density extremes;
+Eq.~\eqref{eq:width} says the \emph{answer} is pinned by cardinality only at the density extremes;
 this result says the \emph{decision} is pinned everywhere except an $\eta$-neighbourhood of a
 boundary, and the two regions have different consequences and must not be merged --- at $d=\tfrac12$
 cardinality determines nothing about the answer while determining the decision completely
@@ -1158,7 +1309,7 @@ there.
 \paragraph*{Proof of Eq.~\eqref{eq:gmax} (why an advantage survives repairing the incumbent's kernel).}
 Write the total cost of a batch as $C(\rho)=C_{\mathrm{meta}}+\sum_{(A,B)\in\mathcal P_{\mathrm{surv}}}
 \sum_{z\in Z(A,B)}C_{\mathrm{cell}}(\rho(A|z),\rho(B|z))$, where $\mathcal P_{\mathrm{surv}}\subseteq
-\mathcal P$ are the pairs not discarded by metadata and $Z(A,B)$ the regions actually visited.
+\mathcal P$ are the pairs not discarded by metadata and $Z(A,B)$ the regions visited.
 $\mathcal P_{\mathrm{surv}}$ and $Z(A,B)$ are functions of the metadata and the data only: the size
 bound reads $(a,b)$, the zone-map test reads bin occupancy, the narrowed-contract mode reads $(a,b,t)$,
 and none reads a representation --- since every representation here is exact and interconvertible,
@@ -1201,6 +1352,6 @@ only fall below the null, so a measured advantage exceeding the ceiling is evide
 must be reported as such rather than as agreement with the model --- a measured range whose lower and
 middle values sit inside the ceiling and whose top exceeds it is the expected signature of real
 structure, not a discrepancy to explain away. And Eq.~\eqref{eq:gmax} excludes the narrowed contract
-entirely: Eq.~\eqref{eq:survive} supplies its own factor, and by Proposition~21's rule the two are not
+entirely: Eq.~\eqref{eq:survive} supplies its own factor, and by the shared-statistic composition rule
+derived above the two are not
 multiplied together.
-

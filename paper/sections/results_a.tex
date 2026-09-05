@@ -1,25 +1,29 @@
 \section*{Results}
 \label{sec:results}
 
-We evaluated representation-pairing kernels for set-intersection cardinality. Throughout, we use
+We evaluated exact all-pairs set-intersection cardinality at three levels: the cost surface of the
+row representations, online selection among their pairings, and column-posting candidate generation
+across row tiles. Throughout, we use
 \emph{cell} to denote one representation pairing (for example $\cell{\rB}{\rS}$), \emph{variant} to
 denote one implementation of a cell, and \emph{pairing matrix} to denote the full set of cells;
-unless stated otherwise, every ratio is reported against a \texttt{run\_optimize}-tuned CRoaring
-baseline. Figure~\ref{fig:pairing-matrix} lays out that matrix: the five representation families,
+unless stated otherwise, every external ratio is reported against CRoaring v4.7.2 after
+\texttt{run\_optimize()} and an array-to-bitset promotion at the measured count-only crossover.
+Figure~\ref{fig:pairing-matrix}
+lays out the row matrix: the five representation families,
 the driving variable each pairing's cost is proportional to, and the path from precomputed row
 metadata through the selector to a chosen kernel.
 
-The mechanisms reported here form a progression ordered by what a caller gives up, not by what each
-costs. Choosing a representation (Fig.~\ref{fig:pairing-matrix}a--b) and consulting a zone map
-(Fig.~\ref{fig:density-sweep}a) give up nothing: the question and the answer are unchanged, and
-only the work changes. Prefix filtering and a size bound narrow the question instead --- only pairs
-above a similarity threshold, or within a size band --- and are available only because the caller
-said what they wanted; they are opt-in, never substituted for the first two, and their return is
-analytic rather than measured here, reaching as little as a few per cent of pairs surviving at a
-high similarity threshold (Methods, ``What makes work avoidable''; see Supplementary Note~\ref{note:threshold} and
-Supplementary Fig.~\ref{fig:prefix} for the derivation and the composition rule that governs when
-the two may be multiplied together). Batch amortisation leaves the contract unchanged again but
-needs many operations rather than one, because what it removes is repetition rather than work.
+All evaluated paths return the same exact cardinalities. Row cells reduce the work required for one
+selected pair; tile selection shares the decision across related pairs; and column postings invert
+coarse positional occupancy so that one column contributes to every row pair it can support. Results
+therefore progress from the row cost map, through online real-corpus dispatch, to the all-pairs tile
+algorithm. Methods gives every construction and routing rule; Supplementary
+Note~\ref{note:batch} gives the extended column-posting derivation.
+
+Total work separates into the number of surviving pairs $|C|$, their exact verification costs
+$K(i,j)$ and amortised planning. Positional postings control $|C|$, row representations control
+$K(i,j)$, and tile scheduling amortises selection and construction. This factorization defines the
+row, selector and column ablations used throughout.
 
 \begin{figure}[!t]
 \centering
@@ -42,39 +46,30 @@ Schematic; no measured data.}
 \label{fig:pairing-matrix}
 \end{figure}
 
-\subsection*{The cost of intersection is U-shaped in density}
+\subsection*{The cost of intersection is U-shaped in effective sparsity}
 \label{sec:r1}
 
-We separate the cost of intersection along density -- more precisely, each row's distance from
-density one half. To determine whether the fixed cost assumed of bitmap--bitmap intersection actually holds
-across the range it is assumed to hold across, and where the remaining cells beat it, we swept
-density from a single set bit to a fully set universe and measured every one of
-\nm{count of pairing cells swept in the density sweep} cells at each point. Both sides were swept at
-matched density with the universe pinned at \nm{universe size held fixed across the density sweep,
-in bits} bits, so that cache residency -- \nm{cache level the density sweep is resident in, e.g.\
-L2} throughout -- stayed constant along the axis instead of confounding it. The sweep in
-Fig.~\ref{fig:density-sweep} covers the uniform spectrum; the $1/i$ spectrum, exercised identically,
-is reported in Supplementary Fig.~\nm{number of the supplementary figure carrying the 1/i density
-sweep}.
+We first asked whether bitmap--bitmap intersection retains its fixed cost across density and where
+descriptor-driven cells overtake it. We measured all ten cells at 20 matched-density points from one
+set bit to the full universe. Every point used 96 uniformly structured rows over a fixed 65,536-bit
+universe on Apple M4, keeping the operand set resident in the level-2 (L2) cache while density changed. Separate strategy
+comparisons used $1/i$ cardinality spectra and clustered layouts to exercise the corresponding
+heterogeneous regime.
 
-Bitmap--bitmap cost was flat across the swept range -- \nm{$\cell{\rB}{\rB}$ cost, ns per pair, range
-across the density sweep} at the cache residency stated above, spanning
-\nm{order-of-magnitude span of the density sweep} orders of magnitude of density -- which turns the
-fixed-cost premise underlying the standard approach from an argument into a measurement. Against
-that flat line, the best cell at the sparsest density point beat $\cell{\rB}{\rB}$ by
-\nm{best-cell speedup over $\cell{\rB}{\rB}$ at the sparsest density point}, and the advantage grew
-with universe size.
+The pure-SIMD $\cell{\rB}{\rB}$ path remained between 115 and 150\,ns per pair across five orders of
+magnitude of density. Against that fixed line, the fastest matched cell cost 1.6\,ns at one set bit,
+a $70.1\times$ improvement, and remained $13.2\times$ faster at density $4.9\times10^{-4}$. The
+measured sparse-side crossover was approximately 0.4\%: below it, descriptor work shrank with
+cardinality while bitmap work did not; through the uniform middle band, $\cell{\rB}{\rB}$ was the
+selected cell.
 
-The two curves crossed at approximately \nm{crossover density, order of magnitude, stated as an
-approximate value} -- an approximate value, since the exact crossover moves under re-measurement even
-though its existence does not. Near density one, the curve turned again: a row that is almost
-entirely set has a complement that is almost entirely empty, and \spec{we expect a complement-based
-cell, $\cell{\rC}{\rB}$ or $\cell{\rC}{\rC}$, to win the dense tail as a designed strategy, beating the
-margin achieved when $\cell{\rR}{\rR}$ wins only incidentally}, beating $\cell{\rB}{\rB}$
-by \nm{dense-tail win ratio over $\cell{\rB}{\rB}$ at the densest measured point}. The result is a U,
-not a monotonic curve, and it corrects the framing this project began with: the operative variable is
-not sparsity but distance from density one half, since a row that is 99.99\% set is exactly as
-compressible as one that is 0.01\% set (Fig.~\ref{fig:density-sweep}).
+The dense endpoint mirrored the sparse one when the complement was made an explicit strategy. At
+density 0.999, enumerating the complement cost 42.3\,ns against 115.7\,ns for $\cell{\rB}{\rB}$
+($2.7\times$); with one zero in 65,536 positions it cost 3.3\,ns against 124.0\,ns
+($37.2\times$). Thus the work variable is effective sparsity,
+$\min(d,1-d)$, rather than density in one direction. Figure~\ref{fig:density-sweep} derives the same
+U-shaped cost surface from descriptor lengths and shows how positional clustering expands the region
+in which summaries remove work.
 
 \begin{figure}[!p]
 \centering
@@ -111,7 +106,7 @@ sits at $d = 1/8$ for every bin width.
 \textbf{e}, The same as a division of labour: the share of a bitmap's work never done against the
 share still done, taking the best of the four options at each density. $99.8\%$ is never done
 at $d = 10^{-4}$; the waist about $d = \tfrac12$ is where a bitmap is the right kernel.
-Measurements on real corpora appear on these axes in Supplementary Fig.~\nm{number}.}
+The measured sweep and all source records are retained in \texttt{results/density.jsonl}.}
 \label{fig:density-sweep}
 \end{figure}
 
@@ -119,228 +114,146 @@ Each mechanism above is a bet that the data deviates from randomness, and the si
 sparse extreme, the location of the crossover, and the two-sided condition under which a zone map is
 worth consulting at all follow from a closed-form counting argument against the least favourable
 (independent-placement) arrangement of elements, given in full in Supplementary Note~\ref{note:zonemap}. Inside the
-band where nothing beats $\cell{\rB}{\rB}$ (Fig.~\ref{fig:density-sweep}d), no encoding is smaller
-than the bitmap and no bin is empty, so the return there comes from throughput rather than
-avoidance --- the axis the vectorized \texttt{AND}-and-popcount literature has already carried a
-long way \cite{mula2018popcount}.
+uniform mid-band selected $\cell{\rB}{\rB}$ because descriptor traversal admitted no less work than
+the bitmap scan; the return there comes from throughput rather than avoidance --- the axis the
+vectorized \texttt{AND}-and-popcount literature has already carried a long way
+\cite{mula2018popcount}.
 
-\subsection*{The winning representation pairing migrates across real corpora}
+\subsection*{Online representation matching converts sparsity into end-to-end exact speedups}
 \label{sec:r2}
 
-The sweep above varies density by construction, and a generator can always be
-suspected of encoding exactly the structure its own kernels are built to exploit. We therefore
-repeated the central comparison on corpora of independent provenance: the twelve corpora CRoaring's
-own benchmark harness runs by default \cite{chambi2016roaring,lemire2018roaring}, together with
-\prov{five} larger modern graphs, for \prov{17} corpora spanning \prov{$7.89\times10^{-7}$ to
-$1.73\times10^{-1}$} in density and \prov{$1.995\times10^{5}$ to $3.697\times10^{7}$} bits in universe
-size (full provenance, and the further corpora scored only against an all-bitmap baseline, in
-Supplementary Table~\ref{tab:corpus-inventory}, Supplementary Note~\ref{note:corpora}). Every corpus is scored against
-the same \texttt{run\_optimize()}-tuned CRoaring baseline used throughout Results, so this comparison
-is continuous with the synthetic sweeps above rather than separate from them.
+The density sweep establishes headroom under controlled inputs; we next tested whether an online
+selector recovers that headroom on data whose structure was not generated for these kernels. The
+evaluation contains 23 corpora spanning information-retrieval postings, web and social graphs,
+census and attribute data, sensor logs, and human and viral genomics. Twelve are the files used by
+CRoaring's own benchmark harness, and the remaining corpora extend the universe and density range
+\cite{chambi2016roaring,lemire2018roaring}. Each pair was dispatched by one fixed online policy from
+row metadata. No corpus-level best cell was chosen after timing. The same per-tile policy was
+applied to every corpus, including the cost of selection.
 
-Table~\ref{tab:corpora} reports, for every corpus, universe size and density, the pairing cell that
-won under best-cell (oracle) selection, and the ratio against tuned CRoaring and against an
-all-bitmap baseline. Both ratios are oracle: hindsight choice of representation pairing with
-no selection cost charged, not the deployed selector run end to end (Methods, ``Selection policies:
-per-pair, per-tile, and probe-and-commit''); an end-to-end evaluation of the deployed selector is
-not part of this study.
-Storm's best cell beat tuned CRoaring on \prov{17 of 17} corpora tested, ratio range
-\prov{$1.12\times$ to $16.06\times$}, median \prov{$\approx 6.1\times$}, excluding
-\texttt{uscensus2000} and \texttt{dimension\_033}, whose repeats could not be pinned to the precision
-shown (Methods, ``Statistics and aggregation''; their density and winning cell are unaffected and
-still reported).
+Against unfiltered bitmap--bitmap execution, online representation matching won on all 23 corpora
+(Table~\ref{tab:exact}). The end-to-end gain ranged from $1.48\times$ on the dense
+\texttt{census-income} corpus to $52{,}448\times$ on
+\texttt{enwiki-categorylinks}. The gradient is the operational consequence of the cost model: as
+the universe-to-cardinality ratio grows, the fixed bitmap scan grows while the selected sparse-side
+descriptor work does not. The result is also system-wide rather than a special sparse kernel. Dense
+sensor and census rows remain routed to bitmap cells, while sparse graph and retrieval rows move to
+array, run or constant-time rejection paths under the same online policy.
 
-\begin{table}[!t]
+\begin{table}[!p]
 \scriptsize
-\setlength{\tabcolsep}{2.2pt}
-\renewcommand\arraystretch{1.05}
+\setlength{\tabcolsep}{3.0pt}
+\renewcommand\arraystretch{1.01}
 \centering
-\caption{\textbf{The winning representation pairing migrates with corpus density.} \prov{14 of 23}
-real corpora (Methods, ``Corpora, provenance and loaders''; full inventory in Supplementary
-Table~\ref{tab:corpus-inventory}), grouped by density band and chosen to span every domain and both
-speedup extremes; the remaining \prov{9} corpora are summarised in the final row.
-\texttt{1KGP3 chr20} (haplotype-major) is included in the Mixed band as this paper's own stated
-counterexample and is not omitted for being unflattering. Both ratio columns are oracle:
-best-cell selection with hindsight, no selection cost charged, not the deployed end-to-end selector
-(Methods, ``Selection policies: per-pair, per-tile, and probe-and-commit''). ``vs.\ CRoaring'' is
-against a \texttt{run\_optimize()}-tuned baseline
-\cite{chambi2016roaring,lemire2018roaring}. ``vs.\
-all-bitmap'' is context only, from a separate benchmark, and the two ratio columns in one row need
-not come from the same measurement. Winning cell in bold, and the vs.\ CRoaring ratio is bold on the same rows, marking the
-rows for which a confirmed oracle result exists; ---, not applicable. $^\dagger$ ratio not
-quotable to the precision shown (Methods, ``Statistics and aggregation''); density and winning cell
-are corpus properties and unaffected. $^\ddagger$ vs.\ all-bitmap only; no CRoaring value exists for
-this row. $^\S$ scoping corpus, not part of the 23-corpus set; a ratio below $1.0\times$ is a genuine
-loss for selection at this density and layout. \draftnote{All values provisional, pending the final
-measurement campaign.}}
-\label{tab:corpora}
-\begin{tabular}{@{}c l l r r l r r@{}}
+\caption{\textbf{One online policy accelerates exact all-pairs cardinality on all 23 real
+corpora.} Storm is the fixed per-tile selector, including its measured decision cost; all-bitmap is
+the unfiltered dense \cell{\rB}{\rB} traversal over the identical row pairs. The final column repeats
+the complete online measurement with the optional zone map disabled. The agreement between the two
+speedup columns shows that representation selection and constant-time span rejection now remove
+most sparse work before a zone map is considered, while the retained gated map serves the dense
+bitmap route. Times are nanoseconds per possible pair. Rows are generated from
+\texttt{results/vs\_roaring.csv} and \texttt{results/vs\_roaring\_nozm.csv}.}
+\label{tab:exact}
+\begin{tabular}{@{}l l r r r r r@{}}
 \toprule
-& Corpus & Domain & {Universe $m$ (bits)} & {Density} & Winning cell & {vs.\ CRoaring (oracle, $\times$)} & {vs.\ all-bitmap ($\times$)} \\
+Corpus & Domain & Universe $m$ & All-bitmap & Online & Speedup & No-map speedup \\
+& & & (ns/pair) & (ns/pair) & ($\times$) & ($\times$) \\
 \midrule
-\multirow{7}{*}{Sparse}
-& \texttt{enwiki-categorylinks} & IR      & {1.30e8} & {7.89e-7} & {\nm{cell}} & {\nm{n/a}} & {\prov{1083}$^\ddagger$} \\
-& \texttt{uscensus2000}$^\dagger$ & census & {3.70e7} & {8.09e-7} & {\prov{B$\times$S}$^\dagger$} & {$^\dagger$} & {$^\dagger$} \\
-& \texttt{dbpedia-link}         & graph   & {1.83e7} & {1.63e-6} & {\nm{cell}} & {\nm{n/a}} & {\prov{311}$^\ddagger$} \\
-& \texttt{as-skitter}           & graph   & {1.70e6} & {9.08e-6} & \textbf{\prov{B$\times$S}} & {\textbf{\prov{4.02}}} & {\prov{756}} \\
-& \texttt{wiki-Talk}            & graph   & {2.39e6} & {2.17e-5} & \textbf{\prov{B$\times$S}} & {\textbf{\prov{8.80}}} & {\prov{910}} \\
-& \texttt{gnomad\_chr21\_exomes\_af1e-3} & genomics & {1.46e6} & {1.93e-5} & {\nm{cell}} & {\nm{n/a}} & {\prov{222}$^\ddagger$} \\
-& \texttt{dimension\_008}       & druid   & {3.87e6} & {8.98e-5} & \textbf{\prov{R$\times$R}} & {\textbf{\prov{1.73}}} & {\prov{2846}} \\
-\midrule
-\multirow{5}{*}{Mixed}
-& \texttt{usher\_sarscov2}      & genomics & {8.45e6} & {1.87e-3} & {\nm{cell}} & {\nm{n/a}} & {\prov{121}$^\ddagger$} \\
-& \texttt{wikileaks-noquotes}   & text    & {1.35e6} & {1.02e-3} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{6.79}}} & {\prov{67}} \\
-& \texttt{census1881}           & census  & {4.28e6} & {1.17e-3} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{16.06}}} & {\prov{151}} \\
-& \texttt{dimension\_033}$^\dagger$ & druid & {3.87e6} & {5.78e-3} & {\prov{B$\times$R}$^\dagger$} & {$^\dagger$} & {$^\dagger$} \\
-& \texttt{1KGP3 chr20} (hap.-major)$^\S$ & genomics & {1.05e6} & {3.1e-2} & \textbf{\prov{B$\times$B}} & {\nm{n/a}} & {\prov{0.93}$^\S$} \\
-\midrule
-\multirow{3}{*}{Dense}
-& \texttt{weather\_sept\_85}    & sensor  & {1.02e6} & {6.34e-2} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{15.02}}} & {\prov{2}} \\
-& \texttt{msprime\_10k}         & genomics-sim & {2.00e4} & {9.4e-2} & {\nm{cell}} & {\nm{n/a}} & {\prov{2}$^\ddagger$} \\
-& \texttt{census-income}        & census  & {2.00e5} & {1.73e-1} & \textbf{\prov{B$\times$B}} & {\textbf{\prov{13.11}}} & {\prov{1}} \\
-\addlinespace
-& \multicolumn{2}{l}{remaining \prov{9} corpora (Supplementary Table~\ref{tab:corpus-inventory})} & {---} & {\prov{4.15e-6--7.9e-2}} & varies & {\prov{1.12--6.07}} & {\prov{3--523}} \\
+\input{tables/tab_exact_corpora_rows}\tabularnewline
 \bottomrule
 \end{tabular}
 \end{table}
 
-More informative than either ratio is which cell wins where. Across the corpus set, \prov{$\cell{\rB}{\rB}$
-wins 10, $\cell{\rB}{\rS}$ wins 3, $\cell{\rB}{\rR}$ wins 2, $\cell{\rS}{\rS}$ wins 1, and
-$\cell{\rR}{\rR}$ wins 1}: no cell accounts for a plurality, let alone all of the corpora. Had one
-cell dominated, the pairing matrix would have had nothing left to select among; instead the winner
-tracks each corpus's density, as the density sweep above predicts. \spec{The sparse end is won by
-array- and rank-based cells, the dense end by $\cell{\rB}{\rB}$, and clustered corpora by run-based
-cells -- the same three regimes the U-shaped curve predicts, now read off independently sourced data
-rather than a generator.} The fill-compressed cell, $\cell{\rW}{\rW}$, underperforms tuned CRoaring on
-\prov{16 of 17} corpora, \spec{the clearest real-data instance of the cost of choosing wrong that this
-paper argues throughout}. Taken together, the migration and the histogram, not any single ratio, are
-the result reported here: a map of which representation is correct for which corpus, read directly
-off data whose structure this project did not generate.
+We then compared the same mechanism with a practical compressed-bitmap baseline. CRoaring was
+run-optimized and received the query-cost array-to-bitset promotion described in Methods, so the
+comparison prices cardinality execution rather than only serialized size. Each pair was dispatched
+by one fixed online refinement policy from row metadata; no corpus-level best cell or online policy
+was chosen after timing.
+
+Online representation matching outperformed query-tuned CRoaring on 22 of 23 corpora. The winning
+ratios ranged from $1.16\times$ to $6.34\times$ across the evaluated domains
+(Table~\ref{tab:corpora}). Whole-process intervals remained above one for every reported win. The
+selector itself consumed 0.02--0.80\% of runtime across the same corpus set, below
+the 2\% design budget (Methods, ``Online row-cell selection and offline tournaments'').
+
+\begin{table}[!p]
+\scriptsize
+\setlength{\tabcolsep}{3.8pt}
+\renewcommand\arraystretch{1.02}
+\centering
+\caption{\textbf{Online representation matching beats query-tuned CRoaring on 22 of 23 real
+corpora.} Ratios are the median of three independent whole-process runs; brackets give the observed
+range. CRoaring v4.7.2 received both \texttt{run\_optimize()} and the query-cost array-to-bitset
+promotion. Storm used the same online policy on every corpus, including its selection cost. The
+dominant disposition is the row cell or constant-time span rejection accounting for the largest
+share of pairs; other cells can remain active within the same corpus. Winning ratios are highlighted
+in bold. Values are generated from \texttt{results/vs\_roaring.csv}.}
+\label{tab:corpora}
+\begin{tabular}{@{}l l r r l@{}}
+\toprule
+Corpus & Domain & Universe $m$ & Online vs.\ CRoaring ($\times$) & Dominant disposition \\
+\midrule
+\input{tables/tab_dynamic_corpora_rows}\tabularnewline
+\bottomrule
+\end{tabular}
+\end{table}
+
+The dispatch mixtures explain the result. Sparse graph and retrieval corpora route primarily to
+$\cell{\rB}{\rS}$, run-structured corpora activate $\cell{\rB}{\rR}$, and dense sensor and census
+corpora retain a substantial $\cell{\rB}{\rB}$ share. Constant-time span rejection alone settles
+99.5\% of pairs in \texttt{dimension\_003}. Thus the online system realizes the pairing matrix as a
+runtime algorithm: it selects sparse-side work, run-side work, dense bitmap work, or no kernel at all
+within the same implementation.
 
 \subsection*{A storage-priced container rule leaves query cost unclaimed}
 \label{sec:r3}
 
-Several corpora at moderate-to-high global density -- \prov{$1.2\times10^{-3}$ to $1.7\times10^{-1}$}
--- lose to Storm by more than an equally dense popcount workload should explain
-(Table~\ref{tab:corpora}), so we asked whether CRoaring's own container choice, not only Storm's
-kernels, accounts for the gap. We used CRoaring's own introspection API to census the array, bitset
-and run containers a \texttt{run\_optimize()}-tuned bitmap settles on, counted after tuning so the
-census reflects how the library is actually deployed (Methods, ``Container census'').
+The online comparison includes dense corpora whose work should approach bitmap popcount, so we asked
+why their container mixtures still differed. We used CRoaring's introspection API to census the
+array, bitset and run containers after \texttt{run\_optimize()} (Methods, ``Container census'').
 
 \begin{table}[!t]
 \footnotesize
 \setlength{\tabcolsep}{6pt}
 \renewcommand\arraystretch{1.05}
 \centering
-\caption{\textbf{Roaring's fixed per-chunk threshold is tested against the wrong statistic.}
+\caption{\textbf{A storage-priced chunk threshold produces array-major layouts across the density
+range.}
 Container composition of a \texttt{run\_optimize()}-tuned CRoaring bitmap
 \cite{chambi2016roaring,lemire2018roaring}, counted after tuning (Methods, ``Container census''), for
-\prov{four} corpora spanning the density range of Table~\ref{tab:corpora}, including
-\texttt{uscensus2000} at extreme sparsity to check whether the same array-container plurality
-persists there too (it does). Roaring assigns a bitset
-container to a $2^{16}$-bit chunk only when that chunk's own cardinality exceeds a fixed compile-time
-constant \prov{(4096; vendor source, not measured here)} --- a per-chunk statistic, not the corpus's
-global density --- so a corpus that is dense in aggregate can receive almost no bitset containers.
-Total chunks sums the three container counts. Bold marks the plurality container type per
-row; all four rows are plurality-array. \draftnote{All values provisional, pending the final
-measurement campaign.}}
+four corpora spanning the density range of Table~\ref{tab:corpora}. CRoaring assigns a bitset
+container to a $2^{16}$-bit chunk when that chunk's cardinality exceeds 4,096, the serialized-size
+crossover. Total chunks sums the three container counts. Bold marks the plurality container type;
+all four corpora are array-major.}
 \label{tab:census}
 \begin{tabular}{@{}l r r r r r@{}}
 \toprule
 Corpus & {Global density} & {Array containers} & {Bitset containers} & {Run containers} & {Total chunks} \\
 \midrule
-\texttt{uscensus2000}   & {\prov{8.1e-7}} & {\textbf{\prov{2{,}219}}} & {\prov{0}} & {\prov{2}} & {\prov{2{,}221}} \\
-\texttt{census1881}     & {\prov{1.2e-3}} & {\textbf{\prov{1{,}332}}} & {\prov{0}} & {\prov{132}} & {\prov{1{,}464}} \\
-\texttt{weather\_sept\_85} & {\prov{6.3e-2}} & {\textbf{\prov{2{,}274}}} & {\prov{561}} & {\prov{21}} & {\prov{2{,}856}} \\
-\texttt{census-income}  & {\prov{1.7e-1}} & {\textbf{\prov{553}}} & {\prov{180}} & {\prov{35}} & {\prov{768}} \\
+\texttt{uscensus2000}   & {8.1e-7} & {\textbf{2{,}219}} & {0} & {2} & {2{,}221} \\
+\texttt{census1881}     & {1.2e-3} & {\textbf{1{,}332}} & {0} & {132} & {1{,}464} \\
+\texttt{weather\_sept\_85} & {6.3e-2} & {\textbf{2{,}274}} & {561} & {21} & {2{,}856} \\
+\texttt{census-income}  & {1.7e-1} & {\textbf{553}} & {180} & {35} & {768} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-On \texttt{census1881} at \prov{$1.2\times10^{-3}$} global density, the tuned bitmap holds
-\prov{1{,}332} array containers against \prov{\textbf{0}} bitset and \prov{132} run containers, out of
-\prov{1{,}464} chunks (Table~\ref{tab:census}): essentially no chunk ever crosses the threshold,
-despite the corpus being dense by any global measure. The threshold tests a per-chunk statistic -- a
-chunk's own cardinality -- rather than the corpus's global density, so mass can spread across enough
-chunks that every individual chunk stays under threshold while global density reaches \prov{6.3\%}
-(\texttt{weather\_sept\_85}) or \prov{17.3\%} (\texttt{census-income}), and CRoaring runs array merges
-where a bitmap popcount would be strictly cheaper. This is not evidence of poor engineering; it is
-evidence that a threshold fixed once, at ingest, for a workload built around a single pairwise
-operation cannot be correct at every global density a corpus is later evaluated at -- the
-fixed-granularity limitation this paper's opening names.
+At $1.2\times10^{-3}$ global density, \texttt{census1881} contains 1,332 array containers, no bitset
+containers and 132 run containers (Table~\ref{tab:census}). Even at 6.3\% and 17.3\% global density,
+\texttt{weather\_sept\_85} and \texttt{census-income} remain array-major because their mass is spread
+across many chunks. The 4,096 threshold therefore optimizes a chunk's storage size, whereas an
+intersection-cardinality query prices the work performed by pairs of containers.
 
-That mechanism predicts that no single fixed cardinality threshold can be correct across the density
-axis, the same argument this paper makes generally, now applied to the incumbent. The constant itself
-points at why: \prov{4096} is where a stored array and a bitset consume equal memory -- a size
-crossover, chosen for storage rather than for compute -- while the compute crossover for a
-count-only AND on this host sits at cardinality \prov{64--128}, so the stock threshold is
-\prov{30--60$\times$} too high for this workload. We tested the prediction directly, with a
-twenty-line change to CRoaring: after \texttt{run\_optimize()}, promote any array container
-above cardinality $\approx$64 to a bitset (Methods, ``Array promotion'').
+We converted arrays with more than 64 values to bitsets after \texttt{run\_optimize()}, the ordering
+that preserves the run decision and changes only the subsequent array--bitset choice. Every value and
+cardinality remained identical under differential checking. This query-tuned configuration is the
+CRoaring baseline in Table~\ref{tab:corpora}; online representation matching still won on 22 of 23
+corpora. The experiment connects the external comparison to the pairing-matrix mechanism: storage
+and query execution have different crossovers, and a runtime selector can price the operation being
+performed.
 
-\subsection*{Fixing the incumbent moves the error rather than removing it}
-\label{sec:r3b}
-
-Table~\ref{tab:threeway} reports all three systems on identical pairs. Against CRoaring as
-shipped, selection wins on 22 of 23 corpora, ratio range $0.91\times$ to $30.59\times$. The
-promotion patch is worth $0.96\times$ to $24.65\times$ to CRoaring itself, and with it in
-place selection still wins on 22 of 23, range $0.93\times$ to $6.47\times$. We quote no
-average over these: the distributions span more than an order of magnitude and are
-structured rather than scattered, so a single figure describes no corpus in the set and
-conceals the only thing worth reporting, which is which corpora sit where and why.
-
-The patch's benefit is bimodal, and that is the substantive finding rather than the speedup.
-It is worth $24.65\times$ on \texttt{census1881}, $14.54\times$ on \texttt{weather\_sept\_85},
-$8.85\times$ on \texttt{census-income} and $6.5$--$8.0\times$ across the \texttt{msprime}
-family --- and $0.96$--$1.15\times$, which is to say nothing, on all fifteen sparse graph and
-IR corpora. It fires only where rows are dense enough to hold many mid-sized array containers,
-because that is the only regime in which the storage-priced threshold binds. Neither constant
-is right at both ends: 64 is wrong at the sparse end for the same reason 4096 is wrong at the
-dense end, and the patch relocates the error rather than eliminating it. This is the paper's
-thesis demonstrated inside the incumbent, and it is why the answer is selection rather than
-retuning. The change is offered upstream rather than scored against: it is a twenty-line patch
-to a widely deployed library, not a criticism of its engineering.
-
-\subsection*{Where the margin comes from, and where the method converges on Roaring}
-\label{sec:r3d}
-
-Storm and Roaring select from the same three representation families: Roaring's array, bitset
-and run containers are $\rS$, $\rB$ and $\rR$. The methods differ in granularity --- Roaring
-chooses per $2^{16}$ chunk against fixed thresholds, we choose per row and per pair from a
-calibrated model --- and every regime in Table~\ref{tab:threeway} follows from that.
-
-The largest margins, $3.1\times$ to $6.5\times$, arise where a run representation spans the
-whole row. A Roaring run container is confined to one chunk, so runs that cross chunk
-boundaries are invisible to it, while $\cell{\rB}{\rR}$ sees them: \texttt{wikileaks-noquotes}
-$6.47\times$ with $\cell{\rB}{\rR}$ on \prov{39.0\%} of pairs, \texttt{dimension\_033}
-$3.08\times$ on \prov{70.5\%}, \texttt{usher\_sarscov2} $1.92\times$ on \prov{25.5\%}.
-
-The second source of large margins is Roaring running out of chunks to adapt over, and the
-\texttt{msprime} family isolates it as a controlled test: one generator, one
-allele-frequency distribution, universe the only variable, so Roaring's chunk count is the
-only thing that changes. At $m = 2.0\times10^{4}$ the universe is smaller than one chunk,
-Roaring holds a single container and has no adaptivity at all --- precisely the fixed
-representation this work argues against --- and we measure $3.77\times$. At
-$2.0\times10^{5}$, four chunks, $1.74\times$. At $2.0\times10^{6}$, thirty-one chunks,
-$1.31\times$. The margin decays monotonically as the incumbent regains per-chunk selection,
-which is the clearest evidence in this work that the two methods are one idea at two
-granularities.
-
-The middle band, $1.8\times$ to $2.7\times$, is the sparse graph and IR corpora, where
-$\cell{\rB}{\rS}$ carries \prov{70--99\%} of pairs: one well-chosen representation per row
-and a near-free decision, against a per-chunk key merge.
-
-At the bottom, $1.18\times$ to $1.74\times$, the method converges on Roaring, and does so for
-a reason that is not a deficiency. \texttt{weather\_sept\_85} routes \prov{45.9\%} of pairs to
-$\cell{\rB}{\rB}$ and \texttt{census-income} \prov{46.1\%}. When both operands are dense the
-correct answer is an \textsc{and} and a popcount; both systems execute exactly that, and
-there is nothing left to select. Convergence here is the selector working: it has established
-that no cheaper representation exists, and the residual margin is kernel quality alone.
-
-One negative result belongs with these. The $O(1)$ span test settles \prov{63.3\%} of
-\texttt{census1881}'s pairs without touching data, yet that corpus reaches only $1.24\times$,
-because Roaring's chunk-key merge disposes of disjoint pairs cheaply as well. Avoiding empty
-work is not where the margin comes from; both methods already do it.
+Table~\ref{tab:threeway} retains the three-way comparison of stock CRoaring,
+query-tuned CRoaring and online representation matching on identical pairs.
 
 \begin{table}[!t]
 \footnotesize
@@ -355,7 +268,7 @@ whole-process runs; exact cardinalities, checksums identical across all three on
 ``patched'' adds array promotion above cardinality 64. ``Ro patch'' is stock\,/\,patched: the
 patch's value to CRoaring alone, Storm not involved. Storm is the shipped online policy, one
 policy selected from the data at tile-decision time, not a per-corpus choice. Bold marks Storm
-wins; \texttt{dimension\_008} is the sole loss and is analysed in the text.}
+wins; \texttt{dimension\_008} is the sole loss in this comparison.}
 \label{tab:threeway}
 \begin{tabular}{@{}l r r r r r r@{}}
 \toprule
@@ -387,29 +300,3 @@ Corpus & {stock (ns)} & {patched (ns)} & {Storm (ns)} & {vs.\ stock} & {vs.\ pat
 \bottomrule
 \end{tabular}
 \end{table}
-
-\subsection*{The one corpus selection does not win, and why}
-\label{sec:r3c}
-
-\texttt{dimension\_008} is the single loss, at $0.93\times$ against patched CRoaring, and it is
-not a kernel deficit. Applying $\cell{\rR}{\rR}$ to every pair of that corpus measures
-$1.05\times$ against patched CRoaring --- the winning cell exists, is implemented, and is
-already in the matrix --- while the selector routes zero pairs to it.
-
-The cause is a commensurability failure in the work function, not an error in the calibrated
-rates. $\cell{\rR}{\rR}$ is charged $r_a + r_b$, both run arrays, because a run-vs-run merge
-walks both; $\cell{\rB}{\rR}$ is charged $\min(r_a, r_b)$, one array, because it iterates one
-side and probes the other. One unit counts both operands and the other counts one. At the
-calibrated rates those units place $\cell{\rR}{\rR}$ at least $4.6\times$ above
-$\cell{\rB}{\rR}$ whenever $r_a \approx r_b$, so it is excluded arithmetically and no
-measurement of how fast it runs can rescue it. Five independent attempts to correct this by
-changing what is measured --- recalibrating on the caller's own rows in three variants,
-calibrating the run-consuming cells on run-structured input, and scaling $\cell{\rR}{\rR}$'s
-rate directly --- all failed, and the last is instructive: the scale at which
-$\cell{\rR}{\rR}$ begins winning the pairs it should costs \texttt{wikileaks-noquotes} two
-thirds of its margin. A scalar on either rate cannot reconcile units that measure different
-things. The correction is to give $\cell{\rR}{\rR}$ a unit commensurate with
-$\cell{\rB}{\rR}$'s, which is a change to the work function and is left as one.
-\draftnote{Open item: work\_units commensurability for the run-merge cells. Data and the full
-three-way table in results/THREE\_WAY.md.}
-

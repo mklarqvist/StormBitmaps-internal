@@ -23,12 +23,13 @@ mirror=$(mktemp -d)
 trap 'rm -rf "$mirror"' EXIT
 
 cp "$here/storm.tex" "$mirror/"
-cp -R "$here/sections" "$here/figures" "$mirror/"
+cp -R "$here/sections" "$here/figures" "$here/tables" "$mirror/"
 
 # Make root-relative \input paths resolve from within any subdirectory.
-for d in "$mirror/sections" "$mirror/figures"; do
+for d in "$mirror/sections" "$mirror/figures" "$mirror/tables"; do
     ln -sfn "$mirror/sections" "$d/sections"
     ln -sfn "$mirror/figures"  "$d/figures"
+    ln -sfn "$mirror/tables"   "$d/tables"
 done
 
 cd "$mirror"

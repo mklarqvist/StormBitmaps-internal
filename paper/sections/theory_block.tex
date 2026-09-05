@@ -7,9 +7,8 @@ than of the universe can enter it. Both compared quantities are achieved; neithe
 work the problem demands, and no such bound is claimed here. Every representation is exact and
 interconvertible --- \rB, \rS, \rR, \rW\ and the complement view \rC\ encode the same set and every
 cell returns the same cardinality --- so nothing is approximated and only the cost changes. Every
-quantity below is a count of stored items or of operations, never a time; the constants that convert
-one to the other are measured, not derived, and are given under ``Benchmark protocol and
-cache-residency statement''. Each result is stated here with its hypotheses; the proof, the worked
+quantity in this subsection is a count of stored items or of operations, never a time; constants that convert
+these counts to time are empirical and do not enter the derived results. Each result is stated here with its hypotheses; the proof, the worked
 numerical checks and the secondary propositions that support but do not themselves state a result are
 in Supplementary Note~\ref{note:proofs-avoidance}, for the results up to and including the size bound, and Supplementary Note~\ref{note:proofs-choice}, for the representation-choice optimisation problem that follows it.
 
@@ -72,8 +71,8 @@ differ across cells.
 
 \paragraph*{What randomness would predict.}
 Let each position be set independently with probability $d$, and write $\kappa(\rho)$ for the number
-of stored items representation $\rho$ must touch. The first two entries below are exact; the last two
-are the leading-order forms of exact Bernoulli expectations (Supplementary Note~\ref{note:proofs-avoidance}), written in
+of stored items representation $\rho$ must touch. The bitmap and array entries are exact; the run and
+fill-compressed entries are the leading-order forms of exact Bernoulli expectations (Supplementary Note~\ref{note:proofs-avoidance}), written in
 $s=\min(d,1-d)$,
 \begin{equation}
 \mathbb{E}\,\kappa(\rB) = \Big\lceil \tfrac{m}{w} \Big\rceil, \quad
@@ -87,7 +86,7 @@ these expectations is new. The \rW\ row is the word-aligned expected-size model 
 Shoshani \cite{wu2006wah}, whose bracket is identical to the one above under their payload width of
 $w-1$ bits per word rather than $w$; the symmetry about $d=\tfrac12$ and the resulting
 incompressibility at that density are theirs as well. The \rR\ row is the classical expected run
-count for a uniformly random arrangement \cite{mood1940runs}, and the interval bound used below is
+count for a uniformly random arrangement \cite{mood1940runs}, and the interval bound is
 the Fr\'echet--Boole inequality. The density--clustering parameterisation is also due to
 \cite{wu2006wah}; the design space it spans has since been mapped empirically for Roaring, WAH and
 tree-encoded bitmaps by Lang et al. \cite{lang2020teb}, who report that an uncompressed bitmap reads
@@ -110,7 +109,7 @@ follows $\Theta(\min(m/w,\,m\,s))$.
 Real data is not random, and the representations part company with Eq.~\eqref{eq:expected} in a way
 density cannot express. At fixed density $d\le\tfrac12$ with $k=dm$, $\kappa(\rB)$ and $\kappa(\rS)$
 are constants, while $\kappa(\rR)$ ranges over every integer in $[1,k]$ and $\kappa(\rW)$ from $O(1)$
-to $\Theta(\min(k,m/w))$ (Theorem B, proved by explicit families in Supplementary Note~\ref{note:proofs-avoidance}). Writing
+to $\Theta(\min(k,m/w))$ (proved by explicit families in Supplementary Note~\ref{note:proofs-avoidance}). Writing
 $\sigma(\rho,X)$ for predicted descriptor length at $X$'s density over actual, $\sigma$ is identically
 one for \rB\ and \rS, at least $\max(d,\,1-d+\tfrac{1}{m})\ge\tfrac12$ for \rR, and unbounded above:
 real rows can be arbitrarily cheaper than random rows of the same density and at most about twice as
@@ -125,7 +124,8 @@ mis-predicting model costs more than selecting nothing depends on which cell it 
 actual cost, which is measured (Fig.~\ref{fig:selection-cost}b), not derived; and a run or occupancy
 count is $O(1)$ metadata that sees $\sigma$ perfectly and could feed a model. What is proved is that
 selection must be gated on a statistic that sees structure rather than on cardinality --- structural
-summary or direct kernel measurement is settled below, by measurement.
+summary or direct kernel measurement is resolved by the measured selector comparison in
+Fig.~\ref{fig:selection-cost}b.
 
 \paragraph*{The null model is a floor, and it is the same floor three times.}
 Independent placement at fixed density is the \emph{extremal} arrangement for every mechanism used
@@ -139,15 +139,16 @@ ones of the same length. In each case the null is what the mechanism is worth on
 structure to find, real data deviates from it only in the mechanism's favour, and that deviation is
 exactly the quantity the mechanism converts into avoided work.
 
-\paragraph*{Where the headroom vanishes.}
+\paragraph*{The mid-density regime selects bitmap throughput.}
 At $s=\tfrac12$ the interval has width $m/2$ and excludes nothing, the cheapest list-based cell spends
 $m/2$ probes against $\lceil m/w\rceil$ words, and Eq.~\eqref{eq:expected} offers neither \rR\ nor \rW\
 an advantage: Eq.~\eqref{eq:headroom} falls below one. In the generic case the mid-density band belongs
 to $\cell{\rB}{\rB}$, and a selector choosing it there is correct rather than defeated. This bounds what
 cardinality determines absent structure, not what any kernel must spend --- call it a \emph{metadata}
 or \emph{identifiability floor}, never an information-theoretic one --- and a structured row at exactly
-this density is a counterexample to the unqualified form (Supplementary Note~\ref{note:proofs-avoidance}). It is also why the
-zone map of the next paragraph matters in the one band where cardinality is useless.
+this density is a counterexample to the unqualified form (Supplementary Note~\ref{note:proofs-avoidance}).
+Zone-map occupancy remains informative in this band because it records arrangement that cardinality
+does not.
 
 \paragraph*{Why the two mechanisms are selected between rather than stacked.}
 Composing a zone map with a representation is not the product of the two, because filtering
@@ -175,7 +176,7 @@ and a one-word-per-element representation $w\,d$, the low crossing is
 d_{\mathrm{low}} \;=\; \frac{c}{w\,W_z} \;=\; 3.1\times10^{-5} \qquad (c=1,\; w=64,\; W_z=512),
 \label{eq:dlow}
 \end{equation}
-below which reading the summary costs more than enumerating the operands outright (Supplementary Note~\ref{note:batch}). At the other end $p_Ap_B\to1$: no bin is empty, the summary proves nothing, and only its own
+below which reading the summary costs more than enumerating the operands outright (Supplementary Note~\ref{note:proofs-avoidance}). At the other end $p_Ap_B\to1$: no bin is empty, the summary proves nothing, and only its own
 $c/W_z$ remains. A run- or fill-based representation crosses at its own density, wherever its
 descriptor length falls below $m/W_z$, but that a crossing exists at all is generic. Prefix filtering
 has the same shape in $y=p^2/m$: for $y\ll1$ the surviving fraction is $y$ itself, so pruning improves
@@ -202,6 +203,8 @@ as metadata, no element of either set read. This is the Swamidass--Baldi pruning
 \cite{arasu2006exact}, in the two-sided form standardised by \cite{mann2016empirical} and applied
 jointly with prefix filtering to Tanimoto over binary vectors by \cite{anastasiu2016tapnn}, restated here to place it against the mechanisms above
 rather than as a result of this paper.
+The operational narrowing and complete thresholded construction are given in Supplementary
+Note~\ref{note:threshold}.
 
 \paragraph*{What that removes, and why a wider corpus helps it.}
 Modelling a corpus by drawing cardinalities independently with $\log a$ uniform on $[0,\ln K]$ --- the
@@ -214,7 +217,7 @@ independent uniforms on an interval of length $L=\ln K$,
 \qquad \ln(1/t)\le\ln K,
 \label{eq:survive}
 \end{equation}
-with the absolute form $\big(1-\ln\tau/\ln K\big)^{2}$ (proof and worked values in Supplementary Note~\ref{note:batch}, which agree with a $10^{5}$-sample simulation to three decimals). Expanding for small $\gamma$
+with the absolute form $\big(1-\ln\tau/\ln K\big)^{2}$ (proof and worked values in Supplementary Note~\ref{note:proofs-avoidance}, which agree with a $10^{5}$-sample simulation to three decimals). Expanding for small $\gamma$
 gives $2\gamma\!\int\!\phi^{2}$ for any density $\phi$ of $\log a$, so the governing quantity is the
 \emph{effective log-spread} $1/\!\int\!\phi^{2}$ of the size distribution, of which
 Eq.~\eqref{eq:survive} is the log-uniform case. Two hypotheses carry real weight. Cardinalities are
@@ -226,12 +229,12 @@ since the effective log-spread saturates at two nats however far the sizes are s
 scaling in $K$ is therefore claimed for the spectrum this paper benchmarks, not for every skewed
 corpus.
 
-\paragraph*{The size bound does not multiply with the mechanisms below it.}
+\paragraph*{The size bound does not multiply with the within-pair mechanisms.}
 Acting at a coarser granularity is not sufficient for savings to compose. The size test decides
 whether a pair is formed at all, while representation choice and the zone map act inside a pair that
 is formed, so the granularity argument of Eq.~\eqref{eq:compose} predicts a product --- and the
 product is not achieved, because both mechanisms read the same statistic. The survivors of
-Eq.~\eqref{eq:sizebound} are the pairs with $a\approx b$, and every mechanism below is cheapest exactly
+Eq.~\eqref{eq:sizebound} are the pairs with $a\approx b$, and every within-pair mechanism is cheapest exactly
 when $a$ and $b$ are \emph{dissimilar}, since its cost tracks $\min(a,b)$ against a fixed
 $\lceil m/w\rceil$. Conditioning raises the mean cost of a survivor by
 \begin{equation}
@@ -253,7 +256,7 @@ them is separable.}
 Everything above prices representations; a deployed library must \emph{choose} between them, and the
 choice has to be stated as an optimisation before it can be called optimal. Partition the universe into
 chunks of $M$ bits, each stored in one representation, $n=M/w$ words to a chunk and $e$ bits to a
-stored array element. Given a corpus, a distribution $\pi$ over the chunk pairs an application actually
+stored array element. Given a corpus, a distribution $\pi$ over the chunk pairs an application
 evaluates, and an operation $\omega$, the problem is to choose an assignment $\rho$ of representations
 to chunks minimising $\sum_{(x,y)\sim\pi} C_\omega(\rho(x),\mu_x;\rho(y),\mu_y)$ subject to a byte
 budget, where $\mu$ is the metadata of Eq.~\eqref{eq:expected} and $C_\omega$ counts items touched at
@@ -358,13 +361,13 @@ G_{\max}\;=\;\frac{\theta_{pw}\,w}{2\sqrt{c\,W_z}}
 \end{equation}
 valid on $(\theta_{pw}w\sqrt{c})^{2/3}\le W_z\le\theta_{pw}w$ and saturating at
 $\sqrt{\theta_{pw}w/c}\,/2$ above it, and falling below one outside a window whose lower edge is
-Eq.~\eqref{eq:dlow} with the per-item constants carried, $c/(\theta_{pw}wW_z)$ (proof in Supplementary Note~\ref{note:corpora}). Eq.~\eqref{eq:gmax} is a \emph{null-model} ceiling on structureless data, and by the
+Eq.~\eqref{eq:dlow} with the per-item constants carried, $c/(\theta_{pw}wW_z)$ (proof in Supplementary Note~\ref{note:proofs-choice}). Eq.~\eqref{eq:gmax} is a \emph{null-model} ceiling on structureless data, and by the
 one-sidedness of $\sigma$ above, real corpora can only fall below the null, so a measured advantage
 exceeding it is evidence of structure and must be reported as such rather than as agreement. And
 Eq.~\eqref{eq:gmax} excludes the narrowed contract entirely: Eq.~\eqref{eq:survive} supplies its own
 factor, and by the rule above the two are not multiplied.
 
-\paragraph*{Where avoidance is unavailable, throughput is what remains.}
+\paragraph*{The irreducible regime selects throughput.}
 The mid-band above is not only where these results stop applying; it is where a different optimization
 applies, and the two are complementary rather than competing. Where Eq.~\eqref{eq:headroom} falls below
 one and $p_Ap_B\to1$, the work $\cell{\rB}{\rB}$ performs is, in the generic case, work that is going to

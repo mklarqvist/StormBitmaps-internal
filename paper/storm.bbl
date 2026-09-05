@@ -7,6 +7,79 @@
 \providecommand{\bibinfo}[2]{#2}
 \providecommand{\eprint}[2][]{\url{#2}}
 
+\bibitem{wu2006wah}
+\bibinfo{author}{Wu, K.}, \bibinfo{author}{Otoo, E.~J.} \&
+  \bibinfo{author}{Shoshani, A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Optimizing bitmap indices with
+  efficient compression}}.
+\newblock {\emph{\JournalTitle{ACM Transactions on Database Systems}}}
+  \textbf{\bibinfo{volume}{31}}, \bibinfo{pages}{1--38},
+  \doiprefix\url{10.1145/1132863.1132864} (\bibinfo{year}{2006}).
+
+\bibitem{chambi2016roaring}
+\bibinfo{author}{Chambi, S.}, \bibinfo{author}{Lemire, D.},
+  \bibinfo{author}{Kaser, O.} \& \bibinfo{author}{Godin, R.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Better bitmap performance with
+  {Roaring} bitmaps}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{709--719},
+  \doiprefix\url{10.1002/spe.2325} (\bibinfo{year}{2016}).
+\newblock \bibinfo{note}{ArXiv:1402.6407}.
+
+\bibitem{lemire2018roaring}
+\bibinfo{author}{Lemire, D.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Roaring bitmaps: Implementation of
+  an optimized software library}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{48}}, \bibinfo{pages}{867--895},
+  \doiprefix\url{10.1002/spe.2560} (\bibinfo{year}{2018}).
+\newblock \bibinfo{note}{ArXiv:1709.07821}.
+
+\bibitem{zobel2006inverted}
+\bibinfo{author}{Zobel, J.} \& \bibinfo{author}{Moffat, A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Inverted files for text search
+  engines}}.
+\newblock {\emph{\JournalTitle{ACM Computing Surveys}}}
+  \textbf{\bibinfo{volume}{38}}, \bibinfo{pages}{6:1--6:56},
+  \doiprefix\url{10.1145/1132956.1132959} (\bibinfo{year}{2006}).
+
+\bibitem{goodwin2017bitfunnel}
+\bibinfo{author}{Goodwin, B.} \emph{et~al.}
+\newblock \bibinfo{title}{{BitFunnel}: Revisiting signatures for search}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 40th International
+  ACM SIGIR Conference on Research and Development in Information Retrieval
+  (SIGIR)}}, \bibinfo{pages}{605--614}, \doiprefix\url{10.1145/3077136.3080789}
+  (\bibinfo{year}{2017}).
+
+\bibitem{lucene-sparsefixedbitset}
+\bibinfo{author}{{The Apache Software Foundation}}.
+\newblock \bibinfo{title}{{Lucene} \texttt{SparseFixedBitSet}}.
+\newblock \bibinfo{howpublished}{\url{https://lucene.apache.org/core/}}.
+\newblock \bibinfo{note}{Accessed 2026-08-06}.
+
+\bibitem{aberger2016emptyheaded}
+\bibinfo{author}{Aberger, C.~R.}, \bibinfo{author}{Tu, S.},
+  \bibinfo{author}{Olukotun, K.} \& \bibinfo{author}{R\'e, C.}
+\newblock \bibinfo{title}{{EmptyHeaded}: A relational engine for graph
+  processing}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 2016 International
+  Conference on Management of Data (SIGMOD)}}, \bibinfo{pages}{431--446},
+  \doiprefix\url{10.1145/2882903.2915213} (\bibinfo{year}{2016}).
+
+\bibitem{yang2014druid}
+\bibinfo{author}{Yang, F.} \emph{et~al.}
+\newblock \bibinfo{title}{{Druid}: A real-time analytical data store}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 2014 ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{157--168},
+  \doiprefix\url{10.1145/2588555.2595631} (\bibinfo{year}{2014}).
+
+\bibitem{broder1997resemblance}
+\bibinfo{author}{Broder, A.~Z.}
+\newblock \bibinfo{title}{On the resemblance and containment of documents}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of Compression and
+  Complexity of Sequences}}, \bibinfo{pages}{21--29},
+  \doiprefix\url{10.1109/SEQUEN.1997.666900} (\bibinfo{year}{1997}).
+
 \bibitem{bayardo2007allpairs}
 \bibinfo{author}{Bayardo, R.~J.}, \bibinfo{author}{Ma, Y.} \&
   \bibinfo{author}{Srikant, R.}
@@ -48,6 +121,31 @@
   \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{76},
   \doiprefix\url{10.1186/s13321-019-0398-8} (\bibinfo{year}{2019}).
 
+\bibitem{gustavson1978spgemm}
+\bibinfo{author}{Gustavson, F.~G.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Two fast algorithms for sparse
+  matrices: Multiplication and permuted transposition}}.
+\newblock {\emph{\JournalTitle{ACM Transactions on Mathematical Software}}}
+  \textbf{\bibinfo{volume}{4}}, \bibinfo{pages}{250--269},
+  \doiprefix\url{10.1145/355791.355796} (\bibinfo{year}{1978}).
+
+\bibitem{buluc2011combinatorialblas}
+\bibinfo{author}{Bulu\c{c}, A.} \& \bibinfo{author}{Gilbert, J.~R.}
+\newblock \bibinfo{journal}{\bibinfo{title}{The combinatorial {BLAS}: Design,
+  implementation, and applications}}.
+\newblock {\emph{\JournalTitle{International Journal of High Performance
+  Computing Applications}}} \textbf{\bibinfo{volume}{25}},
+  \bibinfo{pages}{496--509}, \doiprefix\url{10.1177/1094342011403516}
+  (\bibinfo{year}{2011}).
+
+\bibitem{karp1995bitvector}
+\bibinfo{author}{Karp, R.~M.}, \bibinfo{author}{Waarts, O.} \&
+  \bibinfo{author}{Zweig, G.}
+\newblock \bibinfo{title}{The bit vector intersection problem}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 36th Annual Symposium
+  on Foundations of Computer Science (FOCS)}}, \bibinfo{pages}{621--630},
+  \doiprefix\url{10.1109/SFCS.1995.492663} (\bibinfo{year}{1995}).
+
 \bibitem{mula2018popcount}
 \bibinfo{author}{Mu\l{}a, W.}, \bibinfo{author}{Kurz, N.} \&
   \bibinfo{author}{Lemire, D.}
@@ -58,6 +156,25 @@
   \doiprefix\url{10.1093/comjnl/bxx046} (\bibinfo{year}{2018}).
 \newblock \bibinfo{note}{ArXiv:1611.07612}.
 
+\bibitem{inoue2014simdintersection}
+\bibinfo{author}{Inoue, H.}, \bibinfo{author}{Ohara, M.} \&
+  \bibinfo{author}{Taura, K.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Faster set intersection with {SIMD}
+  instructions by reducing branch mispredictions}}.
+\newblock {\emph{\JournalTitle{Proceedings of the VLDB Endowment}}}
+  \textbf{\bibinfo{volume}{8}}, \bibinfo{pages}{293--304},
+  \doiprefix\url{10.14778/2735508.2735518} (\bibinfo{year}{2014}).
+
+\bibitem{lemire2016simdintersection}
+\bibinfo{author}{Lemire, D.}, \bibinfo{author}{Boytsov, L.} \&
+  \bibinfo{author}{Kurz, N.}
+\newblock \bibinfo{journal}{\bibinfo{title}{{SIMD} compression and the
+  intersection of sorted integers}}.
+\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
+  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{723--749},
+  \doiprefix\url{10.1002/spe.2326} (\bibinfo{year}{2016}).
+\newblock \bibinfo{note}{ArXiv:1401.6399}.
+
 \bibitem{fu1995}
 \bibinfo{author}{Fu, Y.-X.}
 \newblock \bibinfo{journal}{\bibinfo{title}{Statistical properties of
@@ -66,32 +183,51 @@
   \textbf{\bibinfo{volume}{48}}, \bibinfo{pages}{172--197},
   \doiprefix\url{10.1006/tpbi.1995.1025} (\bibinfo{year}{1995}).
 
-\bibitem{chambi2016roaring}
-\bibinfo{author}{Chambi, S.}, \bibinfo{author}{Lemire, D.},
-  \bibinfo{author}{Kaser, O.} \& \bibinfo{author}{Godin, R.}
-\newblock \bibinfo{journal}{\bibinfo{title}{Better bitmap performance with
-  {Roaring} bitmaps}}.
-\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
-  \textbf{\bibinfo{volume}{46}}, \bibinfo{pages}{709--719},
-  \doiprefix\url{10.1002/spe.2325} (\bibinfo{year}{2016}).
-\newblock \bibinfo{note}{ArXiv:1402.6407}.
+\bibitem{demaine2000adaptive}
+\bibinfo{author}{Demaine, E.~D.}, \bibinfo{author}{L{\'o}pez-Ortiz, A.} \&
+  \bibinfo{author}{Munro, J.~I.}
+\newblock \bibinfo{title}{Adaptive set intersections, unions, and differences}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 11th Annual ACM-SIAM
+  Symposium on Discrete Algorithms (SODA)}}, \bibinfo{pages}{743--752}
+  (\bibinfo{year}{2000}).
 
-\bibitem{lemire2018roaring}
-\bibinfo{author}{Lemire, D.} \emph{et~al.}
-\newblock \bibinfo{journal}{\bibinfo{title}{Roaring bitmaps: Implementation of
-  an optimized software library}}.
-\newblock {\emph{\JournalTitle{Software: Practice and Experience}}}
-  \textbf{\bibinfo{volume}{48}}, \bibinfo{pages}{867--895},
-  \doiprefix\url{10.1002/spe.2560} (\bibinfo{year}{2018}).
-\newblock \bibinfo{note}{ArXiv:1709.07821}.
+\bibitem{ding2011intersection}
+\bibinfo{author}{Ding, B.} \& \bibinfo{author}{K{\"o}nig, A.~C.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Fast set intersection in memory}}.
+\newblock {\emph{\JournalTitle{Proceedings of the VLDB Endowment}}}
+  \textbf{\bibinfo{volume}{4}}, \bibinfo{pages}{255--266},
+  \doiprefix\url{10.14778/1938545.1938550} (\bibinfo{year}{2011}).
 
-\bibitem{goodwin2017bitfunnel}
-\bibinfo{author}{Goodwin, B.} \emph{et~al.}
-\newblock \bibinfo{title}{{BitFunnel}: Revisiting signatures for search}.
-\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 40th International
-  ACM SIGIR Conference on Research and Development in Information Retrieval
-  (SIGIR)}}, \bibinfo{pages}{605--614}, \doiprefix\url{10.1145/3077136.3080789}
-  (\bibinfo{year}{2017}).
+\bibitem{culpepper2010intersection}
+\bibinfo{author}{Culpepper, J.~S.} \& \bibinfo{author}{Moffat, A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Efficient set intersection for
+  inverted indexing}}.
+\newblock {\emph{\JournalTitle{ACM Transactions on Information Systems}}}
+  \textbf{\bibinfo{volume}{29}}, \bibinfo{pages}{1:1--1:25},
+  \doiprefix\url{10.1145/1877766.1877767} (\bibinfo{year}{2010}).
+
+\bibitem{aberger2017emptyheaded}
+\bibinfo{author}{Aberger, C.~R.} \emph{et~al.}
+\newblock \bibinfo{journal}{\bibinfo{title}{{EmptyHeaded}: A relational engine
+  for graph processing}}.
+\newblock {\emph{\JournalTitle{ACM Transactions on Database Systems}}}
+  \textbf{\bibinfo{volume}{42}}, \bibinfo{pages}{20:1--20:44},
+  \doiprefix\url{10.1145/3129246} (\bibinfo{year}{2017}).
+
+\bibitem{an2019skipintersection}
+\bibinfo{author}{An, X.}, \bibinfo{author}{Gabert, K.}, \bibinfo{author}{Fox,
+  J.}, \bibinfo{author}{Green, O.} \& \bibinfo{author}{Bader, D.~A.}
+\newblock \bibinfo{title}{Skip the intersection: Quickly counting common
+  neighbors on shared-memory systems}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the IEEE High Performance
+  Extreme Computing Conference (HPEC)}}, \bibinfo{pages}{1--7},
+  \doiprefix\url{10.1109/HPEC.2019.8916307} (\bibinfo{year}{2019}).
+
+\bibitem{intel-intrinsics-guide}
+\bibinfo{author}{{Intel Corporation}}.
+\newblock \emph{\bibinfo{title}{{Intel Intrinsics Guide}}}
+  (\bibinfo{year}{2024}).
+\newblock \bibinfo{note}{Version 3.6.9, 12 July 2024}.
 
 \bibitem{raducanu2013microadaptivity}
 \bibinfo{author}{R\u{a}ducanu, B.}, \bibinfo{author}{Boncz, P.} \&
@@ -102,36 +238,12 @@
   \bibinfo{pages}{1231--1242}, \doiprefix\url{10.1145/2463676.2465292}
   (\bibinfo{year}{2013}).
 
-\bibitem{tomahawk_github}
-\bibinfo{author}{Klarqvist, M. D.~R.}
-\newblock \bibinfo{title}{{Tomahawk}: Fast calculation of {LD} and genotype
-  correlation in large-scale cohorts}.
-\newblock \bibinfo{howpublished}{\url{https://github.com/mklarqvist/Tomahawk}}
-  (\bibinfo{year}{2017}).
-\newblock \bibinfo{note}{Software repository, created 2017-07-17}.
-
-\bibitem{wu2006wah}
-\bibinfo{author}{Wu, K.}, \bibinfo{author}{Otoo, E.~J.} \&
-  \bibinfo{author}{Shoshani, A.}
-\newblock \bibinfo{journal}{\bibinfo{title}{Optimizing bitmap indices with
-  efficient compression}}.
-\newblock {\emph{\JournalTitle{ACM Transactions on Database Systems}}}
-  \textbf{\bibinfo{volume}{31}}, \bibinfo{pages}{1--38},
-  \doiprefix\url{10.1145/1132863.1132864} (\bibinfo{year}{2006}).
-
-\bibitem{mood1940runs}
-\bibinfo{author}{Mood, A.~M.}
-\newblock \bibinfo{journal}{\bibinfo{title}{The distribution theory of runs}}.
-\newblock {\emph{\JournalTitle{The Annals of Mathematical Statistics}}}
-  \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{367--392},
-  \doiprefix\url{10.1214/aoms/1177731825} (\bibinfo{year}{1940}).
-
-\bibitem{lang2020teb}
-\bibinfo{author}{Lang, H.} \emph{et~al.}
-\newblock \bibinfo{title}{Tree-encoded bitmaps}.
-\newblock In \emph{\bibinfo{booktitle}{Proceedings of the ACM SIGMOD
-  International Conference on Management of Data}}, \bibinfo{pages}{937--967},
-  \doiprefix\url{10.1145/3318464.3380588} (\bibinfo{year}{2020}).
+\bibitem{sarawagi2004setjoins}
+\bibinfo{author}{Sarawagi, S.} \& \bibinfo{author}{Kirpal, A.}
+\newblock \bibinfo{title}{Efficient set joins on similarity predicates}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 2004 ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{743--754},
+  \doiprefix\url{10.1145/1007568.1007652} (\bibinfo{year}{2004}).
 
 \bibitem{arasu2006exact}
 \bibinfo{author}{Arasu, A.}, \bibinfo{author}{Ganti, V.} \&
@@ -140,6 +252,15 @@
 \newblock In \emph{\bibinfo{booktitle}{Proceedings of the 32nd International
   Conference on Very Large Data Bases (VLDB)}}, \bibinfo{pages}{918--929}
   (\bibinfo{year}{2006}).
+
+\bibitem{xiao2011ppjoin}
+\bibinfo{author}{Xiao, C.}, \bibinfo{author}{Wang, W.}, \bibinfo{author}{Lin,
+  X.}, \bibinfo{author}{Yu, J.~X.} \& \bibinfo{author}{Wang, G.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Efficient similarity joins for
+  near-duplicate detection}}.
+\newblock {\emph{\JournalTitle{ACM Transactions on Database Systems}}}
+  \textbf{\bibinfo{volume}{36}}, \bibinfo{pages}{15:1--15:41},
+  \doiprefix\url{10.1145/2000824.2000825} (\bibinfo{year}{2011}).
 
 \bibitem{mann2016empirical}
 \bibinfo{author}{Mann, W.}, \bibinfo{author}{Augsten, N.} \&
@@ -150,14 +271,23 @@
   \textbf{\bibinfo{volume}{9}}, \bibinfo{pages}{636--647},
   \doiprefix\url{10.14778/2947618.2947620} (\bibinfo{year}{2016}).
 
-\bibitem{anastasiu2016tapnn}
-\bibinfo{author}{Anastasiu, D.~C.} \& \bibinfo{author}{Karypis, G.}
-\newblock \bibinfo{title}{Efficient identification of {Tanimoto} nearest
-  neighbors}.
-\newblock In \emph{\bibinfo{booktitle}{Proceedings of the IEEE International
-  Conference on Data Science and Advanced Analytics (DSAA)}},
-  \bibinfo{pages}{156--165}, \doiprefix\url{10.1109/DSAA.2016.23}
-  (\bibinfo{year}{2016}).
+\bibitem{sandes2020bitmapfilter}
+\bibinfo{author}{Sandes, E. F. d.~O.}, \bibinfo{author}{Teodoro, G.} \&
+  \bibinfo{author}{Melo, A. C. M.~A.}
+\newblock \bibinfo{journal}{\bibinfo{title}{Bitmap filter: Speeding up exact
+  set similarity joins with bitwise operations}}.
+\newblock {\emph{\JournalTitle{Information Systems}}}
+  \textbf{\bibinfo{volume}{88}}, \bibinfo{pages}{101449},
+  \doiprefix\url{10.1016/j.is.2019.101449} (\bibinfo{year}{2020}).
+
+\bibitem{wang2012adaptjoin}
+\bibinfo{author}{Wang, J.}, \bibinfo{author}{Li, G.} \& \bibinfo{author}{Feng,
+  J.}
+\newblock \bibinfo{title}{Can we beat the prefix filtering? an adaptive
+  framework for similarity join and search}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the 2012 ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{85--96},
+  \doiprefix\url{10.1145/2213836.2213847} (\bibinfo{year}{2012}).
 
 \bibitem{jacobson1989succinct}
 \bibinfo{author}{Jacobson, G.}
@@ -215,10 +345,10 @@
 \bibitem{alexiou2013arf}
 \bibinfo{author}{Alexiou, K.}, \bibinfo{author}{Kossmann, D.} \&
   \bibinfo{author}{Larson, P.-{\AA}.}
-\newblock \bibinfo{title}{Adaptive range filters for cold data: Avoiding trips
-  to siberia}.
-\newblock In \emph{\bibinfo{booktitle}{Proceedings of the VLDB Endowment}},
-  vol.~\bibinfo{volume}{6}, \bibinfo{pages}{1714--1725},
+\newblock \bibinfo{journal}{\bibinfo{title}{Adaptive range filters for cold
+  data: Avoiding trips to siberia}}.
+\newblock {\emph{\JournalTitle{Proceedings of the VLDB Endowment}}}
+  \textbf{\bibinfo{volume}{6}}, \bibinfo{pages}{1714--1725},
   \doiprefix\url{10.14778/2556549.2556556} (\bibinfo{year}{2013}).
 
 \bibitem{yu2016hippo}
@@ -250,12 +380,6 @@
   \doiprefix\url{10.1016/j.datak.2009.08.006} (\bibinfo{year}{2010}).
 \newblock \bibinfo{note}{ArXiv:0901.3751}.
 
-\bibitem{lucene-sparsefixedbitset}
-\bibinfo{author}{{The Apache Software Foundation}}.
-\newblock \bibinfo{title}{{Lucene} \texttt{SparseFixedBitSet}}.
-\newblock \bibinfo{howpublished}{\url{https://lucene.apache.org/core/}}.
-\newblock \bibinfo{note}{Accessed 2026-08-06}.
-
 \bibitem{lemire2016roaring}
 \bibinfo{author}{Lemire, D.}, \bibinfo{author}{Ssi-Yan-Kai, G.} \&
   \bibinfo{author}{Kaser, O.}
@@ -266,14 +390,28 @@
   \doiprefix\url{10.1002/spe.2402} (\bibinfo{year}{2016}).
 \newblock \bibinfo{note}{ArXiv:1603.06549}.
 
-\bibitem{sandes2020bitmapfilter}
-\bibinfo{author}{Sandes, E. F. d.~O.}, \bibinfo{author}{Teodoro, G.} \&
-  \bibinfo{author}{Melo, A. C. M.~A.}
-\newblock \bibinfo{journal}{\bibinfo{title}{Bitmap filter: Speeding up exact
-  set similarity joins with bitwise operations}}.
-\newblock {\emph{\JournalTitle{Information Systems}}}
-  \textbf{\bibinfo{volume}{88}}, \bibinfo{pages}{101449},
-  \doiprefix\url{10.1016/j.is.2019.101449} (\bibinfo{year}{2020}).
+\bibitem{mood1940runs}
+\bibinfo{author}{Mood, A.~M.}
+\newblock \bibinfo{journal}{\bibinfo{title}{The distribution theory of runs}}.
+\newblock {\emph{\JournalTitle{The Annals of Mathematical Statistics}}}
+  \textbf{\bibinfo{volume}{11}}, \bibinfo{pages}{367--392},
+  \doiprefix\url{10.1214/aoms/1177731825} (\bibinfo{year}{1940}).
+
+\bibitem{lang2020teb}
+\bibinfo{author}{Lang, H.} \emph{et~al.}
+\newblock \bibinfo{title}{Tree-encoded bitmaps}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the ACM SIGMOD
+  International Conference on Management of Data}}, \bibinfo{pages}{937--967},
+  \doiprefix\url{10.1145/3318464.3380588} (\bibinfo{year}{2020}).
+
+\bibitem{anastasiu2016tapnn}
+\bibinfo{author}{Anastasiu, D.~C.} \& \bibinfo{author}{Karypis, G.}
+\newblock \bibinfo{title}{Efficient identification of {Tanimoto} nearest
+  neighbors}.
+\newblock In \emph{\bibinfo{booktitle}{Proceedings of the IEEE International
+  Conference on Data Science and Advanced Analytics (DSAA)}},
+  \bibinfo{pages}{156--165}, \doiprefix\url{10.1109/DSAA.2016.23}
+  (\bibinfo{year}{2016}).
 
 \bibitem{chaudhuri2006primitive}
 \bibinfo{author}{Chaudhuri, S.}, \bibinfo{author}{Ganti, V.} \&
